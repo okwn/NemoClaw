@@ -187,14 +187,16 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
 
 describe("CLI dispatch", () => {
   it("config get validates flags and values before dispatch", () => {
-    const src = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "nemoclaw.ts"), "utf-8");
-    const configGet = src.match(/case "get": \{([\s\S]*?)sandboxConfig\.configGet\(cmd, configOpts\);/);
-    expect(configGet).toBeTruthy();
-    expect(configGet![1]).toContain("--key requires a value");
-    expect(configGet![1]).toContain("--format requires a value");
-    expect(configGet![1]).toContain("Unknown format");
-    expect(configGet![1]).toContain("Unknown flag");
-    expect(configGet![1]).toContain('format !== "json" && format !== "yaml"');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-config-flags-"));
+    writeSandboxRegistry(home);
+
+    const invalidFormat = runWithEnv("alpha config get --format xml", { HOME: home });
+    expect(invalidFormat.code).toBe(1);
+    expect(invalidFormat.out).toContain("Unknown format: xml. Use json or yaml.");
+
+    const missingKey = runWithEnv("alpha config get --key", { HOME: home });
+    expect(missingKey.code).not.toBe(0);
+    expect(missingKey.out).toContain("Flag --key expects a value");
   });
 
   it("help exits 0 and shows sections", () => {
@@ -659,6 +661,31 @@ describe("CLI dispatch", () => {
     expect(r.code).toBe(0);
     expect(r.out).toContain("Usage: nemoclaw <name> gateway-token [--quiet|-q]");
     expect(r.out).not.toContain("sandbox:gateway-token");
+  });
+
+  it("sandbox inspection help keeps public sandbox-scoped usage", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-inspection-help-"));
+    writeSandboxRegistry(home);
+
+    const status = runWithEnv("alpha status --help", { HOME: home });
+    expect(status.code).toBe(0);
+    expect(status.out).toContain("<name> status");
+    expect(status.out).not.toContain("sandbox:status");
+
+    const policy = runWithEnv("alpha policy-list --help", { HOME: home });
+    expect(policy.code).toBe(0);
+    expect(policy.out).toContain("<name> policy-list");
+    expect(policy.out).not.toContain("sandbox:policy-list");
+
+    const channels = runWithEnv("alpha channels list --help", { HOME: home });
+    expect(channels.code).toBe(0);
+    expect(channels.out).toContain("<name> channels list");
+    expect(channels.out).not.toContain("sandbox:channels:list");
+
+    const config = runWithEnv("alpha config get --help", { HOME: home });
+    expect(config.code).toBe(0);
+    expect(config.out).toContain("<name> config get");
+    expect(config.out).not.toContain("sandbox:config:get");
   });
 
   it("routes logs to OpenClaw and OpenShell log sources", () => {

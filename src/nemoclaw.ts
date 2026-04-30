@@ -50,7 +50,6 @@ import type { SandboxEntry } from "./lib/registry";
 const nim = require("./lib/nim");
 const policies = require("./lib/policies");
 const shields = require("./lib/shields");
-const sandboxConfig = require("./lib/sandbox-config");
 const { parseGatewayInference } = require("./lib/inference-config");
 const { probeProviderHealth } = require("./lib/inference-health");
 const { getVersion } = require("./lib/version");
@@ -573,6 +572,9 @@ exports.captureOpenshell = captureOpenshell;
 exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
 exports.recoverRegistryEntries = recoverRegistryEntries;
 exports.runOpenshell = runOpenshell;
+exports.sandboxChannelsList = sandboxChannelsList;
+exports.sandboxPolicyList = sandboxPolicyList;
+exports.sandboxStatus = sandboxStatus;
 
 function hasNamedGateway(output = ""): boolean {
   return stripAnsi(output).includes("Gateway: nemoclaw");
@@ -1192,6 +1194,14 @@ async function runOclif(commandId: string, args: string[] = []): Promise<void> {
 
 async function listSandboxes(args: string[] = []): Promise<void> {
   await runOclif("list", args);
+}
+
+function hasHelpFlag(args: string[]): boolean {
+  return args.includes("--help") || args.includes("-h");
+}
+
+function printSandboxActionUsage(action: string): void {
+  console.log(`  Usage: ${CLI_NAME} <name> ${action}`);
 }
 
 // ── Sandbox-scoped actions ───────────────────────────────────────
@@ -4042,7 +4052,11 @@ const [cmd, ...args] = process.argv.slice(2);
         await sandboxConnect(cmd);
         break;
       case "status":
-        await sandboxStatus(cmd);
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage("status");
+          break;
+        }
+        await runOclif("sandbox:status", [cmd, ...actionArgs]);
         break;
       case "logs":
         sandboxLogs(cmd, actionArgs.includes("--follow"));
@@ -4054,7 +4068,11 @@ const [cmd, ...args] = process.argv.slice(2);
         await sandboxPolicyRemove(cmd, actionArgs);
         break;
       case "policy-list":
-        sandboxPolicyList(cmd);
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage("policy-list");
+          break;
+        }
+        await runOclif("sandbox:policy-list", [cmd, ...actionArgs]);
         break;
       case "destroy":
         await sandboxDestroy(cmd, actionArgs);
@@ -4134,9 +4152,15 @@ const [cmd, ...args] = process.argv.slice(2);
         const channelsArgs = actionArgs.slice(1);
         switch (channelsSub) {
           case "list":
+            if (hasHelpFlag(channelsArgs)) {
+              printSandboxActionUsage("channels list");
+              break;
+            }
+            await runOclif("sandbox:channels:list", [cmd, ...channelsArgs]);
+            break;
           case undefined:
           case "":
-            sandboxChannelsList(cmd);
+            await runOclif("sandbox:channels:list", [cmd]);
             break;
           case "add":
             await sandboxChannelsAdd(cmd, channelsArgs);
@@ -4149,6 +4173,10 @@ const [cmd, ...args] = process.argv.slice(2);
             break;
           case "start":
             await sandboxChannelsStart(cmd, channelsArgs);
+            break;
+          case "--help":
+          case "-h":
+            printSandboxActionUsage("channels list");
             break;
           default:
             console.error(`  Unknown channels subcommand: ${channelsSub}`);
@@ -4167,47 +4195,17 @@ const [cmd, ...args] = process.argv.slice(2);
       case "config": {
         const configSub = actionArgs[0];
         switch (configSub) {
-          case "get": {
-            const configOpts: { key: string | null; format: string } = {
-              key: null,
-              format: "json",
-            };
-            for (let i = 1; i < actionArgs.length; i++) {
-              const flag = actionArgs[i];
-              if (flag === "--key") {
-                if (i + 1 >= actionArgs.length || actionArgs[i + 1].startsWith("--")) {
-                  console.error("  --key requires a value.");
-                  console.error(
-                    `  Usage: ${CLI_NAME} <name> config get [--key dotpath] [--format json|yaml]`,
-                  );
-                  process.exit(1);
-                }
-                configOpts.key = actionArgs[++i];
-              } else if (flag === "--format") {
-                if (i + 1 >= actionArgs.length || actionArgs[i + 1].startsWith("--")) {
-                  console.error("  --format requires a value (json|yaml).");
-                  console.error(
-                    `  Usage: ${CLI_NAME} <name> config get [--key dotpath] [--format json|yaml]`,
-                  );
-                  process.exit(1);
-                }
-                const format = actionArgs[++i];
-                if (format !== "json" && format !== "yaml") {
-                  console.error(`  Unknown format: ${format}. Use json or yaml.`);
-                  process.exit(1);
-                }
-                configOpts.format = format;
-              } else {
-                console.error(`  Unknown flag: ${flag}`);
-                console.error(
-                  `  Usage: ${CLI_NAME} <name> config get [--key dotpath] [--format json|yaml]`,
-                );
-                process.exit(1);
-              }
+          case "get":
+            if (hasHelpFlag(actionArgs.slice(1))) {
+              printSandboxActionUsage("config get [--key dotpath] [--format json|yaml]");
+              break;
             }
-            sandboxConfig.configGet(cmd, configOpts);
+            await runOclif("sandbox:config:get", [cmd, ...actionArgs.slice(1)]);
             break;
-          }
+          case "--help":
+          case "-h":
+            printSandboxActionUsage("config get [--key dotpath] [--format json|yaml]");
+            break;
           default:
             console.error(
               `  Usage: ${CLI_NAME} <name> config get [--key dotpath] [--format json|yaml]`,
