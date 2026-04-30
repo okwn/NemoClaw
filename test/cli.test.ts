@@ -375,6 +375,20 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("Deprecated alias");
   });
 
+  it("tunnel stop --help exits 0 and shows tunnel usage", () => {
+    const r = run("tunnel stop --help");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("tunnel stop");
+    expect(r.out).toContain("Stop the cloudflared public-URL tunnel");
+  });
+
+  it("deprecated stop --help exits 0 and shows alias usage", () => {
+    const r = run("stop --help");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("stop");
+    expect(r.out).toContain("Deprecated alias");
+  });
+
   it("shows skill install help when --help follows install", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-skill-help-"));
     writeSandboxRegistry(home);
