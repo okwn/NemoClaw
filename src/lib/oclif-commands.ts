@@ -2,7 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import ListCommand from "./list-command";
+import StatusCommand from "./status-command";
+import {
+  DeprecatedStartCommand,
+  DeprecatedStopCommand,
+  TunnelStartCommand,
+  TunnelStopCommand,
+} from "./tunnel-commands";
 
 export default {
   list: ListCommand,
+  status: StatusCommand,
+  start: DeprecatedStartCommand,
+  stop: DeprecatedStopCommand,
+  "tunnel:start": TunnelStartCommand,
+  "tunnel:stop": TunnelStopCommand,
 };
