@@ -10,6 +10,11 @@ import DebugCliCommand from "./debug-cli-command";
 import GatewayTokenCliCommand from "./gateway-token-cli-command";
 import ListCommand from "./list-command";
 import {
+  BackupAllCommand,
+  GarbageCollectImagesCommand,
+  UpgradeSandboxesCommand,
+} from "./maintenance-cli-commands";
+import {
   SandboxChannelsListCommand,
   SandboxConfigGetCommand,
   SandboxPolicyListCommand,
@@ -25,6 +30,7 @@ import {
 import UninstallCliCommand from "./uninstall-cli-command";
 
 export default {
+  "backup-all": BackupAllCommand,
   credentials: CredentialsCommand,
   "credentials:list": CredentialsListCommand,
   "credentials:reset": CredentialsResetCommand,
@@ -40,5 +46,7 @@ export default {
   "sandbox:gateway-token": GatewayTokenCliCommand,
   "tunnel:start": TunnelStartCommand,
   "tunnel:stop": TunnelStopCommand,
+  gc: GarbageCollectImagesCommand,
   uninstall: UninstallCliCommand,
+  "upgrade-sandboxes": UpgradeSandboxesCommand,
 };

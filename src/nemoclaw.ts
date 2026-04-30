@@ -569,12 +569,15 @@ async function recoverRegistryEntries({
 }
 
 exports.captureOpenshell = captureOpenshell;
+exports.backupAll = backupAll;
+exports.garbageCollectImages = garbageCollectImages;
 exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
 exports.recoverRegistryEntries = recoverRegistryEntries;
 exports.runOpenshell = runOpenshell;
 exports.sandboxChannelsList = sandboxChannelsList;
 exports.sandboxPolicyList = sandboxPolicyList;
 exports.sandboxStatus = sandboxStatus;
+exports.upgradeSandboxes = upgradeSandboxes;
 
 function hasNamedGateway(output = ""): boolean {
   return stripAnsi(output).includes("Gateway: nemoclaw");
@@ -3988,13 +3991,13 @@ const [cmd, ...args] = process.argv.slice(2);
         await listSandboxes(args);
         break;
       case "backup-all":
-        backupAll();
+        await runOclif("backup-all", args);
         break;
       case "upgrade-sandboxes":
-        await upgradeSandboxes(args);
+        await runOclif("upgrade-sandboxes", args);
         break;
       case "gc":
-        await garbageCollectImages(args);
+        await runOclif("gc", args);
         break;
       case "--version":
       case "-v": {
