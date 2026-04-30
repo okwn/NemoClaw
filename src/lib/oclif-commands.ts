@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import ListCommand from "./list-command";
+import ShareCommand from "./share-command";
 import StatusCommand from "./status-command";
 import {
   DeprecatedStartCommand,
@@ -12,6 +13,7 @@ import {
 
 export default {
   list: ListCommand,
+  share: ShareCommand,
   status: StatusCommand,
   start: DeprecatedStartCommand,
   stop: DeprecatedStopCommand,
