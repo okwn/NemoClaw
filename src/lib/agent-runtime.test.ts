@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 // Import from compiled dist/ so coverage is attributed correctly.
-import { buildRecoveryScript } from "../../dist/lib/agent-runtime";
+import { buildOpenClawRecoveryScript, buildRecoveryScript } from "../../dist/lib/agent-runtime";
 import type { AgentDefinition } from "./agent-defs";
 
 function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
@@ -60,13 +60,13 @@ describe("buildRecoveryScript", () => {
   it("launches the default gateway command through the validated agent binary", () => {
     const script = buildRecoveryScript(minimalAgent, 19000);
     expect(script).toContain("command -v 'test-agent'");
-    expect(script).toContain('nohup "$AGENT_BIN" gateway run --port 19000');
+    expect(script).toContain('"$AGENT_BIN" gateway run --port 19000');
   });
 
   it("falls back to openclaw gateway run when gateway_command is absent", () => {
     const agent = makeAgent({ gateway_command: undefined });
     const script = buildRecoveryScript(agent, 19000);
-    expect(script).toContain('nohup "$AGENT_BIN" gateway run --port 19000');
+    expect(script).toContain('"$AGENT_BIN" gateway run --port 19000');
   });
 
   it("validates and launches custom gateway commands explicitly", () => {
@@ -127,11 +127,13 @@ describe("buildRecoveryScript", () => {
       // anyone debugging a crash-loop. (#2478)
       expect(script).toContain('echo "$_W" >> /tmp/gateway.log');
       // And the warning must be deferred until AFTER gateway.log is
-      // freshly touched/chmod'd, otherwise the redirect targets a stale
-      // file that gets removed seconds later.
-      const touchIdx = script!.indexOf("touch /tmp/gateway.log");
+      // safely opened with O_NOFOLLOW, otherwise the redirect targets a
+      // stale or attacker-controlled file.
+      const prepareIdx = script!.indexOf("os.open(path, flags, 0o644)");
       const warnIdx = script!.indexOf('echo "$_W" >> /tmp/gateway.log');
-      expect(touchIdx).toBeLessThan(warnIdx);
+      expect(prepareIdx).toBeGreaterThanOrEqual(0);
+      expect(warnIdx).toBeGreaterThanOrEqual(0);
+      expect(prepareIdx).toBeLessThan(warnIdx);
     });
 
     it("appends (not truncates) gateway.log on launch so warnings survive", () => {
@@ -139,8 +141,62 @@ describe("buildRecoveryScript", () => {
       // Truncating with `>` wipes the [gateway-recovery] WARNING that the
       // recovery script wrote moments earlier — meaning a sysadmin tailing
       // gateway.log would see the eventual crash without the explanation.
-      expect(script).toContain(">> /tmp/gateway.log 2>&1 &");
+      expect(script).toContain('>> "$_GATEWAY_LOG" 2>&1 &');
       expect(script).not.toMatch(/[^>]> \/tmp\/gateway\.log 2>&1 &/);
+    });
+
+    it("preserves an existing gateway.log and has a writable fallback log", () => {
+      const script = buildOpenClawRecoveryScript(18789);
+      expect(script).not.toContain("rm -f /tmp/gateway.log");
+      expect(script).toContain("_GATEWAY_LOG=/tmp/gateway.log");
+      expect(script).toContain("_GATEWAY_LOG=/tmp/gateway-recovery.log");
+    });
+
+    it("rejects a symlinked gateway.log before preparing the log", () => {
+      const script = buildOpenClawRecoveryScript(18789);
+      const noFollowIdx = script.indexOf("O_NOFOLLOW");
+      const openIdx = script.indexOf("os.open(path, flags, 0o644)");
+      const fchownIdx = script.indexOf("os.fchown(fd");
+      expect(script).toContain("refusing to prepare symlinked /tmp/gateway.log");
+      expect(script).toContain("sys.exit(1)");
+      expect(script).not.toContain(": > /tmp/gateway.log");
+      expect(script).not.toContain("chown 'gateway:gateway' /tmp/gateway.log");
+      expect(noFollowIdx).toBeGreaterThanOrEqual(0);
+      expect(openIdx).toBeGreaterThanOrEqual(0);
+      expect(fchownIdx).toBeGreaterThanOrEqual(0);
+      expect(noFollowIdx).toBeLessThan(openIdx);
+      expect(openIdx).toBeLessThan(fchownIdx);
+    });
+
+    it("prepares gateway.log for the real gateway-owned sandbox log", () => {
+      const script = buildOpenClawRecoveryScript(18789);
+      expect(script).toContain("os.fchown(fd");
+      expect(script).toContain("pw.pw_gid");
+      expect(script).not.toContain("grp.getgrnam");
+      expect(script).toContain("owner_mode = 0o644");
+      expect(script).toContain("os.fchmod(fd, owner_mode)");
+      expect(script).toContain("/tmp/gateway.log 'gateway'");
+      expect(script).toContain("gosu 'gateway'");
+    });
+
+    it("prepares auto-pair.log without unlinking or following symlinks", () => {
+      const script = buildOpenClawRecoveryScript(18789);
+      expect(script).toContain("refusing to prepare symlinked /tmp/auto-pair.log");
+      expect(script).toContain("/tmp/auto-pair.log 'sandbox'");
+      expect(script).toContain("owner_mode = 0o600");
+      expect(script).not.toContain("rm -f /tmp/auto-pair.log");
+      expect(script).not.toContain(": > /tmp/auto-pair.log");
+      expect(script).not.toContain("touch /tmp/auto-pair.log");
+      expect(script).not.toContain("chown sandbox:sandbox /tmp/auto-pair.log");
+      expect(script).not.toContain("chmod 600 /tmp/auto-pair.log");
+    });
+
+    it("does not force non-OpenClaw agents to run as the gateway user", () => {
+      const script = buildRecoveryScript(minimalAgent, 19000);
+      expect(script).not.toContain("chown gateway:gateway /tmp/gateway.log");
+      expect(script).not.toContain("chown 'gateway:gateway' /tmp/gateway.log");
+      expect(script).not.toContain("gosu gateway");
+      expect(script).not.toContain("gosu 'gateway'");
     });
   });
 });
