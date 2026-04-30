@@ -30,10 +30,8 @@ The Hermes agent option is experimental.
 Interfaces, defaults, and supported features may change without notice, and it is not recommended for production use.
 :::
 
-:::{note}
 Review the [Prerequisites](prerequisites.md) before starting.
 The first Hermes build can take several minutes because NemoClaw builds the Hermes sandbox base image if it is not already cached.
-:::
 
 ## Install and Onboard
 
