@@ -578,6 +578,9 @@ async function recoverRegistryEntries({
 
 exports.captureOpenshell = captureOpenshell;
 exports.recoverRegistryEntries = recoverRegistryEntries;
+exports.ensureLiveSandboxOrExit = ensureLiveSandboxOrExit;
+exports.G = G;
+exports.R = R;
 
 function hasNamedGateway(output = ""): boolean {
   return stripAnsi(output).includes("Gateway: nemoclaw");
@@ -1521,12 +1524,16 @@ function showStatus() {
   });
 }
 
-async function listSandboxes(args: string[] = []): Promise<void> {
-  await runRegisteredOclifCommand("list", args, {
+async function runOclif(commandId: string, args: string[] = []): Promise<void> {
+  await runRegisteredOclifCommand(commandId, args, {
     rootDir: ROOT,
     error: console.error,
     exit: (code: number) => process.exit(code),
   });
+}
+
+async function listSandboxes(args: string[] = []): Promise<void> {
+  await runOclif("list", args);
 }
 
 // ── Sandbox-scoped actions ───────────────────────────────────────
@@ -4508,6 +4515,13 @@ const [cmd, ...args] = process.argv.slice(2);
       case "snapshot":
         await sandboxSnapshot(cmd, actionArgs);
         break;
+      case "share":
+        await runRegisteredOclifCommand("share", [cmd, ...actionArgs], {
+          rootDir: ROOT,
+          error: console.error,
+          exit: (code: number) => process.exit(code),
+        });
+        break;
       case "shields": {
         const shieldsSub = actionArgs[0];
         const shieldsFlags = actionArgs.slice(1);
@@ -4652,7 +4666,7 @@ const [cmd, ...args] = process.argv.slice(2);
       default:
         console.error(`  Unknown action: ${action}`);
         console.error(
-          `  Valid actions: connect, status, logs, policy-add, policy-remove, policy-list, skill, snapshot, rebuild, shields, config, channels, gateway-token, destroy`,
+          `  Valid actions: connect, status, logs, policy-add, policy-remove, policy-list, skill, snapshot, share, rebuild, shields, config, channels, gateway-token, destroy`,
         );
         process.exit(1);
     }

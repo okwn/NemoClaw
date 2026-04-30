@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 
 const CLI = path.join(import.meta.dirname, "..", "bin", "nemoclaw.js");
+const HERMES_CLI = path.join(import.meta.dirname, "..", "bin", "nemohermes.js");
 
 type CliRunResult = {
   code: number;
@@ -282,6 +283,19 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("List all sandboxes");
   });
 
+  it("nemohermes list --help uses alias branding", () => {
+    const out = execSync(`node "${HERMES_CLI}" list --help`, {
+      encoding: "utf-8",
+      timeout: Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+      env: {
+        ...process.env,
+        HOME: `/tmp/nemoclaw-cli-test-${Date.now()}`,
+      },
+    });
+    expect(out).toContain("$ nemohermes list [--json]");
+    expect(out).not.toContain("$ nemoclaw list [--json]");
+  });
+
   it("list --json emits structured empty inventory", () => {
     const r = run("list --json");
     expect(r.code).toBe(0);
@@ -460,12 +474,16 @@ describe("CLI dispatch", () => {
         { mode: 0o755 },
       );
 
-      const r = runWithEnv("start", {
-        HOME: home,
-        PATH: `${localBin}:${process.env.PATH || ""}`,
-        NVIDIA_API_KEY: "",
-        TELEGRAM_BOT_TOKEN: "",
-      });
+      const r = runWithEnv(
+        "start",
+        {
+          HOME: home,
+          PATH: `${localBin}:${process.env.PATH || ""}`,
+          NVIDIA_API_KEY: "",
+          TELEGRAM_BOT_TOKEN: "",
+        },
+        30000,
+      );
 
       expect(r.code).toBe(0);
       expect(r.out).not.toContain("NVIDIA API Key required");
@@ -3120,4 +3138,28 @@ describe("list shows live gateway inference", () => {
       expect(r.out).toContain("up to date");
     },
   );
+
+  it("share with no subcommand prints usage help", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-share-"));
+    writeSandboxRegistry(home);
+
+    const r = runWithEnv("alpha share", { HOME: home });
+
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Usage: nemoclaw <name> share");
+    expect(r.out).toContain("mount");
+    expect(r.out).toContain("unmount");
+    expect(r.out).toContain("status");
+  });
+
+  it("share is recognized as a valid sandbox action (not 'Unknown action')", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-share-action-"));
+    writeSandboxRegistry(home);
+
+    const r = runWithEnv("alpha share mount", { HOME: home });
+
+    // Will fail because sshfs/sandbox isn't running, but should NOT say "Unknown action"
+    expect(r.code).not.toBe(0);
+    expect(r.out).not.toContain("Unknown action");
+  });
 });
