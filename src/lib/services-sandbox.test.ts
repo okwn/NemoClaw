@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync as realSpawnSync } from "node:child_process";
@@ -287,6 +287,44 @@ describe("stopAll with sandbox channels", () => {
       expect.any(Object),
     );
     logSpy.mockRestore();
+  });
+
+  it("uses the effective env-selected sandbox for host-side pid cleanup", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const savedNemoclaw = process.env.NEMOCLAW_SANDBOX;
+    const savedNemoclawName = process.env.NEMOCLAW_SANDBOX_NAME;
+    const savedSandbox = process.env.SANDBOX_NAME;
+    const effectivePidDir = "/tmp/nemoclaw-services-name-sandbox";
+    const lowerPriorityPidDir = "/tmp/nemoclaw-services-other-sandbox";
+    mkdirSync(effectivePidDir, { recursive: true, mode: 0o700 });
+    mkdirSync(lowerPriorityPidDir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(effectivePidDir, "cloudflared.pid"), "999999999");
+    writeFileSync(join(lowerPriorityPidDir, "cloudflared.pid"), "999999999");
+    process.env.NEMOCLAW_SANDBOX_NAME = "name-sandbox";
+    process.env.NEMOCLAW_SANDBOX = "other-sandbox";
+    delete process.env.SANDBOX_NAME;
+
+    try {
+      stopAll();
+
+      expect(spawnSyncSpy).toHaveBeenCalledWith(
+        "/usr/local/bin/openshell",
+        expect.arrayContaining(["name-sandbox"]),
+        expect.any(Object),
+      );
+      expect(existsSync(join(effectivePidDir, "cloudflared.pid"))).toBe(false);
+      expect(existsSync(join(lowerPriorityPidDir, "cloudflared.pid"))).toBe(true);
+    } finally {
+      if (savedNemoclaw !== undefined) process.env.NEMOCLAW_SANDBOX = savedNemoclaw;
+      else delete process.env.NEMOCLAW_SANDBOX;
+      if (savedNemoclawName !== undefined) process.env.NEMOCLAW_SANDBOX_NAME = savedNemoclawName;
+      else delete process.env.NEMOCLAW_SANDBOX_NAME;
+      if (savedSandbox !== undefined) process.env.SANDBOX_NAME = savedSandbox;
+      else delete process.env.SANDBOX_NAME;
+      rmSync(effectivePidDir, { recursive: true, force: true });
+      rmSync(lowerPriorityPidDir, { recursive: true, force: true });
+      logSpy.mockRestore();
+    }
   });
 
   it("rejects malformed env var sandbox names before calling stopSandboxChannels", () => {

@@ -294,9 +294,6 @@ export function stopSandboxChannels(sandboxName: string): void {
 }
 
 export function stopAll(opts: ServiceOptions = {}): void {
-  const pidDir = resolvePidDir(opts);
-  ensurePidDir(pidDir);
-
   // Stop the in-sandbox OpenClaw gateway (and its messaging channels).
   const rawSandboxName =
     opts.sandboxName ??
@@ -307,6 +304,12 @@ export function stopAll(opts: ServiceOptions = {}): void {
     rawSandboxName && SAFE_NAME_RE.test(rawSandboxName) && !rawSandboxName.includes("..")
       ? rawSandboxName
       : undefined;
+
+  // Resolve host-side service state from the same effective sandbox selected
+  // for in-sandbox shutdown, so pid cleanup cannot drift to a lower-priority
+  // env var or the default sandbox.
+  const pidDir = resolvePidDir(sandboxName ? { ...opts, sandboxName } : opts);
+  ensurePidDir(pidDir);
   if (sandboxName) {
     stopSandboxChannels(sandboxName);
   } else if (rawSandboxName) {
