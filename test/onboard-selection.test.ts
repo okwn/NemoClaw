@@ -284,6 +284,7 @@ const { setupNim } = require(${onboardPath});
     );
     const fakeBin = path.join(tmpDir, "bin");
     const scriptPath = path.join(tmpDir, "build-deepseek-selection-check.js");
+    const curlArgsLog = path.join(tmpDir, "deepseek-curl-args.log");
     const onboardPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "onboard.js"));
     const credentialsPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "credentials.js"));
     const runnerPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "runner.js"));
@@ -292,6 +293,8 @@ const { setupNim } = require(${onboardPath});
     fs.writeFileSync(
       path.join(fakeBin, "curl"),
       `#!/usr/bin/env bash
+args_log=${JSON.stringify(curlArgsLog)}
+printf '%s\\n' "$*" >> "$args_log"
 body='{"id":"ok"}'
 status="200"
 outfile=""
@@ -375,6 +378,9 @@ const { setupNim } = require(${onboardPath});
     assert.ok(
       payload.lines.some((line: string) => line.includes("Chat Completions API available")),
     );
+    const curlInvocations = fs.readFileSync(curlArgsLog, "utf-8");
+    assert.match(curlInvocations, /chat\/completions/);
+    assert.match(curlInvocations, /(^|\s)-N(\s|$)/);
   });
 
   it("accepts a manually entered NVIDIA Endpoints model after validating it against /models", () => {

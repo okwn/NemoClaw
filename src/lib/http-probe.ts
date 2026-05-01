@@ -184,19 +184,22 @@ export function runCurlProbe(argv: string[], opts: CurlProbeOptions = {}): CurlP
 }
 
 function hasChatCompletionsStreamingData(body: string): boolean {
+  let seenChoices = false;
   for (const line of body.split("\n")) {
     const match = /^data:\s*(.+)$/i.exec(line.trim());
     if (!match) continue;
     const data = match[1].trim();
-    if (data === "[DONE]") return true;
+    if (data === "[DONE]") return seenChoices;
     try {
       const parsed = JSON.parse(data);
-      if (Array.isArray(parsed?.choices)) return true;
+      if (Array.isArray(parsed?.choices) && parsed.choices.length > 0) {
+        seenChoices = true;
+      }
     } catch {
       /* Ignore malformed SSE data lines and keep scanning. */
     }
   }
-  return false;
+  return seenChoices;
 }
 
 export function runChatCompletionsStreamingProbe(

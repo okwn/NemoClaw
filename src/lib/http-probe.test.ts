@@ -137,6 +137,16 @@ describe("runChatCompletionsStreamingProbe", () => {
     expect(result.ok).toBe(false);
     expect(result.curlStatus).toBe(28);
   });
+
+  it("does not treat a lone DONE frame as successful streaming data", () => {
+    const result = runChatCompletionsStreamingProbe(
+      ["-sS", "--max-time", "120", "https://example.test/v1/chat/completions"],
+      { spawnSyncImpl: mockStreaming("data: [DONE]\n\n") },
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("did not return SSE data");
+  });
 });
 
 describe("runStreamingEventProbe", () => {
