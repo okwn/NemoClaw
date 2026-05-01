@@ -361,6 +361,82 @@ gateway at a different model than vLLM is loading will fail.
 
 ---
 
+## Model Cache and Disk Space
+
+vLLM downloads model weights from HuggingFace into the host directory
+`~/.cache/huggingface/hub/`, mounted into the container via
+`-v ~/.cache/huggingface:/root/.cache/huggingface`. **Stopping or removing the
+`nemoclaw-vllm` container does not delete cached weights** — they persist across
+container lifecycles so subsequent loads of the same model take seconds instead of
+minutes.
+
+### Where the cache lives
+
+The cache directory is on whichever filesystem holds `$HOME`. On a DGX Station GB300
+this is the system NVMe SSD by default (typically 1.92 TB or 3.84 TB). Check with:
+
+```bash
+df -h "$HOME/.cache/huggingface/"
+mount | grep "$(stat -c %m "$HOME")"
+```
+
+### Disk usage per model
+
+| Model | On-disk size |
+|-------|--------------|
+| `nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4` | ~75 GB (NVFP4 4-bit) |
+| `Qwen/Qwen2.5-72B-Instruct`                       | ~135 GB (BF16) |
+| `deepseek-ai/DeepSeek-R1-Distill-Llama-70B`       | ~130 GB (BF16) |
+
+If you swap through all three Station picker options, the cache grows to roughly
+340 GB. List exactly what is cached:
+
+```bash
+du -sh ~/.cache/huggingface/hub/models--*/ | sort -h
+```
+
+### Free up space
+
+The installer never deletes cached weights automatically. Remove a single model:
+
+```bash
+rm -rf ~/.cache/huggingface/hub/models--Qwen--Qwen2.5-72B-Instruct
+```
+
+…or use the HuggingFace CLI's interactive cleaner (lets you select what to delete and
+shows reclaimed bytes):
+
+```bash
+huggingface-cli scan-cache
+huggingface-cli delete-cache
+```
+
+### Move the cache off the system NVMe
+
+If the system NVMe is filling up but you have a larger secondary NVMe or HDD mounted
+elsewhere, relocate the cache with the `HF_HOME` env var. Set it persistently in
+`~/.bashrc` and rsync the existing cache once:
+
+```bash
+mkdir -p /mnt/data/huggingface
+rsync -a ~/.cache/huggingface/ /mnt/data/huggingface/
+echo 'export HF_HOME=/mnt/data/huggingface' >> ~/.bashrc
+source ~/.bashrc
+rm -rf ~/.cache/huggingface
+```
+
+The vLLM container reads `HF_HOME` from the environment when it is exported in the
+shell that runs the installer, so subsequent `bash scripts/install.sh` runs will mount
+the new path automatically.
+
+### What happens when the disk fills up mid-download
+
+vLLM will exit non-zero when the underlying `safetensors` write fails. The installer
+detects this via the "container exited" check in the readiness wait and aborts with
+the last 30 lines of container logs. Free up space and re-run with `--fresh`.
+
+---
+
 ## Teardown for Re-testing
 
 Use this procedure when cycling through installs during testing. It tears down only
