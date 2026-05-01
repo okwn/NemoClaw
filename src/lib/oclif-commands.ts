@@ -9,6 +9,7 @@ import {
 import DebugCliCommand from "./debug-cli-command";
 import GatewayTokenCliCommand from "./gateway-token-cli-command";
 import ListCommand from "./list-command";
+import ShareCommand from "./share-command";
 import StatusCommand from "./status-command";
 import {
   DeprecatedStartCommand,
@@ -24,6 +25,7 @@ export default {
   "credentials:reset": CredentialsResetCommand,
   debug: DebugCliCommand,
   list: ListCommand,
+  share: ShareCommand,
   status: StatusCommand,
   start: DeprecatedStartCommand,
   stop: DeprecatedStopCommand,

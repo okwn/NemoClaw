@@ -56,11 +56,23 @@ function checkMessagingBridgeHealth(
   }
 }
 
+function isMissingProviderOutput(output: string): boolean {
+  const normalized = stripAnsi(output).toLowerCase();
+  return [
+    /\bno such provider\b/,
+    /\bno provider named\b/,
+    /\bunknown provider\b/,
+    /\bprovider\b[\s\S]{0,120}\bnot found\b/,
+    /\bnot found\b[\s\S]{0,120}\bprovider\b/,
+    /\bprovider\b[\s\S]{0,120}\bdoes not exist\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
 function makeConflictProbe(rootDir: string) {
   // Upfront liveness check so we can distinguish "provider not attached" from
-  // "gateway unreachable". Without this, every non-zero `openshell provider
-  // get` collapses into "absent", and a transient gateway failure would
-  // persist messagingChannels: [] and permanently suppress future retries.
+  // "gateway unreachable". Provider probes also classify only explicit missing
+  // provider responses as absent so status remains non-destructive under
+  // transient transport, auth, or timeout failures.
   let gatewayAlive: boolean | null = null;
   const isGatewayAlive = (): boolean => {
     if (gatewayAlive === null) {
@@ -77,7 +89,8 @@ function makeConflictProbe(rootDir: string) {
       const result = captureOpenshell(rootDir, ["provider", "get", name], {
         timeout: OPENSHELL_PROBE_TIMEOUT_MS,
       });
-      return result.status === 0 ? ("present" as const) : ("absent" as const);
+      if (result.status === 0) return "present" as const;
+      return isMissingProviderOutput(result.output) ? ("absent" as const) : ("error" as const);
     },
   };
 }
