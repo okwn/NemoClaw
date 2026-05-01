@@ -35,6 +35,14 @@ function runtimeShellEnvShimBlock(src: string): string {
   return src.slice(start, end);
 }
 
+function nonRootFallbackBlock(src: string): string {
+  const start = src.indexOf("# ── Non-root fallback");
+  const end = src.indexOf("# ── Root path", start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return src.slice(start, end);
+}
+
 function startScriptHeredoc(src: string, marker: string): string {
   const match = src.match(new RegExp(`<<'${marker}'[^\\n]*\\n([\\s\\S]*?)\\n${marker}`));
   expect(match).toBeTruthy();
@@ -232,6 +240,36 @@ describe("nemoclaw-start non-root fallback", () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  it("executes explicit non-root commands before gateway startup setup", () => {
+    const src = fs.readFileSync(START_SCRIPT, "utf-8");
+    const script = [
+      "set -euo pipefail",
+      'id() { if [ "${1:-}" = "-u" ]; then printf "1000"; else command id "$@"; fi; }',
+      'verify_config_integrity_if_locked() { :; }',
+      'apply_model_override() { :; }',
+      'apply_cors_override() { :; }',
+      'export_gateway_token() { :; }',
+      'write_runtime_shell_env() { :; }',
+      'ensure_runtime_shell_env_shim() { :; }',
+      'lock_rc_files() { :; }',
+      'configure_messaging_channels() { echo "SHOULD_NOT_CONFIGURE"; exit 70; }',
+      'install_telegram_diagnostics() { echo "SHOULD_NOT_INSTALL"; exit 71; }',
+      'install_slack_token_rewriter() { echo "SHOULD_NOT_INSTALL"; exit 72; }',
+      'install_slack_channel_guard() { echo "SHOULD_NOT_INSTALL"; exit 73; }',
+      'verify_no_slack_secrets_on_disk() { echo "SHOULD_NOT_VERIFY"; exit 74; }',
+      '_SANDBOX_HOME=/sandbox',
+      "NEMOCLAW_CMD=(bash -c 'echo EXPLICIT_COMMAND; exit 23')",
+      nonRootFallbackBlock(src),
+      'echo "SHOULD_NOT_REACH"',
+    ].join("\n");
+
+    const result = spawnSync("bash", ["-c", script], { encoding: "utf-8", timeout: 5000 });
+
+    expect(result.status).toBe(23);
+    expect(result.stdout).toContain("EXPLICIT_COMMAND");
+    expect(result.stdout).not.toContain("SHOULD_NOT");
   });
 
   it("repairs writable OpenClaw state directories in non-root mode", () => {
@@ -1325,6 +1363,280 @@ describe("Slack token rewriter (#2085)", () => {
       expect(run('{"appToken":"xapp-real-token"}\n').status).toBe(78);
       expect(run('{"botToken":"xoxb-OPENSHELL-RESOLVE-ENV-SLACK_BOT_TOKEN"}\n').status).toBe(0);
       expect(run('{"token":"openshell:resolve:env:SLACK_BOT_TOKEN"}\n').status).toBe(0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Telegram diagnostics (#2766)", () => {
+  const src = fs.readFileSync(START_SCRIPT, "utf-8");
+  const telegramDiagnosticsScript = startScriptHeredoc(src, "TELEGRAM_DIAGNOSTICS_EOF");
+
+  function telegramDiagnosticsSection(preloadPath: string, configPath: string): string {
+    const start = src.indexOf("# ── Telegram diagnostics");
+    const end = src.indexOf("_read_gateway_token()", start);
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("Expected Telegram diagnostics section in scripts/nemoclaw-start.sh");
+    }
+    return src
+      .slice(start, end)
+      .replace(
+        '_TELEGRAM_DIAGNOSTICS_SCRIPT="/tmp/nemoclaw-telegram-diagnostics.js"',
+        `_TELEGRAM_DIAGNOSTICS_SCRIPT=${JSON.stringify(preloadPath)}`,
+      )
+      .replace(
+        'local config_file="/sandbox/.openclaw/openclaw.json"',
+        `local config_file=${JSON.stringify(configPath)}`,
+      );
+  }
+
+  function preGatewaySetupBlock(kind: "non-root" | "root", gatewayLog: string, autoPairLog: string) {
+    const nonRootMarker = src.indexOf("# ── Non-root fallback");
+    const start =
+      kind === "non-root"
+        ? src.indexOf('if [ "$(id -u)" -ne 0 ]; then', nonRootMarker)
+        : src.indexOf("# Verify locked config integrity before starting anything.");
+    const endMarker =
+      kind === "non-root"
+        ? "  # Start gateway in background, auto-pair, then wait"
+        : "# Start the gateway as the 'gateway' user.";
+    const end = src.indexOf(endMarker, start);
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error(`Expected ${kind} pre-gateway setup block in scripts/nemoclaw-start.sh`);
+    }
+    const block = src
+      .slice(start, end)
+      .replaceAll("/tmp/gateway.log", gatewayLog)
+      .replaceAll("/tmp/auto-pair.log", autoPairLog);
+    return kind === "non-root" ? `${block}fi\n` : block;
+  }
+
+  function runPreGatewaySetup(kind: "non-root" | "root") {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `nemoclaw-telegram-${kind}-`));
+    const configPath = path.join(tmpDir, "openclaw.json");
+    const preloadPath = path.join(tmpDir, "telegram-diagnostics.js");
+    const gatewayLog = path.join(tmpDir, "gateway.log");
+    const autoPairLog = path.join(tmpDir, "auto-pair.log");
+    const scriptPath = path.join(tmpDir, "run.sh");
+    fs.writeFileSync(configPath, '{"channels":{"telegram":{}}}\n');
+    fs.writeFileSync(
+      scriptPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        kind === "non-root"
+          ? 'id() { if [ "${1:-}" = "-u" ]; then printf "1000"; elif [ "${1:-}" = "-g" ]; then printf "1000"; else command id "$@"; fi; }'
+          : 'id() { if [ "${1:-}" = "-u" ]; then printf "0"; elif [ "${1:-}" = "-g" ]; then printf "0"; else command id "$@"; fi; }',
+        'emit_sandbox_sourced_file() { local target="$1"; cat > "$target"; chmod 444 "$target"; }',
+        'verify_config_integrity_if_locked() { echo "ORDER:verify"; }',
+        'apply_model_override() { :; }',
+        'apply_cors_override() { :; }',
+        'export_gateway_token() { :; }',
+        'write_runtime_shell_env() { :; }',
+        'ensure_runtime_shell_env_shim() { :; }',
+        'lock_rc_files() { :; }',
+        'configure_messaging_channels() { echo "ORDER:configure"; }',
+        'install_slack_token_rewriter() { :; }',
+        'install_slack_channel_guard() { :; }',
+        'verify_no_slack_secrets_on_disk() { :; }',
+        'write_auth_profile() { :; }',
+        'harden_auth_profiles() { :; }',
+        'chown() { :; }',
+        'chown_tree_no_symlink_follow() { :; }',
+        'gosu() { shift; "$@"; }',
+        'validate_tmp_permissions() { printf "VALIDATE:%s\\n" "$*"; }',
+        '_SANDBOX_HOME=/sandbox',
+        `_SANDBOX_SAFETY_NET=${JSON.stringify(path.join(tmpDir, "safety.js"))}`,
+        `_PROXY_FIX_SCRIPT=${JSON.stringify(path.join(tmpDir, "proxy-fix.js"))}`,
+        `_NEMOTRON_FIX_SCRIPT=${JSON.stringify(path.join(tmpDir, "nemotron-fix.js"))}`,
+        `_WS_FIX_SCRIPT=${JSON.stringify(path.join(tmpDir, "ws-fix.js"))}`,
+        `_SECCOMP_GUARD_SCRIPT=${JSON.stringify(path.join(tmpDir, "seccomp-guard.js"))}`,
+        `_CIAO_GUARD_SCRIPT=${JSON.stringify(path.join(tmpDir, "ciao-guard.js"))}`,
+        `_SLACK_GUARD_SCRIPT=${JSON.stringify(path.join(tmpDir, "slack-guard.js"))}`,
+        `_SLACK_REWRITER_SCRIPT=${JSON.stringify(path.join(tmpDir, "slack-rewriter.js"))}`,
+        "NEMOCLAW_CMD=()",
+        telegramDiagnosticsSection(preloadPath, configPath),
+        preGatewaySetupBlock(kind, gatewayLog, autoPairLog),
+      ].join("\n"),
+      { mode: 0o700 },
+    );
+
+    const result = spawnSync("bash", [scriptPath], { encoding: "utf-8", timeout: 5000 });
+    const preloadExists = fs.existsSync(preloadPath);
+    const preloadMode = preloadExists ? (fs.statSync(preloadPath).mode & 0o777).toString(8) : "";
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    return { result, preloadExists, preloadMode, preloadPath };
+  }
+
+  it("installs a Telegram diagnostics preload only when Telegram is configured", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-telegram-install-"));
+    const configPath = path.join(tmpDir, "openclaw.json");
+    const preloadPath = path.join(tmpDir, "telegram-diagnostics.js");
+    const scriptPath = path.join(tmpDir, "run.sh");
+    const run = (config: string) => {
+      fs.writeFileSync(configPath, config);
+      fs.rmSync(preloadPath, { force: true });
+      fs.writeFileSync(
+        scriptPath,
+        [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'emit_sandbox_sourced_file() { local target="$1"; cat > "$target"; chmod 444 "$target"; }',
+          "NODE_OPTIONS='--require /already-loaded.js'",
+          telegramDiagnosticsSection(preloadPath, configPath),
+          "install_telegram_diagnostics",
+          'printf "NODE_OPTIONS=%s\\n" "$NODE_OPTIONS"',
+        ].join("\n"),
+        { mode: 0o700 },
+      );
+      return spawnSync("bash", [scriptPath], { encoding: "utf-8", timeout: 5000 });
+    };
+
+    try {
+      const noTelegram = run('{"channels":{}}\n');
+      expect(noTelegram.status).toBe(0);
+      expect(fs.existsSync(preloadPath)).toBe(false);
+      expect(noTelegram.stdout).toContain("NODE_OPTIONS=--require /already-loaded.js");
+      expect(noTelegram.stdout).not.toContain(preloadPath);
+
+      const withTelegram = run('{"channels":{"telegram":{}}}\n');
+      expect(withTelegram.status).toBe(0);
+      expect(fs.existsSync(preloadPath)).toBe(true);
+      expect((fs.statSync(preloadPath).mode & 0o777).toString(8)).toBe("444");
+      expect(withTelegram.stdout).toContain("--require /already-loaded.js");
+      expect(withTelegram.stdout).toContain(`--require ${preloadPath}`);
+      expect(withTelegram.stderr).toContain("Telegram diagnostics installed");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits provider readiness for successful Telegram Bot API startup probes", () => {
+    const run = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+const { EventEmitter } = require('node:events');
+const https = require('node:https');
+https.request = function () {
+  const req = new EventEmitter();
+  process.nextTick(() => req.emit('response', { statusCode: 200 }));
+  return req;
+};
+${telegramDiagnosticsScript}
+https.request('https://api.telegram.org/bot123456:SECRET/getMe');
+https.request('https://api.telegram.org/bot123456:SECRET/getUpdates?offset=1');
+setTimeout(() => {}, 5);
+`,
+      ],
+      { encoding: "utf-8" },
+    );
+
+    expect(run.status).toBe(0);
+    const readinessLines = run.stderr
+      .split(/\r?\n/)
+      .filter((line) => line.includes("provider ready"));
+    expect(readinessLines).toHaveLength(1);
+    expect(readinessLines[0]).toContain("inference.local");
+    expect(readinessLines[0]).not.toContain("SECRET");
+  });
+
+  it("emits inference diagnostics only after provider startup and redacts token values", () => {
+    const run = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        `
+${telegramDiagnosticsScript}
+process.stderr.write('LLM request failed: token=123456:BEFORE\\n');
+process.stderr.write('[telegram] [default] starting provider\\n');
+process.stderr.write('Embedded agent failed before reply: token=123456:AFTER\\n');
+process.stderr.write('FailoverError: token=123456:LATER\\n');
+`,
+      ],
+      { encoding: "utf-8" },
+    );
+
+    expect(run.status).toBe(0);
+    const diagnosticLines = run.stderr
+      .split(/\r?\n/)
+      .filter((line) => line.includes("agent turn failed after provider startup"));
+    expect(diagnosticLines).toHaveLength(1);
+    expect(diagnosticLines[0]).toContain("Embedded agent failed before reply");
+    expect(diagnosticLines[0]).toContain("token=<redacted>");
+    expect(diagnosticLines[0]).not.toContain("AFTER");
+    expect(diagnosticLines[0]).not.toContain("LATER");
+  });
+
+  it("installs and validates the diagnostics preload in both entrypoint paths before gateway launch", () => {
+    for (const kind of ["non-root", "root"] as const) {
+      const setup = runPreGatewaySetup(kind);
+      expect(setup.result.status).toBe(0);
+      expect(setup.preloadExists).toBe(true);
+      expect(setup.preloadMode).toBe("444");
+      expect(setup.result.stdout).toContain("ORDER:configure");
+      expect(setup.result.stdout).toContain("VALIDATE:");
+      expect(setup.result.stdout).toContain(setup.preloadPath);
+    }
+  });
+
+  it("connect-shell rc sources the diagnostics preload when present", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-telegram-rc-"));
+    const proxyEnv = path.join(tmpDir, "proxy-env.sh");
+    const preloadPath = path.join(tmpDir, "telegram-diagnostics.js");
+    const scriptPath = path.join(tmpDir, "write-env.sh");
+    const runtimeBlock = `${runtimeShellEnvBlock(src)}\nwrite_runtime_shell_env`.replaceAll(
+      "/tmp/nemoclaw-proxy-env.sh",
+      proxyEnv,
+    );
+    fs.writeFileSync(preloadPath, "// diagnostics\n");
+    fs.writeFileSync(
+      scriptPath,
+      [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'emit_sandbox_sourced_file() { local target="$1"; cat > "$target"; chmod 444 "$target"; }',
+        'PROXY_HOST="10.200.0.1"',
+        'PROXY_PORT="3128"',
+        '_PROXY_URL="http://${PROXY_HOST}:${PROXY_PORT}"',
+        '_NO_PROXY_VAL="localhost,127.0.0.1,::1,${PROXY_HOST}"',
+        `_SANDBOX_SAFETY_NET=${JSON.stringify(path.join(tmpDir, "safety.js"))}`,
+        `_PROXY_FIX_SCRIPT=${JSON.stringify(path.join(tmpDir, "proxy-fix.js"))}`,
+        `_WS_FIX_SCRIPT=${JSON.stringify(path.join(tmpDir, "ws-fix.js"))}`,
+        `_NEMOTRON_FIX_SCRIPT=${JSON.stringify(path.join(tmpDir, "nemotron-fix.js"))}`,
+        `_SECCOMP_GUARD_SCRIPT=${JSON.stringify(path.join(tmpDir, "seccomp-guard.js"))}`,
+        `_CIAO_GUARD_SCRIPT=${JSON.stringify(path.join(tmpDir, "ciao-guard.js"))}`,
+        `_TELEGRAM_DIAGNOSTICS_SCRIPT=${JSON.stringify(preloadPath)}`,
+        `_SLACK_GUARD_SCRIPT=${JSON.stringify(path.join(tmpDir, "slack-guard.js"))}`,
+        `_SLACK_REWRITER_SCRIPT=${JSON.stringify(path.join(tmpDir, "slack-rewriter.js"))}`,
+        "_TOOL_REDIRECTS=()",
+        "set +u",
+        runtimeBlock,
+      ].join("\n"),
+      { mode: 0o700 },
+    );
+
+    const sourceRuntimeEnv = () =>
+      spawnSync(
+        "bash",
+        ["--norc", "-lc", `source ${JSON.stringify(proxyEnv)}; printf 'NODE_OPTIONS=%s\\n' "$NODE_OPTIONS"`],
+        { encoding: "utf-8", env: { PATH: process.env.PATH || "", NODE_OPTIONS: "" }, timeout: 5000 },
+      );
+
+    try {
+      const write = spawnSync("bash", [scriptPath], { encoding: "utf-8", timeout: 5000 });
+      expect(write.status).toBe(0);
+
+      const withPreload = sourceRuntimeEnv();
+      expect(withPreload.status).toBe(0);
+      expect(withPreload.stdout).toContain(preloadPath);
+
+      fs.rmSync(preloadPath, { force: true });
+      const withoutPreload = sourceRuntimeEnv();
+      expect(withoutPreload.status).toBe(0);
+      expect(withoutPreload.stdout).not.toContain(preloadPath);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
