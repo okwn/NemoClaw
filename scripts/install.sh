@@ -2236,36 +2236,8 @@ run_installer_host_preflight() {
   [[ "$status" -ne 10 ]]
 }
 
-# Stop dashboard port forwards left running by previous installer runs.
-# Without this, the wizard's port allocator sees the prior forward as
-# "taken" and bumps to a new port on every re-install, oscillating
-# between e.g. 18789 ↔ 18790 across reinstalls. Free the ports up front
-# so the same dashboard URL stays stable across model swaps.
-stop_stale_dashboard_forwards() {
-  command_exists openshell || return 0
-  local fwd_list
-  fwd_list=$(openshell forward list 2>/dev/null || true)
-  [[ -z "$fwd_list" ]] && return 0
-
-  # `openshell forward list` columns: SANDBOX  BIND  PORT  PID  STATUS
-  # Collect ports of running forwards and stop each one.
-  local ports
-  ports=$(printf "%s\n" "$fwd_list" \
-    | awk 'NR>1 && /running/i { print $3 }' \
-    | grep -E '^[0-9]+$' \
-    | sort -u)
-  [[ -z "$ports" ]] && return 0
-
-  info "Stopping stale dashboard forwards before onboard: $(printf "%s " $ports)"
-  local p
-  for p in $ports; do
-    openshell forward stop "$p" >/dev/null 2>&1 || true
-  done
-}
-
 run_onboard() {
   show_usage_notice
-  stop_stale_dashboard_forwards
   info "Running nemoclaw onboard…"
   local -a onboard_cmd=(onboard)
   local session_file="${HOME}/.nemoclaw/onboard-session.json"
