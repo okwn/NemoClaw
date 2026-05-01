@@ -1,231 +1,171 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { spawnSync } from "node:child_process";
+/**
+ * Behavioral regression coverage for the group-writable mutable-default
+ * contract (#2681).
+ *
+ * These tests execute the entrypoint's permission-normalization function
+ * against a temporary OpenClaw config tree instead of asserting on production
+ * source text. The contract is what matters: when shields are down, OpenClaw's
+ * config tree is group-writable and setgid; when shields are up (root-owned),
+ * startup must not weaken the lock.
+ */
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
-const ROOT = path.join(import.meta.dirname, "..");
+const START_SCRIPT = path.join(import.meta.dirname, "..", "scripts", "nemoclaw-start.sh");
 
-function readRepoFile(...parts: string[]): string {
-  return fs.readFileSync(path.join(ROOT, ...parts), "utf-8");
+function extractShellFunctionFromSource(src: string, name: string): string {
+  const match = src.match(new RegExp(`${name}\\(\\) \\{([\\s\\S]*?)^\\}`, "m"));
+  if (!match) {
+    throw new Error(`Expected ${name} in scripts/nemoclaw-start.sh`);
+  }
+  return `${name}() {${match[1]}\n}`;
 }
 
-function dockerRunCommandBetween(
-  fileParts: string[],
-  startMarker: string,
-  endMarker: string,
-): string {
-  const dockerfile = readRepoFile(...fileParts);
-  const start = dockerfile.indexOf(startMarker);
-  const end = dockerfile.indexOf(endMarker, start);
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(`Expected Dockerfile block between ${startMarker} and ${endMarker}`);
-  }
-  const runIndex = dockerfile.indexOf("RUN ", start);
-  if (runIndex === -1 || runIndex > end) {
-    throw new Error(`Expected RUN instruction after ${startMarker}`);
-  }
-  return dockerfile
-    .slice(runIndex, end)
-    .trim()
-    .replace(/^RUN\s+/, "")
-    .replace(/\\\n/g, " ");
-}
-
-function shellFunctionFromFile(
-  fileParts: string[],
-  functionName: string,
-  replaceSandboxWith?: string,
-): string {
-  const source = readRepoFile(...fileParts);
-  const start = source.indexOf(`${functionName}()`);
-  const nextSection = source.indexOf("\n# ──", start + functionName.length);
-  if (start === -1 || nextSection === -1 || nextSection <= start) {
-    throw new Error(`Expected shell function ${functionName}`);
-  }
-  const body = source.slice(start, nextSection).trim();
-  return replaceSandboxWith ? body.replaceAll("/sandbox", replaceSandboxWith) : body;
-}
-
-function runScript(
-  tmpDir: string,
-  lines: string[],
-  env: NodeJS.ProcessEnv = {},
-): { result: ReturnType<typeof spawnSync>; log: string } {
-  const logPath = path.join(tmpDir, "calls.log");
-  const scriptPath = path.join(tmpDir, "run.sh");
-  fs.writeFileSync(
-    scriptPath,
-    ["#!/usr/bin/env bash", "set -euo pipefail", `CALL_LOG=${JSON.stringify(logPath)}`, ...lines]
-      .join("\n"),
-    { mode: 0o700 },
+function normalizeMutableConfigPermsFor(configDir: string): string {
+  const startScript = fs.readFileSync(START_SCRIPT, "utf-8");
+  return extractShellFunctionFromSource(startScript, "normalize_mutable_config_perms").replace(
+    'local config_dir="/sandbox/.openclaw"',
+    `local config_dir=${JSON.stringify(configDir)}`,
   );
-  const result = spawnSync("bash", [scriptPath], {
-    encoding: "utf-8",
-    env: { ...process.env, ...env },
-    timeout: 5000,
-  });
-  const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf-8") : "";
-  return { result, log };
 }
 
-function rewriteSandbox(command: string, sandboxRoot: string): string {
-  return command.replaceAll("/sandbox", sandboxRoot);
+function modeBits(filePath: string): number {
+  return fs.statSync(filePath).mode;
 }
 
-function mode(pathname: string): number {
-  return fs.statSync(pathname).mode & 0o7777;
-}
-
-describe("Issue #2681 group-writable mutable-default contract", () => {
-  it("executes base-image user and layout setup with shared sandbox-group access", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-2681-base-"));
-    const sandboxRoot = path.join(tmpDir, "sandbox");
+describe("Issue #2681 — mutable OpenClaw config permissions", () => {
+  it("restores group-write and setgid on mutable config trees during root startup", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-2681-perms-"));
+    const configDir = path.join(tmpDir, ".openclaw");
+    const nestedDir = path.join(configDir, "agents", "main");
+    const configFile = path.join(configDir, "openclaw.json");
 
     try {
-      fs.mkdirSync(sandboxRoot, { recursive: true });
-      const users = runScript(tmpDir, [
-        'groupadd() { printf "groupadd %s\\n" "$*" >> "$CALL_LOG"; }',
-        'useradd() { printf "useradd %s\\n" "$*" >> "$CALL_LOG"; }',
-        'usermod() { printf "usermod %s\\n" "$*" >> "$CALL_LOG"; }',
-        'chown() { printf "chown %s\\n" "$*" >> "$CALL_LOG"; }',
-        rewriteSandbox(
-          dockerRunCommandBetween(
-            ["Dockerfile.base"],
-            "# Create sandbox user",
-            "# Create .openclaw",
-          ),
-          sandboxRoot,
-        ),
-      ]);
-      expect(users.result.status).toBe(0);
-      expect(users.log).toContain("usermod -aG sandbox gateway");
+      fs.mkdirSync(nestedDir, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(configFile, "{}\n", { mode: 0o600 });
+      fs.chmodSync(configDir, 0o700);
+      fs.chmodSync(nestedDir, 0o700);
+      fs.chmodSync(configFile, 0o600);
 
-      const layout = runScript(tmpDir, [
-        'chown() { printf "chown %s\\n" "$*" >> "$CALL_LOG"; }',
-        rewriteSandbox(
-          dockerRunCommandBetween(
-            ["Dockerfile.base"],
-            "# Create .openclaw with all state subdirs directly",
-            "# Pre-create shell init files",
-          ),
-          sandboxRoot,
-        ),
-      ]);
-      const openclawDir = path.join(sandboxRoot, ".openclaw");
-      expect(layout.result.status).toBe(0);
-      expect(mode(openclawDir) & 0o020).not.toBe(0);
-      expect(mode(openclawDir) & 0o2000).not.toBe(0);
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("executes production-image fallback setup without losing group-writable config files", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-2681-prod-"));
-    const sandboxRoot = path.join(tmpDir, "sandbox");
-    const openclawDir = path.join(sandboxRoot, ".openclaw");
-
-    try {
-      fs.mkdirSync(openclawDir, { recursive: true });
-      fs.writeFileSync(path.join(openclawDir, "openclaw.json"), "{}\n");
-
-      const fallback = runScript(tmpDir, [
-        'id() { if [ "${1:-}" = "-nG" ]; then printf "gateway\\n"; return 0; fi; return 0; }',
-        'usermod() { printf "usermod %s\\n" "$*" >> "$CALL_LOG"; }',
-        dockerRunCommandBetween(
-          ["Dockerfile"],
-          "# Stale-base fallback for the gateway-in-sandbox-group setup",
-          "# Keep the image readable",
-        ),
-      ]);
-      expect(fallback.result.status).toBe(0);
-      expect(fallback.log).toContain("usermod -aG sandbox gateway");
-
-      const layout = runScript(tmpDir, [
-        'chown() { printf "chown %s\\n" "$*" >> "$CALL_LOG"; }',
-        rewriteSandbox(
-          dockerRunCommandBetween(
-            ["Dockerfile"],
-            "# `chmod g+w` + setgid",
-            "# Pin config hash",
-          ),
-          sandboxRoot,
-        ),
-      ]);
-      expect(layout.result.status).toBe(0);
-      expect(mode(openclawDir) & 0o020).not.toBe(0);
-      expect(mode(openclawDir) & 0o2000).not.toBe(0);
-
-      const hash = runScript(tmpDir, [
-        'chown() { printf "chown %s\\n" "$*" >> "$CALL_LOG"; }',
-        'sha256sum() { printf "hash  %s\\n" "$1"; }',
-        rewriteSandbox(
-          dockerRunCommandBetween(
-            ["Dockerfile"],
-            "# Pin config hash",
-            "# DAC-protect .nemoclaw directory",
-          ),
-          sandboxRoot,
-        ),
-      ]);
-      expect(hash.result.status).toBe(0);
-      expect((mode(path.join(openclawDir, ".config-hash")) & 0o777).toString(8)).toBe("664");
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("normalizes mutable config permissions only when the config dir is not locked", () => {
-    const runCase = (owner: "root" | "sandbox") => {
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `nemoclaw-2681-normalize-${owner}-`));
-      const sandboxRoot = path.join(tmpDir, "sandbox");
-      const openclawDir = path.join(sandboxRoot, ".openclaw");
-      try {
-        fs.mkdirSync(path.join(openclawDir, "workspace"), { recursive: true });
-        fs.chmodSync(openclawDir, 0o755);
-        fs.chmodSync(path.join(openclawDir, "workspace"), 0o755);
-        const script = shellFunctionFromFile(
-          ["scripts", "nemoclaw-start.sh"],
-          "normalize_mutable_config_perms",
-          sandboxRoot,
-        );
-        const { result } = runScript(
-          tmpDir,
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
           [
-            'id() { if [ "${1:-}" = "-u" ]; then printf "0"; return 0; fi; command id "$@"; }',
-            'stat() { if [ "${1:-}" = "-c" ] || [ "${1:-}" = "-f" ]; then printf "%s\\n" "$CONFIG_OWNER"; return 0; fi; command stat "$@"; }',
-            script,
+            "set -euo pipefail",
+            'id() { if [ "${1:-}" = "-u" ]; then printf "0"; else command id "$@"; fi; }',
+            normalizeMutableConfigPermsFor(configDir),
             "normalize_mutable_config_perms",
-          ],
-          { CONFIG_OWNER: owner },
-        );
-        return { result, openclawDir, tmpDir };
-      } catch (err) {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-        throw err;
-      }
-    };
+          ].join("\n"),
+        ],
+        { encoding: "utf-8", timeout: 5000 },
+      );
 
-    const locked = runCase("root");
-    try {
-      expect(locked.result.status).toBe(0);
-      expect(mode(locked.openclawDir) & 0o020).toBe(0);
-      expect(mode(locked.openclawDir) & 0o2000).toBe(0);
+      expect(result.status).toBe(0);
+      expect(modeBits(configDir) & 0o020).toBe(0o020);
+      expect(modeBits(configFile) & 0o020).toBe(0o020);
+      expect(modeBits(configDir) & 0o2000).toBe(0o2000);
+      expect(modeBits(nestedDir) & 0o2000).toBe(0o2000);
     } finally {
-      fs.rmSync(locked.tmpDir, { recursive: true, force: true });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
 
-    const unlocked = runCase("sandbox");
+  it("shields-down restores OpenClaw group-writable file modes and setgid dirs", () => {
+    const probe = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        String.raw`
+const Module = require("node:module");
+const originalLoad = Module._load;
+const calls = [];
+Module._load = function patchedLoad(request, parent, isMain) {
+  if (request === "./docker/exec") {
+    return {
+      dockerExecFileSync(args) {
+        const separator = args.indexOf("--");
+        const command = separator >= 0 ? args.slice(separator + 1) : args;
+        calls.push(command);
+        if (command[0] === "stat" && command[1] === "-c") {
+          return command.at(-1) === "/sandbox/.openclaw"
+            ? "2770 sandbox:sandbox\n"
+            : "660 sandbox:sandbox\n";
+        }
+        if (command[0] === "lsattr") {
+          return "---------------------- " + command.at(-1) + "\n";
+        }
+        return "";
+      },
+    };
+  }
+  return originalLoad.call(this, request, parent, isMain);
+};
+const { unlockAgentConfig } = require("./dist/lib/shields.js");
+unlockAgentConfig("sandbox-pod", {
+  agentName: "openclaw",
+  configPath: "/sandbox/.openclaw/openclaw.json",
+  configDir: "/sandbox/.openclaw",
+  sensitiveFiles: ["/sandbox/.openclaw/.config-hash"],
+});
+process.stdout.write(JSON.stringify(calls));
+`,
+      ],
+      { encoding: "utf-8", timeout: 5000 },
+    );
+
+    expect(probe.status).toBe(0);
+    const commands = JSON.parse(probe.stdout) as string[][];
+    expect(commands).toContainEqual(["chmod", "660", "/sandbox/.openclaw/openclaw.json"]);
+    expect(commands).toContainEqual(["chmod", "660", "/sandbox/.openclaw/.config-hash"]);
+    expect(commands).toContainEqual(["chmod", "2770", "/sandbox/.openclaw"]);
+    expect(commands).toContainEqual(["chmod", "2775", "/sandbox/.openclaw/workspace"]);
+    expect(commands).toContainEqual(["chmod", "-R", "g+w,o-w", "/sandbox/.openclaw/workspace"]);
+    expect(commands.find((command) => command[0] === "sh" && command[1] === "-c")).toEqual(
+      expect.arrayContaining(["/sandbox/.openclaw", "sandbox:sandbox", "g+w,o-w", "2775"]),
+    );
+  });
+
+  it("does not relax a root-owned config tree while shields are up", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-2681-locked-"));
+    const configDir = path.join(tmpDir, ".openclaw");
+
     try {
-      expect(unlocked.result.status).toBe(0);
-      expect(mode(unlocked.openclawDir) & 0o020).not.toBe(0);
-      expect(mode(unlocked.openclawDir) & 0o2000).not.toBe(0);
+      fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+
+      const result = spawnSync(
+        "bash",
+        [
+          "-c",
+          [
+            "set -euo pipefail",
+            'id() { if [ "${1:-}" = "-u" ]; then printf "0"; else command id "$@"; fi; }',
+            'stat() { if [ "${1:-}" = "-c" ] && [ "${2:-}" = "%U" ]; then printf "root\\n"; else command stat "$@"; fi; }',
+            'chmod() { printf "CHMOD %s\\n" "$*" >&2; exit 66; }',
+            'find() { printf "FIND %s\\n" "$*" >&2; exit 67; }',
+            normalizeMutableConfigPermsFor(configDir),
+            "normalize_mutable_config_perms",
+            'printf "done\\n"',
+          ].join("\n"),
+        ],
+        { encoding: "utf-8", timeout: 5000 },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toBe("done\n");
+      expect(result.stderr).not.toContain("CHMOD");
+      expect(result.stderr).not.toContain("FIND");
+      expect(modeBits(configDir) & 0o020).toBe(0);
+      expect(modeBits(configDir) & 0o2000).toBe(0);
     } finally {
-      fs.rmSync(unlocked.tmpDir, { recursive: true, force: true });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });
