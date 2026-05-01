@@ -5,14 +5,7 @@
 
 import { Command } from "@oclif/core";
 
-type RuntimeBridge = {
-  help: () => void;
-  version: () => void;
-};
-
-function getRuntimeBridge(): RuntimeBridge {
-  return require("../nemoclaw") as RuntimeBridge;
-}
+import { getNemoClawRuntimeBridge } from "./nemoclaw-runtime-bridge";
 
 export class RootHelpCommand extends Command {
   static id = "root:help";
@@ -22,7 +15,7 @@ export class RootHelpCommand extends Command {
 
   public async run(): Promise<void> {
     this.parsed = true;
-    getRuntimeBridge().help();
+    getNemoClawRuntimeBridge().help();
   }
 }
 
@@ -34,6 +27,6 @@ export class VersionCommand extends Command {
 
   public async run(): Promise<void> {
     this.parsed = true;
-    getRuntimeBridge().version();
+    getNemoClawRuntimeBridge().version();
   }
 }

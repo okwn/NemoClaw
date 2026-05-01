@@ -8,19 +8,7 @@ import { Args, Command, Flags } from "@oclif/core";
 import { CLI_DISPLAY_NAME, CLI_NAME } from "./branding";
 import { prompt as askPrompt } from "./credentials";
 
-interface SpawnLikeResult {
-  status: number | null;
-  stdout?: string | Buffer;
-  stderr?: string | Buffer;
-}
-
-interface RuntimeBridge {
-  recoverNamedGatewayRuntime: () => Promise<{ recovered: boolean }>;
-  runOpenshell: (
-    args: string[],
-    opts?: { ignoreError?: boolean; stdio?: import("node:child_process").StdioOptions },
-  ) => SpawnLikeResult;
-}
+import { getNemoClawRuntimeBridge } from "./nemoclaw-runtime-bridge";
 
 // Suffixes that mark per-sandbox messaging integrations in the gateway's
 // provider list. These are managed by `channels`, not `credentials`.
@@ -30,10 +18,6 @@ const BRIDGE_PROVIDER_SUFFIXES: readonly string[] = [
   "-slack-bridge",
   "-slack-app",
 ];
-
-function getRuntimeBridge(): RuntimeBridge {
-  return require("../nemoclaw") as RuntimeBridge;
-}
 
 function isBridgeProviderName(name: string): boolean {
   return BRIDGE_PROVIDER_SUFFIXES.some((suffix) => name.endsWith(suffix));
@@ -53,7 +37,7 @@ function printCredentialsUsage(log: (message?: string) => void = console.log): v
 }
 
 async function recoverGatewayOrExit(kind: "query" | "reach"): Promise<void> {
-  const runtime = getRuntimeBridge();
+  const runtime = getNemoClawRuntimeBridge();
   const recovery = await runtime.recoverNamedGatewayRuntime();
   if (recovery.recovered) return;
 
@@ -97,7 +81,7 @@ export class CredentialsListCommand extends Command {
     await this.parse(CredentialsListCommand);
     await recoverGatewayOrExit("query");
 
-    const runtime = getRuntimeBridge();
+    const runtime = getNemoClawRuntimeBridge();
     const result = runtime.runOpenshell(["provider", "list", "--names"], {
       ignoreError: true,
       stdio: ["ignore", "pipe", "pipe"],
@@ -181,7 +165,7 @@ export class CredentialsResetCommand extends Command {
 
     await recoverGatewayOrExit("reach");
 
-    const runtime = getRuntimeBridge();
+    const runtime = getNemoClawRuntimeBridge();
     const result = runtime.runOpenshell(["provider", "delete", key], {
       ignoreError: true,
       stdio: ["ignore", "pipe", "pipe"],
