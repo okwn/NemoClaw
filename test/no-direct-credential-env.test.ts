@@ -75,6 +75,12 @@ describe("direct credential env guard", () => {
     // Dynamic read with credential-containing variable name
     ["if (!process.env[credentialEnv]) {}", "[credentialEnv]"],
     ["const x = process.env[resolvedCredentialEnv];", "[resolvedCredentialEnv]"],
+
+    // Suppression token inside non-comment text must not suppress.
+    [
+      "const marker = 'no-direct-credential-env';\nconst key = process.env.NVIDIA_API_KEY;",
+      "NVIDIA_API_KEY",
+    ],
   ])("flags %s", (code, key) => {
     expect(findDirectCredentialEnvReads(code)).toMatchObject([{ key }]);
   });

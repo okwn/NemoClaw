@@ -212,10 +212,16 @@ export async function ensureUsageNoticeConsent({
   }
 
   // credentials is still CJS
-  const ask = promptFn || require("./credentials").prompt;
-  const answer = String(await ask(`  ${config.interactivePrompt}`))
-    .trim()
-    .toLowerCase();
+  const ask: PromptFn = promptFn ?? (require("./credentials") as { prompt: PromptFn }).prompt;
+  let answer: string;
+  try {
+    answer = String(await ask(`  ${config.interactivePrompt}`))
+      .trim()
+      .toLowerCase();
+  } catch {
+    writeLine("  Installation cancelled");
+    return false;
+  }
   if (answer !== "yes") {
     writeLine("  Installation cancelled");
     return false;

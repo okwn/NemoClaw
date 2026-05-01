@@ -14,6 +14,7 @@
       "package-lock.json",
       "nemoclaw/package.json",
       "nemoclaw/package-lock.json",
+      "src/**/*.ts",
       "bin/**/*.js",
       "scripts/**/*.js",
       "scripts/**/*.ts",
@@ -100,6 +101,12 @@
             "noUnusedVariables": "error"
           }
         }
+      }
+    },
+    {
+      "includes": ["src/**/*.ts"],
+      "formatter": {
+        "enabled": false
       }
     },
     {

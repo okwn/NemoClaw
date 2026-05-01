@@ -4955,7 +4955,8 @@ async function setupNim(
           // override that should take precedence before resolving from credentials.json.
           const _nvProviderKey = (process.env.NEMOCLAW_PROVIDER_KEY || "").trim();
           // check-direct-credential-env-ignore -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
-          if (_nvProviderKey && !process.env.NVIDIA_API_KEY) {
+          const existingNvidiaKey = normalizeCredentialValue(process.env.NVIDIA_API_KEY ?? "");
+          if (_nvProviderKey && !existingNvidiaKey) {
             process.env.NVIDIA_API_KEY = _nvProviderKey;
           }
           if (isNonInteractive()) {
@@ -4993,9 +4994,12 @@ async function setupNim(
           // isn't already set, use NEMOCLAW_PROVIDER_KEY as the API key for this provider.
           // Check raw process.env — the override must apply before resolving from credentials.json.
           const _providerKeyHint = (process.env.NEMOCLAW_PROVIDER_KEY || "").trim();
-          // check-direct-credential-env-ignore -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
-          if (_providerKeyHint && credentialEnv && !process.env[credentialEnv]) {
-            process.env[credentialEnv] = _providerKeyHint;
+          if (_providerKeyHint && credentialEnv) {
+            // check-direct-credential-env-ignore -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
+            const existingCredentialKey = normalizeCredentialValue(process.env[credentialEnv] ?? "");
+            if (!existingCredentialKey) {
+              process.env[credentialEnv] = _providerKeyHint;
+            }
           }
 
           if (isNonInteractive()) {

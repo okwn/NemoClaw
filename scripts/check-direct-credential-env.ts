@@ -27,7 +27,9 @@ const MESSAGE =
   "Direct process.env access for provider credentials bypasses credentials.json. " +
   "Use resolveProviderCredential() or getCredential() instead. See #2306.";
 
-const SUPPRESSION_PATTERN = /\b(?:check-direct-credential-env-ignore|no-direct-credential-env)\b/;
+const SUPPRESSION_TOKEN_PATTERN =
+  /\b(?:check-direct-credential-env-ignore|no-direct-credential-env)\b/;
+const COMMENT_LINE_PREFIX_PATTERN = /^\s*(?:\/\/|\/\*|\*)/;
 
 export interface DirectCredentialEnvViolation {
   filePath: string;
@@ -199,7 +201,11 @@ function hasSuppressionComment(sourceFile: ts.SourceFile, node: ts.Node): boolea
   const lines = sourceFile.getFullText().split(/\r?\n/);
   return [line - 1, line].some((candidate) => {
     const text = lines[candidate];
-    return text !== undefined && SUPPRESSION_PATTERN.test(text);
+    return (
+      text !== undefined &&
+      COMMENT_LINE_PREFIX_PATTERN.test(text) &&
+      SUPPRESSION_TOKEN_PATTERN.test(text)
+    );
   });
 }
 
