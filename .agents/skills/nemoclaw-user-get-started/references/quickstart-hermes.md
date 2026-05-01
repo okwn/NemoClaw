@@ -142,5 +142,5 @@ $ nemohermes my-hermes destroy
 
 - Inference Options (use the `nemoclaw-user-configure-inference` skill) to choose a provider and model.
 - Commands (use the `nemoclaw-user-reference` skill) to see the full `nemohermes` alias behavior.
-- Backup and Restore (use the `nemoclaw-user-workspace` skill) to preserve sandbox state before destructive operations.
+- Backup and Restore (use the `nemoclaw-user-manage-sandboxes` skill) to preserve sandbox state before destructive operations.
 - Monitor Sandbox Activity (use the `nemoclaw-user-monitor-sandbox` skill) to inspect OpenShell events and sandbox logs.
