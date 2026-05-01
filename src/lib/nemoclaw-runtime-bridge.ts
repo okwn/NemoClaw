@@ -20,8 +20,6 @@ export interface NemoClawRuntimeBridge {
     args: string[],
     opts?: { ignoreError?: boolean; timeout?: number },
   ) => { status: number | null; output: string };
-  backupAll: () => void;
-  garbageCollectImages: (args?: string[]) => Promise<void>;
   recoverNamedGatewayRuntime: () => Promise<GatewayRecoveryResult>;
   recoverRegistryEntries: (options?: { requestedSandboxName?: string | null }) => Promise<RecoveryResult>;
   runOpenshell: (

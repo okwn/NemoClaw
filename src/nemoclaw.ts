@@ -32,7 +32,6 @@ const { CLI_NAME, CLI_DISPLAY_NAME } = require("./lib/branding");
 const {
   dockerCapture,
   dockerInspect,
-  dockerListImagesFormat,
   dockerRemoveVolumesByPrefix,
   dockerRmi,
 } = require("./lib/docker");
@@ -523,8 +522,6 @@ async function recoverRegistryEntries({
 
 exports.runtimeBridge = {
   captureOpenshell,
-  backupAll,
-  garbageCollectImages,
   recoverNamedGatewayRuntime,
   recoverRegistryEntries,
   runOpenshell,
@@ -3349,151 +3346,6 @@ async function sandboxSnapshot(sandboxName: string, subArgs: string[]) {
       );
       break;
   }
-}
-
-/**
- * Back up all registered sandboxes. Called by install.sh before upgrading
- * NemoClaw or OpenShell so sandbox state is recoverable if the upgrade
- * destroys sandbox contents.
- */
-function backupAll() {
-  const { sandboxes } = registry.listSandboxes();
-  if (sandboxes.length === 0) {
-    console.log("  No sandboxes registered. Nothing to back up.");
-    return;
-  }
-
-  // Check which sandboxes are actually live
-  const liveList = captureOpenshell(["sandbox", "list"], { ignoreError: true });
-  const liveNames = parseLiveSandboxNames(liveList.output || "");
-
-  let backed = 0;
-  let failed = 0;
-  let skipped = 0;
-  for (const sb of sandboxes) {
-    if (!liveNames.has(sb.name)) {
-      console.log(`  ${D}Skipping '${sb.name}' (not running)${R}`);
-      skipped++;
-      continue;
-    }
-    console.log(`  Backing up '${sb.name}'...`);
-    const result = sandboxState.backupSandboxState(sb.name);
-    if (result.success) {
-      console.log(
-        `  ${G}\u2713${R} ${sb.name}: ${result.backedUpDirs.length} dirs → ${result.manifest.backupPath}`,
-      );
-      backed++;
-    } else {
-      console.error(`  ${_RD}✗${R} ${sb.name}: backup failed (${result.failedDirs.join(", ")})`);
-      failed++;
-    }
-  }
-  console.log("");
-  console.log(`  Pre-upgrade backup: ${backed} backed up, ${failed} failed, ${skipped} skipped`);
-  if (backed > 0) {
-    console.log(`  Backups stored in: ~/.nemoclaw/rebuild-backups/`);
-  }
-  // Exit non-zero if any live sandbox failed to back up — the upgrade hook
-  // in install.sh treats this as non-fatal but logs a warning.
-  if (failed > 0) {
-    process.exit(1);
-  }
-}
-
-// ── Garbage collection ──────────────────────────────────────────
-
-async function garbageCollectImages(args: string[] = []): Promise<void> {
-  const dryRun = args.includes("--dry-run");
-  const skipConfirm = args.includes("--yes") || args.includes("--force");
-
-  // 1. List all openshell/sandbox-from images on the host
-  let imagesOutput = "";
-  try {
-    imagesOutput = dockerListImagesFormat(
-      "openshell/sandbox-from",
-      "{{.Repository}}:{{.Tag}}\t{{.Size}}",
-    );
-  } catch {
-    console.error("  Failed to query Docker images. Is Docker running?");
-    process.exit(1);
-  }
-
-  const allImages = imagesOutput
-    .split("\n")
-    .map((line: string) => line.trim())
-    .filter(Boolean)
-    .map((line: string) => {
-      const [tag, size] = line.split("\t");
-      return { tag, size: size || "unknown" };
-    });
-
-  if (allImages.length === 0) {
-    console.log("  No sandbox images found on the host.");
-    return;
-  }
-
-  // 2. Determine which images are in use by live or registered sandboxes
-  const registeredTags = new Set();
-  const { sandboxes } = registry.listSandboxes();
-  for (const sb of sandboxes) {
-    if (sb.imageTag) registeredTags.add(sb.imageTag);
-  }
-
-  // 3. Cross-reference to find orphans
-  const orphans = allImages.filter(
-    (img: { tag: string; size: string }) => !registeredTags.has(img.tag),
-  );
-
-  if (orphans.length === 0) {
-    console.log(`  All ${allImages.length} sandbox image(s) are in use. Nothing to clean up.`);
-    return;
-  }
-
-  // 4. Display what will be removed
-  console.log(`  Found ${orphans.length} orphaned sandbox image(s):\n`);
-  for (const img of orphans) {
-    console.log(`    ${img.tag}  ${D}(${img.size})${R}`);
-  }
-  console.log("");
-
-  if (dryRun) {
-    console.log(`  --dry-run: would remove ${orphans.length} image(s).`);
-    return;
-  }
-
-  // 5. Confirm
-  if (!skipConfirm) {
-    const answer = await askPrompt(`  Remove ${orphans.length} orphaned image(s)? [y/N]: `);
-    if (answer.trim().toLowerCase() !== "y" && answer.trim().toLowerCase() !== "yes") {
-      console.log("  Cancelled.");
-      return;
-    }
-  }
-
-  // 6. Remove orphans
-  let removed = 0;
-  let failed = 0;
-  for (const img of orphans) {
-    const rmiResult = dockerRmi(img.tag, {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-      ignoreError: true,
-      suppressOutput: true,
-    });
-    if (rmiResult.status === 0) {
-      console.log(`  ${G}✓${R} Removed ${img.tag}`);
-      removed++;
-    } else {
-      const details = `${rmiResult.stderr || rmiResult.stdout || ""}`.trim();
-      console.error(`  ${YW}⚠${R} Failed to remove ${img.tag}${details ? `: ${details}` : ""}`);
-      failed++;
-    }
-  }
-
-  console.log("");
-  if (removed > 0) console.log(`  ${G}✓${R} Removed ${removed} orphaned image(s).`);
-  if (failed > 0) console.log(`  ${YW}⚠${R} Failed to remove ${failed} image(s).`);
-  if (failed > 0) process.exit(1);
 }
 
 // ── Dispatch helpers ─────────────────────────────────────────────
