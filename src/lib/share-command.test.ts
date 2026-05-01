@@ -44,6 +44,16 @@ function mountedAt(dir: string): string {
   return `/dev/fuse on ${path.resolve(dir)} type fuse.sshfs (rw)\n`;
 }
 
+function withProcessPlatform(platform: NodeJS.Platform, fn: () => void): void {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: platform });
+  try {
+    fn();
+  } finally {
+    if (descriptor) Object.defineProperty(process, "platform", descriptor);
+  }
+}
+
 describe("share-command helpers", () => {
   beforeEach(() => {
     spawnSyncMock.mockReset();
@@ -67,15 +77,29 @@ describe("share-command helpers", () => {
     }
   });
 
-  it("detects mounted paths via mountpoint or mount output", () => {
-    const dir = "/tmp/nemoclaw-share-mounted";
-    spawnSyncMock.mockImplementation((cmd: string) => {
-      if (cmd === "mountpoint") return { status: 1 };
-      if (cmd === "mount") return { status: 0, stdout: mountedAt(dir) };
-      return { status: 1, stdout: "", stderr: "" };
-    });
+  it("falls back to mount output when mountpoint is unavailable", () => {
+    withProcessPlatform("linux", () => {
+      const dir = "/tmp/nemoclaw-share-mounted";
+      spawnSyncMock.mockImplementation((cmd: string) => {
+        if (cmd === "mountpoint") return { status: 127 };
+        if (cmd === "mount") return { status: 0, stdout: mountedAt(dir) };
+        return { status: 1, stdout: "", stderr: "" };
+      });
 
-    expect(isMountPoint(dir)).toBe(true);
+      expect(isMountPoint(dir)).toBe(true);
+    });
+  });
+
+  it("trusts mountpoint -q status 1 as not mounted on Linux", () => {
+    withProcessPlatform("linux", () => {
+      spawnSyncMock.mockImplementation((cmd: string) => {
+        if (cmd === "mountpoint") return { status: 1 };
+        if (cmd === "mount") throw new Error("mount fallback should not run");
+        return { status: 1, stdout: "", stderr: "" };
+      });
+
+      expect(isMountPoint("/tmp/nemoclaw-share-not-mounted")).toBe(false);
+    });
   });
 
   it("prefers fusermount3 over fusermount on Linux", () => {
