@@ -552,7 +552,7 @@ Running <code class="docutils literal notranslate"><span class="pre">nemoclaw</s
 <p>Run the interactive setup wizard (recommended for new installs).
 The wizard creates an OpenShell gateway, registers inference providers, builds the sandbox image, and creates the sandbox.
 Use this command for new installs and for recreating a sandbox after changes to policy or configuration.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span><span class="o">[</span>--non-interactive<span class="o">]</span><span class="w"> </span><span class="o">[</span>--resume<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate-sandbox<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gpu<span class="o">]</span><span class="w"> </span><span class="o">[</span>--from<span class="w"> </span>&lt;Dockerfile&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>&lt;sandbox&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--agent<span class="w"> </span>&lt;name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--control-ui-port<span class="w"> </span>&lt;N&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes-i-accept-third-party-software<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span><span class="o">[</span>--non-interactive<span class="o">]</span><span class="w"> </span><span class="o">[</span>--resume<span class="w"> </span><span class="p">|</span><span class="w"> </span>--fresh<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate-sandbox<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gpu<span class="o">]</span><span class="w"> </span><span class="o">[</span>--from<span class="w"> </span>&lt;Dockerfile&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>&lt;sandbox&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--agent<span class="w"> </span>&lt;name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--control-ui-port<span class="w"> </span>&lt;N&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes-i-accept-third-party-software<span class="o">]</span>
 </pre></div>
 </div>
 <div class="admonition warning">
@@ -697,10 +697,10 @@ Use this when the agent’s task (not its inference) requires direct GPU access 
 </div>
 <p>Prerequisites:</p>
 <ul class="simple">
-<li><p>NVIDIA GPU drivers installed and working (<code class="docutils literal notranslate"><span class="pre">nvidia-smi</span></code> must succeed)</p></li>
-<li><p>NVIDIA Container Toolkit configured for Docker</p></li>
+<li><p>NVIDIA GPU drivers installed and working (<code class="docutils literal notranslate"><span class="pre">nvidia-smi</span></code> must succeed).</p></li>
+<li><p>NVIDIA Container Toolkit configured for Docker.</p></li>
 </ul>
-<p>By default, <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> does <strong>not</strong> pass <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> to the gateway or sandbox because inference is routed through host-side providers (Ollama, vLLM, cloud API) that already have GPU access.
+<p>By default, <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> does not pass <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> to the gateway or sandbox because inference is routed through host-side providers (Ollama, vLLM, cloud API) that already have GPU access.
 The <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> flag enables GPU passthrough at both the gateway and sandbox level so the agent can run GPU workloads directly.</p>
 <p>If a gateway already exists without GPU, onboarding will exit with guidance to destroy and re-onboard.
 To add GPU to an existing sandbox, use <code class="docutils literal notranslate"><span class="pre">--gpu</span> <span class="pre">--recreate-sandbox</span></code>.</p>
