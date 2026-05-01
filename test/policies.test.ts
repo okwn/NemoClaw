@@ -69,8 +69,7 @@ policies.applyPreset = (sandboxName, presetName) => {
   calls.push({ type: "apply", sandboxName, presetName });
 };
 process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-add", ...${JSON.stringify(extraArgs)}];
-require(${CLI_PATH});
-setImmediate(() => {
+Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
   process.stdout.write("\n__CALLS__" + JSON.stringify(calls));
 });
 `;
@@ -1029,8 +1028,7 @@ policies.removePreset = (sandboxName, presetName) => {
   return true;
 };
 process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-remove", ...${JSON.stringify(extraArgs)}];
-require(${CLI_PATH});
-setImmediate(() => {
+Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
   process.stdout.write("\n__CALLS__" + JSON.stringify(calls));
 });
 `;
@@ -1168,8 +1166,7 @@ registry.getCustomPolicies = () => [
 registry.listSandboxes = () => ({ sandboxes: [{ name: "test-sandbox" }] });
 credentials.prompt = async () => "y";
 process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-remove", ${JSON.stringify(presetName)}, ...${JSON.stringify(extraArgs)}];
-require(${CLI_PATH});
-setImmediate(() => {
+Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
   process.stdout.write("\n__CALLS__" + JSON.stringify(calls));
 });
 `;
@@ -1362,8 +1359,7 @@ credentials.prompt = async (message) => {
 registry.getSandbox = (name) => (name === "test-sandbox" ? { name } : null);
 registry.listSandboxes = () => ({ sandboxes: [{ name: "test-sandbox" }] });
 process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-add", ...${JSON.stringify(extraArgs)}];
-require(${CLI_PATH});
-setImmediate(() => {
+Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
   process.stdout.write("\n__CALLS__" + JSON.stringify(calls));
 });
 `;

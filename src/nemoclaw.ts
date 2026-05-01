@@ -580,7 +580,9 @@ exports.sandboxChannelsRemove = sandboxChannelsRemove;
 exports.sandboxChannelsStart = sandboxChannelsStart;
 exports.sandboxChannelsStop = sandboxChannelsStop;
 exports.sandboxLogs = sandboxLogs;
+exports.sandboxPolicyAdd = sandboxPolicyAdd;
 exports.sandboxPolicyList = sandboxPolicyList;
+exports.sandboxPolicyRemove = sandboxPolicyRemove;
 exports.sandboxSkillInstall = sandboxSkillInstall;
 exports.sandboxSnapshot = sandboxSnapshot;
 exports.sandboxStatus = sandboxStatus;
@@ -1212,6 +1214,11 @@ function hasHelpFlag(args: string[]): boolean {
 
 function printSandboxActionUsage(action: string): void {
   console.log(`  Usage: ${CLI_NAME} <name> ${action}`);
+}
+
+function hasMissingFlagValue(args: string[], flagName: string): boolean {
+  const index = args.indexOf(flagName);
+  return index !== -1 && (!args[index + 1] || args[index + 1].startsWith("--"));
 }
 
 // ── Sandbox-scoped actions ───────────────────────────────────────
@@ -3945,7 +3952,7 @@ function help() {
 const [cmd, ...args] = process.argv.slice(2);
 
 // eslint-disable-next-line complexity
-(async () => {
+const mainPromise = (async () => {
   // No command → help
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
     help();
@@ -4076,10 +4083,27 @@ const [cmd, ...args] = process.argv.slice(2);
         await runOclif("sandbox:logs", [cmd, ...actionArgs]);
         break;
       case "policy-add":
-        await sandboxPolicyAdd(cmd, actionArgs);
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage(
+            "policy-add [preset] [--yes|-y] [--dry-run] [--from-file <path>] [--from-dir <path>]",
+          );
+          break;
+        }
+        if (
+          hasMissingFlagValue(actionArgs, "--from-file") ||
+          hasMissingFlagValue(actionArgs, "--from-dir")
+        ) {
+          await sandboxPolicyAdd(cmd, actionArgs);
+          break;
+        }
+        await runOclif("sandbox:policy-add", [cmd, ...actionArgs]);
         break;
       case "policy-remove":
-        await sandboxPolicyRemove(cmd, actionArgs);
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage("policy-remove [preset] [--yes|-y] [--dry-run]");
+          break;
+        }
+        await runOclif("sandbox:policy-remove", [cmd, ...actionArgs]);
         break;
       case "policy-list":
         if (hasHelpFlag(actionArgs)) {
@@ -4283,3 +4307,5 @@ const [cmd, ...args] = process.argv.slice(2);
   console.error(`  Run '${CLI_NAME} help' for usage.`);
   process.exit(1);
 })();
+
+exports.mainPromise = mainPromise;

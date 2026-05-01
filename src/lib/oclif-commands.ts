@@ -20,6 +20,7 @@ import {
   GarbageCollectImagesCommand,
   UpgradeSandboxesCommand,
 } from "./maintenance-cli-commands";
+import { PolicyAddCommand, PolicyRemoveCommand } from "./policy-mutate-cli-commands";
 import {
   SandboxChannelsListCommand,
   SandboxConfigGetCommand,
@@ -57,7 +58,9 @@ export default {
   "sandbox:channels:stop": ChannelsStopCommand,
   "sandbox:config:get": SandboxConfigGetCommand,
   "sandbox:logs": SandboxLogsCommand,
+  "sandbox:policy-add": PolicyAddCommand,
   "sandbox:policy-list": SandboxPolicyListCommand,
+  "sandbox:policy-remove": PolicyRemoveCommand,
   "sandbox:shields:down": ShieldsDownCommand,
   "sandbox:shields:status": ShieldsStatusCommand,
   "sandbox:shields:up": ShieldsUpCommand,
