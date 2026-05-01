@@ -21,7 +21,6 @@ export interface NemoClawRuntimeBridge {
     opts?: { ignoreError?: boolean; timeout?: number },
   ) => { status: number | null; output: string };
   backupAll: () => void;
-  deploy: (instanceName?: string) => Promise<void>;
   garbageCollectImages: (args?: string[]) => Promise<void>;
   onboard: (args?: string[]) => Promise<void>;
   recoverNamedGatewayRuntime: () => Promise<GatewayRecoveryResult>;

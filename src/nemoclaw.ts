@@ -67,7 +67,6 @@ const {
   versionGte,
 } = require("./lib/openshell");
 const { runRegisteredOclifCommand } = require("./lib/oclif-runner");
-const { executeDeploy } = require("./lib/deploy");
 const agentRuntime = require("../bin/lib/agent-runtime");
 const sandboxVersion = require("./lib/sandbox-version");
 const sandboxState = require("./lib/sandbox-state");
@@ -576,7 +575,6 @@ async function recoverRegistryEntries({
 exports.runtimeBridge = {
   captureOpenshell,
   backupAll,
-  deploy,
   garbageCollectImages,
   onboard,
   recoverNamedGatewayRuntime,
@@ -1127,32 +1125,6 @@ async function setupSpark(args: string[] = []): Promise<void> {
   await runDeprecatedOnboardAliasCommand({
     ...buildOnboardCommandDeps(args),
     kind: "setup-spark",
-  });
-}
-
-async function deploy(instanceName: string): Promise<void> {
-  await executeDeploy({
-    instanceName,
-    env: process.env,
-    rootDir: ROOT,
-    getCredential,
-    validateName,
-    shellQuote,
-    run,
-    runInteractive,
-    execFileSync: (
-      file: string,
-      args: string[],
-      opts: Omit<
-        import("node:child_process").ExecFileSyncOptionsWithStringEncoding,
-        "encoding"
-      > = {},
-    ) => String(execFileSync(file, args, { encoding: "utf-8", ...opts })),
-    spawnSync,
-    log: console.log,
-    error: console.error,
-    stdoutWrite: (message: string) => process.stdout.write(message),
-    exit: (code: number) => process.exit(code),
   });
 }
 

@@ -814,11 +814,11 @@ describe("regression guards", () => {
         path.join(import.meta.dirname, "..", "src", "lib", "deploy.ts"),
         "utf-8",
       );
-      const src = fs.readFileSync(
-        path.join(import.meta.dirname, "..", "src", "nemoclaw.ts"),
+      const actionSrc = fs.readFileSync(
+        path.join(import.meta.dirname, "..", "src", "lib", "deploy-action.ts"),
         "utf-8",
       );
-      expect(src).toContain('const { executeDeploy } = require("./lib/deploy")');
+      expect(actionSrc).toContain('import { executeDeploy } from "./deploy"');
       expect(tsSrc).toContain("export function inferDeployProvider(");
       expect(tsSrc).toContain("export function buildDeployEnvLines(");
       expect(tsSrc).toContain(
