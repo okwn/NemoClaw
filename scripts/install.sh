@@ -1432,7 +1432,20 @@ select_backend() {
     return 0
   fi
 
-  # 2) vLLM already running on :8000?
+  # 2) Station platform — always go through the model picker so the user can
+  #    confirm or switch the loaded model. install_vllm() reuses the running
+  #    container if the model matches and replaces it (with RED warning) if not.
+  if [[ "${NEMOCLAW_DETECTED_PLATFORM:-}" == "station" ]] && detect_gpu; then
+    info "Backend: Station platform — vLLM (preferred over Ollama)"
+    select_station_model
+    install_vllm
+    NEMOCLAW_SELECTED_BACKEND="vllm"
+    NEMOCLAW_SELECTED_BACKEND_ENDPOINT="http://127.0.0.1:8000"
+    write_backend_config
+    return 0
+  fi
+
+  # 3) vLLM already running on :8000? (non-station)
   if _port_listening 8000 && _proc_running vllm; then
     NEMOCLAW_SELECTED_BACKEND="vllm"
     NEMOCLAW_SELECTED_BACKEND_ENDPOINT="http://127.0.0.1:8000"
@@ -1441,23 +1454,11 @@ select_backend() {
     return 0
   fi
 
-  # 3) SGLang — process detection only (port can collide with Ollama).
+  # 4) SGLang — process detection only (port can collide with Ollama).
   if _proc_running sglang; then
     NEMOCLAW_SELECTED_BACKEND="sglang"
     NEMOCLAW_SELECTED_BACKEND_ENDPOINT="http://127.0.0.1:11434"
     info "Backend: REUSE SGLang at ${NEMOCLAW_SELECTED_BACKEND_ENDPOINT}"
-    write_backend_config
-    return 0
-  fi
-
-  # 4) Station platform — vLLM is the preferred backend; install it even if
-  #    Ollama is already present, since the GB300 has enough VRAM for vLLM.
-  if [[ "${NEMOCLAW_DETECTED_PLATFORM:-}" == "station" ]] && detect_gpu; then
-    info "Backend: Station platform — installing vLLM (preferred over Ollama)"
-    select_station_model
-    install_vllm
-    NEMOCLAW_SELECTED_BACKEND="vllm"
-    NEMOCLAW_SELECTED_BACKEND_ENDPOINT="http://127.0.0.1:8000"
     write_backend_config
     return 0
   fi
