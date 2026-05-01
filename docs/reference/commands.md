@@ -20,10 +20,11 @@ status: published
   SPDX-License-Identifier: Apache-2.0
 -->
 
-# Commands
+# CLI Commands Reference
 
 The `nemoclaw` CLI is the primary interface for managing NemoClaw sandboxes.
 It is installed automatically by the installer (`curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash`).
+For guidance on when to use `nemoclaw` versus the underlying `openshell` CLI, see [CLI Selection Guide](cli-selection-guide.md).
 
 ## `/nemoclaw` Slash Command
 

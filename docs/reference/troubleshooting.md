@@ -693,7 +693,7 @@ Bot tokens for Telegram (`getUpdates`), Discord (gateway), and Slack (Socket Mod
 To diagnose, open a shell in the sandbox and inspect the gateway log:
 
 ```console
-$ openshell term <sandbox-name>
+$ nemoclaw <sandbox-name> connect
 $ tail -f /tmp/gateway.log
 ```
 
