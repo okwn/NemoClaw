@@ -4,6 +4,7 @@
 import DebugCliCommand from "./debug-cli-command";
 import GatewayTokenCliCommand from "./gateway-token-cli-command";
 import ListCommand from "./list-command";
+import ShareCommand from "./share-command";
 import StatusCommand from "./status-command";
 import {
   DeprecatedStartCommand,
@@ -16,6 +17,7 @@ import UninstallCliCommand from "./uninstall-cli-command";
 export default {
   debug: DebugCliCommand,
   list: ListCommand,
+  share: ShareCommand,
   status: StatusCommand,
   start: DeprecatedStartCommand,
   stop: DeprecatedStopCommand,

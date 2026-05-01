@@ -1,25 +1,5 @@
----
-title:
-  page: "Use a Local Inference Server with NemoClaw"
-  nav: "Use Local Inference"
-description:
-  main: "Connect NemoClaw to a local model server such as Ollama, vLLM, TensorRT-LLM, or any OpenAI-compatible endpoint."
-  agent: "Connects NemoClaw to a local inference server. Use when setting up Ollama, vLLM, TensorRT-LLM, NIM, or any OpenAI-compatible local model server with NemoClaw."
-keywords: ["nemoclaw local inference", "ollama nemoclaw", "vllm nemoclaw", "local model server", "openai compatible endpoint"]
-topics: ["generative_ai", "ai_agents"]
-tags: ["openclaw", "openshell", "inference_routing", "local_inference"]
-content:
-  type: how_to
-  difficulty: intermediate
-  audience: ["developer", "engineer"]
-status: published
----
-
-<!--
-  SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-  SPDX-License-Identifier: Apache-2.0
--->
-
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 # Use a Local Inference Server
 
 NemoClaw can route inference to a model server running on your machine instead of a cloud API.
@@ -32,7 +12,7 @@ OpenShell intercepts inference traffic and forwards it to the local endpoint you
 ## Prerequisites
 
 - NemoClaw installed.
-  Refer to the [Quickstart](../get-started/quickstart.md) if you have not installed yet.
+  Refer to the Quickstart (use the `nemoclaw-user-get-started` skill) if you have not installed yet.
 - A local model server running, or Ollama installed. The NemoClaw onboard wizard can also start Ollama for you.
 
 ## Ollama
@@ -180,7 +160,7 @@ You can use this variable in both interactive and non-interactive mode.
 If you already onboarded and the sandbox is failing at runtime, re-run
 `nemoclaw onboard` to re-probe the endpoint and bake the correct API path
 into the image.
-Refer to [Switch Inference Models](switch-inference-providers.md) for details.
+Refer to Switch Inference Models (use the `nemoclaw-user-configure-inference` skill) for details.
 
 ## Anthropic-Compatible Server
 
@@ -213,10 +193,8 @@ $ NEMOCLAW_EXPERIMENTAL=1 nemoclaw onboard
 Select **Local vLLM [experimental]** from the provider list.
 NemoClaw detects the running model and validates the endpoint.
 
-:::{note}
-NemoClaw forces the `chat/completions` API path for vLLM.
-The vLLM `/v1/responses` endpoint does not run the `--tool-call-parser`, so tool calls arrive as raw text.
-:::
+> **Note:** NemoClaw forces the `chat/completions` API path for vLLM.
+> The vLLM `/v1/responses` endpoint does not run the `--tool-call-parser`, so tool calls arrive as raw text.
 
 ### Non-Interactive Setup
 
@@ -247,10 +225,8 @@ If Docker is not already logged in to `nvcr.io`, onboard prompts for an [NGC API
 The prompt masks the key during input and retries once on a bad key before failing.
 In non-interactive mode, onboard exits with login instructions if Docker is not already authenticated; run `docker login nvcr.io` yourself, then re-run `nemoclaw onboard --non-interactive`.
 
-:::{note}
-NIM uses vLLM internally.
-The same `chat/completions` API path restriction applies.
-:::
+> **Note:** NIM uses vLLM internally.
+> The same `chat/completions` API path restriction applies.
 
 ### Non-Interactive Setup
 
@@ -291,7 +267,7 @@ The output shows the provider label (for example, "Local vLLM" or "Other OpenAI-
 ## Switch Models at Runtime
 
 You can change the model without re-running onboard.
-Refer to [Switch Inference Models](switch-inference-providers.md) for the full procedure.
+Refer to Switch Inference Models (use the `nemoclaw-user-configure-inference` skill) for the full procedure.
 
 For compatible endpoints, the command is:
 
@@ -303,6 +279,6 @@ If the provider itself needs to change (for example, switching from vLLM to a cl
 
 ## Next Steps
 
-- [Inference Options](inference-options.md) for the full list of providers available during onboarding.
-- [Switch Inference Models](switch-inference-providers.md) for runtime model switching.
-- [Quickstart](../get-started/quickstart.md) for first-time installation.
+- Inference Options (use the `nemoclaw-user-configure-inference` skill) for the full list of providers available during onboarding.
+- Switch Inference Models (use the `nemoclaw-user-configure-inference` skill) for runtime model switching.
+- Quickstart (use the `nemoclaw-user-get-started` skill) for first-time installation.
