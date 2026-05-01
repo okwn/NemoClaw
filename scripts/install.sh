@@ -1145,28 +1145,75 @@ install_vllm() {
   # HTTP health probe — vLLM's /health endpoint returns 200 only after the
   # model is fully loaded and Uvicorn is serving. Port-only checks succeed
   # as soon as docker-proxy binds the host port, which is before vLLM is ready.
-  # Allow up to 10 minutes (large models take 5-6 min on first load from cache).
-  info "Waiting for vLLM to become ready on :${port} (up to 10 min for large models)…"
-  local timeout_sec=600 poll_sec=5
-  local start_ts elapsed remaining mm ss
+  #
+  # Timeout sized for the worst case: first-time download of a 130+ GiB model
+  # from HuggingFace without an HF_TOKEN (rate-limited). Allow 60 minutes.
+  # We MUST wait for vLLM to be serving — if onboard runs while the server is
+  # still loading, the wizard's validation probe fails with exit 7.
+  info "Waiting for vLLM to become ready on :${port}…"
+  info "First-time downloads of large models can take 30+ minutes; this is normal."
+
+  local timeout_sec=3600 poll_sec=5
+  local start_ts now elapsed remaining last_stage="" stage logs
+  local mm_e ss_e mm_r ss_r
   start_ts=$(date +%s)
+
   while ! curl -sf "http://127.0.0.1:${port}/health" >/dev/null 2>&1; do
-    elapsed=$(( $(date +%s) - start_ts ))
+    now=$(date +%s)
+    elapsed=$(( now - start_ts ))
     if (( elapsed >= timeout_sec )); then
       break
     fi
+
+    # Abort early if the container died — no point waiting an hour.
+    if ! maybe_sudo docker ps --format '{{.Names}}' 2>/dev/null \
+           | grep -q "^${container_name}$"; then
+      warn "vLLM container '${container_name}' is no longer running — last logs:"
+      maybe_sudo docker logs --tail 30 "$container_name" 2>&1 | sed 's/^/  /'
+      error "vLLM container exited before becoming healthy. Aborting install."
+    fi
+
+    # Stage detection from recent container logs so the user can tell
+    # whether vLLM is downloading, loading, capturing graphs, or stuck.
+    logs=$(maybe_sudo docker logs --tail 50 "$container_name" 2>&1 || true)
+    if printf "%s" "$logs" | grep -q "Uvicorn running"; then
+      stage="serving (handshake pending)"
+    elif printf "%s" "$logs" | grep -qE "Capturing CUDA graph|Graph capturing"; then
+      stage="capturing CUDA graphs"
+    elif printf "%s" "$logs" | grep -q "Loading safetensors"; then
+      stage="loading weights into GPU"
+    elif printf "%s" "$logs" | grep -qE "downloading weights|Time spent downloading"; then
+      stage="downloading weights from HuggingFace"
+    elif printf "%s" "$logs" | grep -q "Starting to load model"; then
+      stage="initializing model"
+    else
+      stage="starting up"
+    fi
+
     remaining=$(( timeout_sec - elapsed ))
-    mm=$(( remaining / 60 )); ss=$(( remaining % 60 ))
-    printf "  [vLLM] loading model… %3ds elapsed, up to %dm%02ds remaining\n" \
-      "$elapsed" "$mm" "$ss"
+    mm_e=$(( elapsed / 60 ));   ss_e=$(( elapsed % 60 ))
+    mm_r=$(( remaining / 60 )); ss_r=$(( remaining % 60 ))
+
+    if [[ "$stage" != "$last_stage" ]]; then
+      printf "  ${C_CYAN}[vLLM]${C_RESET} stage: %s\n" "$stage"
+      last_stage="$stage"
+    fi
+    printf "  ${C_CYAN}[vLLM]${C_RESET} %s — still loading… %dm%02ds elapsed (timeout in %dm%02ds)\n" \
+      "$stage" "$mm_e" "$ss_e" "$mm_r" "$ss_r"
     sleep "$poll_sec"
   done
+
   if ! curl -sf "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
-    warn "vLLM did not become healthy within ${timeout_sec}s — continuing; onboard will retry"
-  else
-    elapsed=$(( $(date +%s) - start_ts ))
-    info "vLLM ready on :${port} after ${elapsed}s"
+    warn "vLLM did not become healthy within $((timeout_sec / 60)) min."
+    warn "Check progress with:  docker logs -f ${container_name}"
+    warn "Once you see 'Uvicorn running on http://0.0.0.0:${port}', re-run:"
+    warn "  bash scripts/install.sh"
+    error "Aborting install — onboard cannot proceed without a healthy vLLM endpoint."
   fi
+
+  elapsed=$(( $(date +%s) - start_ts ))
+  mm_e=$(( elapsed / 60 )); ss_e=$(( elapsed % 60 ))
+  ok "vLLM ready on :${port} after ${mm_e}m${ss_e}s"
 }
 
 # ===========================================================================
