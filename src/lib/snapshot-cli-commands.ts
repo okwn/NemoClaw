@@ -44,6 +44,34 @@ export class SnapshotListCommand extends Command {
   }
 }
 
+export class SnapshotRestoreCommand extends Command {
+  static id = "sandbox:snapshot:restore";
+  static strict = true;
+  static summary = "Restore state from a snapshot";
+  static description = "Restore sandbox workspace state from a snapshot.";
+  static usage = ["<name> snapshot restore [selector] [--to <dst>]"];
+  static args = {
+    sandboxName: sandboxNameArg,
+    selector: Args.string({
+      name: "selector",
+      description: "Snapshot version, name, or timestamp",
+      required: false,
+    }),
+  };
+  static flags = {
+    help: Flags.help({ char: "h" }),
+    to: Flags.string({ description: "Restore into another sandbox" }),
+  };
+
+  public async run(): Promise<void> {
+    const { args, flags } = await this.parse(SnapshotRestoreCommand);
+    const subArgs = ["restore"];
+    if (args.selector) subArgs.push(args.selector);
+    if (flags.to) subArgs.push("--to", flags.to);
+    await getRuntimeBridge().sandboxSnapshot(args.sandboxName, subArgs);
+  }
+}
+
 export class SnapshotCreateCommand extends Command {
   static id = "sandbox:snapshot:create";
   static strict = true;

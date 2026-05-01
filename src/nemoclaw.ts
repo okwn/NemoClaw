@@ -4159,6 +4159,13 @@ const mainPromise = (async () => {
             }
             await runOclif("sandbox:snapshot:create", [cmd, ...snapshotArgs]);
             break;
+          case "restore":
+            if (hasHelpFlag(snapshotArgs)) {
+              printSandboxActionUsage("snapshot restore [selector] [--to <dst>]");
+              break;
+            }
+            await runOclif("sandbox:snapshot:restore", [cmd, ...snapshotArgs]);
+            break;
           default:
             await sandboxSnapshot(cmd, actionArgs);
             break;

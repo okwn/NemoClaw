@@ -7,6 +7,7 @@ import {
   setSnapshotRuntimeBridgeFactoryForTest,
   SnapshotCreateCommand,
   SnapshotListCommand,
+  SnapshotRestoreCommand,
 } from "./snapshot-cli-commands";
 
 const rootDir = process.cwd();
@@ -19,6 +20,15 @@ describe("snapshot oclif commands", () => {
     await SnapshotListCommand.run(["alpha"], rootDir);
 
     expect(sandboxSnapshot).toHaveBeenCalledWith("alpha", ["list"]);
+  });
+
+  it("runs snapshot restore with an optional selector and target", async () => {
+    const sandboxSnapshot = vi.fn().mockResolvedValue(undefined);
+    setSnapshotRuntimeBridgeFactoryForTest(() => ({ sandboxSnapshot }));
+
+    await SnapshotRestoreCommand.run(["alpha", "v2", "--to", "beta"], rootDir);
+
+    expect(sandboxSnapshot).toHaveBeenCalledWith("alpha", ["restore", "v2", "--to", "beta"]);
   });
 
   it("runs snapshot create with an optional label", async () => {

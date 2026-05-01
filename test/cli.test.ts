@@ -802,7 +802,7 @@ describe("CLI dispatch", () => {
     expect(status.out).not.toContain("sandbox:shields:status");
   });
 
-  it("snapshot list/create help keeps public sandbox-scoped usage", () => {
+  it("snapshot subcommand help keeps public sandbox-scoped usage", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-snapshot-help-"));
     writeSandboxRegistry(home);
 
@@ -815,6 +815,11 @@ describe("CLI dispatch", () => {
     expect(create.code).toBe(0);
     expect(create.out).toContain("<name> snapshot create [--name <name>]");
     expect(create.out).not.toContain("sandbox:snapshot:create");
+
+    const restore = runWithEnv("alpha snapshot restore --help", { HOME: home });
+    expect(restore.code).toBe(0);
+    expect(restore.out).toContain("<name> snapshot restore [selector] [--to <dst>]");
+    expect(restore.out).not.toContain("sandbox:snapshot:restore");
   });
 
   it("snapshot list dispatches through oclif", () => {
