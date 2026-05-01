@@ -1112,34 +1112,89 @@ install_vllm() {
   info "Pulling vLLM container (${image})…"
   maybe_sudo docker pull "$image"
 
-  local hf_token="" hf_token_source="" hf_cache
-  hf_cache="${HOME}/.cache/huggingface"
+  local hf_token="" hf_token_source="" hf_cache hf_home
+  hf_home="${HF_HOME:-${HOME}/.cache/huggingface}"
+  hf_cache="$hf_home"
   mkdir -p "$hf_cache"
 
-  # Resolve a HuggingFace token from any source the user might have set up.
-  # Priority: explicit env var > legacy env var > `huggingface-cli login` cache.
-  # The cache files are what `huggingface-cli login` writes, so if the user
-  # ran that once, every subsequent install picks up the token automatically.
+  # Resolve a HuggingFace token from every place the HF stack writes one.
+  # Priority order:
+  #   1. HUGGING_FACE_HUB_TOKEN env var (matches HF library lookup order)
+  #   2. HF_TOKEN env var
+  #   3. $HF_HOME/token  (default `huggingface-cli login` write target)
+  #   4. ~/.huggingface/token  (legacy CLI cache)
+  #   5. $HF_HOME/stored_tokens (newer multi-token JSON written by the CLI)
+  #   6. `python3 -m huggingface_hub` lookup (handles version-specific paths)
+  _read_token_file() {
+    [[ -r "$1" ]] || return 1
+    local v
+    v=$(tr -d '[:space:]' < "$1" 2>/dev/null || true)
+    [[ -n "$v" ]] && printf "%s" "$v"
+  }
+
   if [[ -n "${HUGGING_FACE_HUB_TOKEN:-}" ]]; then
     hf_token="$HUGGING_FACE_HUB_TOKEN"
     hf_token_source="HUGGING_FACE_HUB_TOKEN env var"
   elif [[ -n "${HF_TOKEN:-}" ]]; then
     hf_token="$HF_TOKEN"
     hf_token_source="HF_TOKEN env var"
-  elif [[ -r "${hf_cache}/token" ]]; then
-    hf_token="$(tr -d '[:space:]' < "${hf_cache}/token" 2>/dev/null || true)"
-    [[ -n "$hf_token" ]] && hf_token_source="${hf_cache}/token (huggingface-cli login)"
-  elif [[ -r "${HOME}/.huggingface/token" ]]; then
-    hf_token="$(tr -d '[:space:]' < "${HOME}/.huggingface/token" 2>/dev/null || true)"
-    [[ -n "$hf_token" ]] && hf_token_source="${HOME}/.huggingface/token (legacy huggingface-cli login)"
+  fi
+
+  if [[ -z "$hf_token" ]]; then
+    local _candidate
+    for _candidate in "${hf_home}/token" "${HOME}/.huggingface/token"; do
+      if hf_token=$(_read_token_file "$_candidate"); then
+        hf_token_source="${_candidate} (huggingface-cli login)"
+        break
+      fi
+    done
+  fi
+
+  # `huggingface-cli login` in newer hub versions can write to stored_tokens
+  # (a JSON file with one or more named tokens) instead of a flat token file.
+  if [[ -z "$hf_token" && -r "${hf_home}/stored_tokens" ]] && command -v python3 >/dev/null 2>&1; then
+    hf_token=$(python3 - "${hf_home}/stored_tokens" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    # File is {"name": "hf_..."} for multi-token, or {"token": "hf_..."} legacy.
+    if isinstance(data, dict):
+        for v in data.values():
+            if isinstance(v, str) and v.startswith("hf_"):
+                print(v); break
+        else:
+            for k in ("token", "default"):
+                v = data.get(k)
+                if isinstance(v, str) and v.startswith("hf_"):
+                    print(v); break
+except Exception:
+    pass
+PY
+)
+    [[ -n "$hf_token" ]] && hf_token_source="${hf_home}/stored_tokens (huggingface-cli login)"
+  fi
+
+  # Last-resort fallback: ask the huggingface_hub Python library directly.
+  # Picks up any path the library knows about regardless of HF version.
+  if [[ -z "$hf_token" ]] && command -v python3 >/dev/null 2>&1; then
+    hf_token=$(python3 -c \
+      "from huggingface_hub import HfFolder; t=HfFolder.get_token() or ''; print(t)" \
+      2>/dev/null || true)
+    [[ -n "$hf_token" ]] && hf_token_source="huggingface_hub library (HfFolder.get_token)"
   fi
 
   if [[ -n "$hf_token" ]]; then
     info "HuggingFace token: using ${hf_token_source} — gated models and faster downloads enabled"
   else
-    warn "HuggingFace token: not provided — open models will download unauthenticated"
-    warn "  (slower / rate-limited); gated models (Nemotron, Llama, etc.) will fail."
-    warn "  To fix: export HUGGING_FACE_HUB_TOKEN=<your-token>, or run 'huggingface-cli login' once."
+    warn "HuggingFace token: not found in env or any HF cache location:"
+    warn "  - HUGGING_FACE_HUB_TOKEN / HF_TOKEN env vars"
+    warn "  - ${hf_home}/token"
+    warn "  - ${hf_home}/stored_tokens"
+    warn "  - ${HOME}/.huggingface/token"
+    warn "  Open models will download unauthenticated (slower / rate-limited);"
+    warn "  gated models (Nemotron, Llama, etc.) will fail."
+    warn "  To fix:  huggingface-cli login   (one-time, persists in ${hf_home}/token)"
+    warn "  Or:      export HUGGING_FACE_HUB_TOKEN=<your-token>   (per-shell)"
   fi
 
   # Use --network host so that:
