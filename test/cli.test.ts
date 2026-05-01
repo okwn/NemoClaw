@@ -187,14 +187,28 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
 
 describe("CLI dispatch", () => {
   it("config get validates flags and values before dispatch", () => {
-    const src = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "nemoclaw.ts"), "utf-8");
-    const configGet = src.match(/case "get": \{([\s\S]*?)sandboxConfig\.configGet\(cmd, configOpts\);/);
-    expect(configGet).toBeTruthy();
-    expect(configGet![1]).toContain("--key requires a value");
-    expect(configGet![1]).toContain("--format requires a value");
-    expect(configGet![1]).toContain("Unknown format");
-    expect(configGet![1]).toContain("Unknown flag");
-    expect(configGet![1]).toContain('format !== "json" && format !== "yaml"');
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-config-get-"));
+    writeSandboxRegistry(home);
+    try {
+      const missingKey = runWithEnv("alpha config get --key", { HOME: home });
+      expect(missingKey.code).toBe(1);
+      expect(missingKey.out).toContain("--key requires a value");
+      expect(missingKey.out).toContain("Usage: nemoclaw <name> config get");
+
+      const missingFormat = runWithEnv("alpha config get --format", { HOME: home });
+      expect(missingFormat.code).toBe(1);
+      expect(missingFormat.out).toContain("--format requires a value");
+
+      const badFormat = runWithEnv("alpha config get --format xml", { HOME: home });
+      expect(badFormat.code).toBe(1);
+      expect(badFormat.out).toContain("Unknown format: xml");
+
+      const unknownFlag = runWithEnv("alpha config get --bogus", { HOME: home });
+      expect(unknownFlag.code).toBe(1);
+      expect(unknownFlag.out).toContain("Unknown flag: --bogus");
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("help exits 0 and shows sections", () => {

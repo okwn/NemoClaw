@@ -1515,34 +1515,53 @@ setImmediate(() => {
   });
 
   describe("interactive prompt cleanup", () => {
-    it("releases stdin after preset prompts so the event loop drains on a TTY", () => {
-      const source = fs.readFileSync(
-        path.join(REPO_ROOT, "src", "lib", "policies.ts"),
-        "utf-8",
-      );
-      // A TTY-only guard around pause/unref pins the event loop on
-      // interactive runs and stops the wizard from exiting after its last
-      // prompt resolves.
-      expect(source).not.toMatch(/rl\.close\(\);\s*if\s*\(\s*!process\.stdin\.isTTY\s*\)/);
-      // Both prompt callbacks must release stdin after `rl.close()`.
-      const cleanupMatches = source.match(
-        /rl\.close\(\);[\s\S]*?process\.stdin\.pause\(\)[\s\S]*?process\.stdin\.unref\(\)/g,
-      );
-      expect(cleanupMatches?.length ?? 0).toBeGreaterThanOrEqual(2);
+    function runPromptLifecycle(functionName: "selectFromList" | "selectForRemoval", input: string) {
+      const script = `
+const policies = require(${POLICIES_PATH});
+const counts = { ref: 0, pause: 0, unref: 0 };
+process.stdin.ref = () => { counts.ref += 1; return process.stdin; };
+process.stdin.pause = () => { counts.pause += 1; return process.stdin; };
+process.stdin.unref = () => { counts.unref += 1; return process.stdin; };
+const items = [
+  { name: "alpha", description: "first" },
+  { name: "beta", description: "second" },
+];
+const options = ${functionName === "selectForRemoval" ? `{ applied: ["alpha"] }` : `{ applied: [] }`};
+policies[${JSON.stringify(functionName)}](items, options)
+  .then((selected) => {
+    console.log(JSON.stringify({ selected, counts }));
+  })
+  .catch((err) => {
+    console.error(err && err.stack ? err.stack : String(err));
+    process.exit(1);
+  });
+`;
+      const result = spawnSync(process.execPath, ["-e", script], {
+        input,
+        encoding: "utf-8",
+        timeout: 5000,
+      });
+      expect(result.status).toBe(0);
+      return JSON.parse(result.stdout.trim()) as {
+        selected: string | null;
+        counts: { ref: number; pause: number; unref: number };
+      };
+    }
+
+    it("releases and re-refs stdin around policy-add preset prompts", () => {
+      const result = runPromptLifecycle("selectFromList", "1\n");
+      expect(result.selected).toBe("alpha");
+      expect(result.counts.ref).toBeGreaterThanOrEqual(1);
+      expect(result.counts.pause).toBeGreaterThanOrEqual(1);
+      expect(result.counts.unref).toBeGreaterThanOrEqual(1);
     });
 
-    it("re-refs stdin before each preset prompt so a follow-up prompt is not stranded by a sticky unref()", () => {
-      const source = fs.readFileSync(
-        path.join(REPO_ROOT, "src", "lib", "policies.ts"),
-        "utf-8",
-      );
-      // unref() above is sticky — a subsequent createInterface will not
-      // re-ref by itself; an explicit ref() before each one keeps follow-up
-      // prompts able to wait for input.
-      const refMatches = source.match(
-        /process\.stdin\.ref\(\)[\s\S]*?readline\.createInterface\(\{\s*input:\s*process\.stdin/g,
-      );
-      expect(refMatches?.length ?? 0).toBeGreaterThanOrEqual(2);
+    it("releases and re-refs stdin around policy-remove preset prompts", () => {
+      const result = runPromptLifecycle("selectForRemoval", "1\n");
+      expect(result.selected).toBe("alpha");
+      expect(result.counts.ref).toBeGreaterThanOrEqual(1);
+      expect(result.counts.pause).toBeGreaterThanOrEqual(1);
+      expect(result.counts.unref).toBeGreaterThanOrEqual(1);
     });
   });
 });
