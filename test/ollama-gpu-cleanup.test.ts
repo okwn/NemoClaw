@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { describe, expect, it, vi } from "vitest";
-import { createRequire } from "node:module";
 import http from "node:http";
 
-const require = createRequire(import.meta.url);
-const { unloadOllamaModels } = require("../dist/lib/onboard-ollama-proxy.js") as {
-  unloadOllamaModels: () => void;
-};
+import { unloadOllamaModels } from "../dist/lib/onboard-ollama-proxy.js";
 
 describe("Ollama GPU cleanup", () => {
   it("unloads all running Ollama models via the production HTTP implementation", async () => {
