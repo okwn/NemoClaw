@@ -7,6 +7,7 @@ import {
   ChannelsStartCommand,
   ChannelsStopCommand,
 } from "./channels-mutate-cli-commands";
+import ConnectCliCommand from "./connect-cli-command";
 import {
   CredentialsCommand,
   CredentialsListCommand,
@@ -63,6 +64,7 @@ export default {
   "sandbox:channels:start": ChannelsStartCommand,
   "sandbox:channels:stop": ChannelsStopCommand,
   "sandbox:config:get": SandboxConfigGetCommand,
+  "sandbox:connect": ConnectCliCommand,
   "sandbox:destroy": DestroyCliCommand,
   "sandbox:logs": SandboxLogsCommand,
   "sandbox:policy-add": PolicyAddCommand,

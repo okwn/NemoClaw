@@ -574,6 +574,7 @@ exports.garbageCollectImages = garbageCollectImages;
 exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
 exports.recoverRegistryEntries = recoverRegistryEntries;
 exports.runOpenshell = runOpenshell;
+exports.sandboxConnect = sandboxConnect;
 exports.sandboxDestroy = sandboxDestroy;
 exports.sandboxChannelsAdd = sandboxChannelsAdd;
 exports.sandboxChannelsList = sandboxChannelsList;
@@ -4056,6 +4057,10 @@ const mainPromise = (async () => {
 
     switch (action) {
       case "connect":
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage("connect");
+          break;
+        }
         if (actionArgs.length > 0) {
           console.error(
             `  Unknown connect argument${actionArgs.length === 1 ? "" : "s"}: ${actionArgs.join(" ")}`,
@@ -4068,7 +4073,7 @@ const mainPromise = (async () => {
           console.error(`  Usage: ${CLI_NAME} <name> connect`);
           process.exit(1);
         }
-        await sandboxConnect(cmd);
+        await runOclif("sandbox:connect", [cmd]);
         break;
       case "status":
         if (hasHelpFlag(actionArgs)) {

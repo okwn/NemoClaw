@@ -708,6 +708,11 @@ describe("CLI dispatch", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-inspection-help-"));
     writeSandboxRegistry(home);
 
+    const connect = runWithEnv("alpha connect --help", { HOME: home });
+    expect(connect.code).toBe(0);
+    expect(connect.out).toContain("<name> connect");
+    expect(connect.out).not.toContain("sandbox:connect");
+
     const status = runWithEnv("alpha status --help", { HOME: home });
     expect(status.code).toBe(0);
     expect(status.out).toContain("<name> status");
