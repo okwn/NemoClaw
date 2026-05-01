@@ -110,6 +110,7 @@ export const COMMANDS: readonly CommandDef[] = [
   {
     usage: "nemoclaw <name> doctor",
     description: "Run host, gateway, sandbox, and inference health checks",
+    flags: "[--json]",
     group: "Sandbox Management",
     scope: "sandbox",
   },
