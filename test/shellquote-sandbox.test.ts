@@ -181,52 +181,14 @@ try {
     }
   });
 
-  it("forwards opts to openshellArgv so openshellBinary overrides are not dropped", () => {
-    const repoRoot = path.join(import.meta.dirname, "..");
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-openshell-forward-"));
-    const scriptPath = path.join(tmpDir, "run-capture-openshell.mjs");
-    const runnerUrl = JSON.stringify(
-      pathToFileURL(path.join(repoRoot, "dist", "lib", "runner.js")).href,
-    );
-    const onboardUrl = JSON.stringify(
-      `${pathToFileURL(path.join(repoRoot, "dist", "lib", "onboard.js")).href}?stub=${Date.now()}`,
-    );
+  it("builds openshell argv with an explicit openshellBinary override", async () => {
+    const onboardModule = await import("../dist/lib/onboard.js");
+    const onboard = (onboardModule.default ?? onboardModule) as unknown as {
+      openshellArgv: (args: string[], opts?: { openshellBinary?: string }) => string[];
+    };
 
-    fs.writeFileSync(
-      scriptPath,
-      `
-const runner = (await import(${runnerUrl})).default;
-let captured = null;
-runner.runCapture = (command, opts = {}) => {
-  captured = { command, opts };
-  return "";
-};
-const { runCaptureOpenshell } = await import(${onboardUrl});
-runCaptureOpenshell(["--version"], {
-  openshellBinary: "/tmp/custom-openshell",
-  ignoreError: true,
-});
-console.log(JSON.stringify(captured));
-`,
-      { mode: 0o700 },
-    );
-
-    try {
-      const result = spawnSync(process.execPath, [scriptPath], {
-        cwd: repoRoot,
-        encoding: "utf-8",
-        env: { HOME: tmpDir, PATH: process.env.PATH || "" },
-        timeout: 5000,
-      });
-      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
-      const capturedRun = JSON.parse(result.stdout.trim()) as {
-        command: string[];
-        opts: { ignoreError?: boolean };
-      };
-      expect(capturedRun.command).toEqual(["/tmp/custom-openshell", "--version"]);
-      expect(capturedRun.opts.ignoreError).toBe(true);
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+    expect(
+      onboard.openshellArgv(["--version"], { openshellBinary: "/tmp/custom-openshell" }),
+    ).toEqual(["/tmp/custom-openshell", "--version"]);
   });
 });

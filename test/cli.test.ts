@@ -190,22 +190,41 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
 describe("CLI dispatch", () => {
   it("config get validates flags and values before dispatch", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-config-get-"));
+    const localBin = path.join(home, "bin");
+    fs.mkdirSync(localBin, { recursive: true });
+    fs.writeFileSync(
+      path.join(localBin, "openshell"),
+      [
+        "#!/usr/bin/env bash",
+        'case "$*" in',
+        '  "status") printf "Status: Connected\\nGateway: nemoclaw\\n"; exit 0 ;;',
+        '  "gateway info -g nemoclaw") printf "Gateway: nemoclaw\\n"; exit 0 ;;',
+        '  "sandbox list") echo "alpha Ready"; exit 0 ;;',
+        '  "sandbox get alpha") printf "Name: alpha\\nPhase: Ready\\nPolicy:\\n"; exit 0 ;;',
+        '  "policy get --full alpha") exit 1 ;;',
+        '  "inference get") exit 1 ;;',
+        "  *) exit 0 ;;",
+        "esac",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
     writeSandboxRegistry(home);
+    const env = { HOME: home, PATH: `${localBin}:${process.env.PATH || ""}` };
     try {
-      const missingKey = runWithEnv("alpha config get --key", { HOME: home });
+      const missingKey = runWithEnv("alpha config get --key", env);
       expect(missingKey.code).toBe(1);
       expect(missingKey.out).toContain("--key requires a value");
       expect(missingKey.out).toContain("Usage: nemoclaw <name> config get");
 
-      const missingFormat = runWithEnv("alpha config get --format", { HOME: home });
+      const missingFormat = runWithEnv("alpha config get --format", env);
       expect(missingFormat.code).toBe(1);
       expect(missingFormat.out).toContain("--format requires a value");
 
-      const badFormat = runWithEnv("alpha config get --format xml", { HOME: home });
+      const badFormat = runWithEnv("alpha config get --format xml", env);
       expect(badFormat.code).toBe(1);
       expect(badFormat.out).toContain("Unknown format: xml");
 
-      const unknownFlag = runWithEnv("alpha config get --bogus", { HOME: home });
+      const unknownFlag = runWithEnv("alpha config get --bogus", env);
       expect(unknownFlag.code).toBe(1);
       expect(unknownFlag.out).toContain("Unknown flag: --bogus");
     } finally {

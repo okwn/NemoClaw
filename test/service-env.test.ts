@@ -209,7 +209,10 @@ describe("service environment", () => {
       const fakeCaBundle = join(fakeDir, "ca-bundle.pem");
       const tmpFile = join(tmpdir(), `nemoclaw-git-ssl-entrypoint-${process.pid}.sh`);
       try {
-        writeFileSync(fakeCaBundle, "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n");
+        writeFileSync(
+          fakeCaBundle,
+          "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n",
+        );
         writeFileSync(
           tmpFile,
           [
@@ -246,7 +249,10 @@ describe("service environment", () => {
       try {
         const persistBlock = extractRuntimeShellEnvSnippet();
         // Create a fake CA bundle so the -f check passes
-        writeFileSync(fakeCaBundle, "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n");
+        writeFileSync(
+          fakeCaBundle,
+          "-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n",
+        );
         const wrapper = [
           "#!/usr/bin/env bash",
           "set -euo pipefail",
@@ -255,7 +261,7 @@ describe("service environment", () => {
           'PROXY_PORT="3128"',
           '_PROXY_URL="http://${PROXY_HOST}:${PROXY_PORT}"',
           '_NO_PROXY_VAL="localhost,127.0.0.1,::1,${PROXY_HOST}"',
-          '_TOOL_REDIRECTS=()',
+          "_TOOL_REDIRECTS=()",
           `_AXIOS_FIX_SCRIPT="/nonexistent/axios-proxy-fix.js"`,
           `_WS_FIX_SCRIPT="/nonexistent/ws-proxy-fix.js"`,
           // Simulate OpenShell injecting SSL_CERT_FILE and the entrypoint setting GIT_SSL_CAINFO
@@ -295,7 +301,7 @@ describe("service environment", () => {
           'PROXY_PORT="3128"',
           '_PROXY_URL="http://${PROXY_HOST}:${PROXY_PORT}"',
           '_NO_PROXY_VAL="localhost,127.0.0.1,::1,${PROXY_HOST}"',
-          '_TOOL_REDIRECTS=()',
+          "_TOOL_REDIRECTS=()",
           `_AXIOS_FIX_SCRIPT="/nonexistent/axios-proxy-fix.js"`,
           `_WS_FIX_SCRIPT="/nonexistent/ws-proxy-fix.js"`,
           // GIT_SSL_CAINFO intentionally NOT set
@@ -333,9 +339,18 @@ describe("service environment", () => {
       const block = src.slice(start, end).replaceAll("/tmp/", `${fakeTmp}/`);
       const tmpFile = join(tmpdir(), `nemoclaw-tool-redirects-${process.pid}.sh`);
       try {
-        writeFileSync(tmpFile, ["#!/usr/bin/env bash", "set -euo pipefail", block].join("\n"), {
-          mode: 0o700,
-        });
+        writeFileSync(
+          tmpFile,
+          [
+            "#!/usr/bin/env bash",
+            "set -euo pipefail",
+            'id() { if [ "${1:-}" = "-u" ]; then printf "1000\\n"; else command id "$@"; fi; }',
+            block,
+          ].join("\n"),
+          {
+            mode: 0o700,
+          },
+        );
         execFileSync("bash", [tmpFile], { encoding: "utf-8" });
 
         for (const dir of [

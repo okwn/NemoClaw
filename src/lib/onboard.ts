@@ -8443,6 +8443,7 @@ module.exports = {
   startGateway,
   findDashboardForwardOwner,
   startGatewayForRecovery,
+  openshellArgv,
   runCaptureOpenshell,
   agentSupportsWebSearch,
   setupInference,

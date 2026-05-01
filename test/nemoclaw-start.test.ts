@@ -1110,7 +1110,8 @@ describe("NC-2227-01: legacy migration behavior", () => {
     fs.mkdirSync(path.join(configDir, "workspace"), { recursive: true });
     fs.mkdirSync(path.join(dataDir, "workspace"), { recursive: true });
     fs.writeFileSync(path.join(dataDir, "workspace", "note.txt"), "from legacy");
-    fs.writeFileSync(path.join(dataDir, ".hidden"), "secret");
+    fs.mkdirSync(path.join(dataDir, ".hidden"));
+    fs.writeFileSync(path.join(dataDir, ".hidden", "secret.txt"), "secret");
     fs.rmSync(path.join(configDir, "workspace"), { recursive: true, force: true });
     fs.symlinkSync(path.join(dataDir, "workspace"), path.join(configDir, "workspace"));
 
@@ -1123,7 +1124,9 @@ describe("NC-2227-01: legacy migration behavior", () => {
       expect(fs.readFileSync(path.join(configDir, "workspace", "note.txt"), "utf-8")).toBe(
         "from legacy",
       );
-      expect(fs.readFileSync(path.join(configDir, ".hidden"), "utf-8")).toBe("secret");
+      expect(fs.readFileSync(path.join(configDir, ".hidden", "secret.txt"), "utf-8")).toBe(
+        "secret",
+      );
       const sentinel = path.join(configDir, ".migration-complete");
       expect(fs.existsSync(sentinel)).toBe(true);
       expect((fs.statSync(sentinel).mode & 0o777).toString(8)).toBe("444");

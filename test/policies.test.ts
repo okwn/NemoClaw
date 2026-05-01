@@ -1522,8 +1522,9 @@ setImmediate(() => {
     ) {
       const script = `
 const policies = require(${POLICIES_PATH});
-const counts = { ref: 0, pause: 0, unref: 0 };
+const counts = { ref: 0, resume: 0, pause: 0, unref: 0 };
 process.stdin.ref = () => { counts.ref += 1; return process.stdin; };
+process.stdin.resume = () => { counts.resume += 1; return process.stdin; };
 process.stdin.pause = () => { counts.pause += 1; return process.stdin; };
 process.stdin.unref = () => { counts.unref += 1; return process.stdin; };
 const items = [
@@ -1531,7 +1532,9 @@ const items = [
   { name: "beta", description: "second" },
 ];
 const options = ${functionName === "selectForRemoval" ? `{ applied: ["alpha"] }` : `{ applied: [] }`};
-policies[${JSON.stringify(functionName)}](items, options)
+const promptResult = policies[${JSON.stringify(functionName)}](items, options);
+setImmediate(() => process.stdin.emit("data", ${JSON.stringify(input)}));
+promptResult
   .then((selected) => {
     console.log(JSON.stringify({ selected, counts }));
   })
@@ -1541,11 +1544,10 @@ policies[${JSON.stringify(functionName)}](items, options)
   });
 `;
       const result = spawnSync(process.execPath, ["-e", script], {
-        input,
         encoding: "utf-8",
         timeout: 5000,
       });
-      expect(result.status).toBe(0);
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
       return JSON.parse(result.stdout.trim()) as {
         selected: string | null;
         counts: { ref: number; pause: number; unref: number };
