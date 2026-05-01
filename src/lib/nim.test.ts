@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { Mock } from "vitest";
 
 // Import from compiled dist/ for coverage attribution.
-import nim from "../../dist/lib/nim";
+import * as nim from "../../dist/lib/nim";
 
 const require = createRequire(import.meta.url);
 const NIM_DIST_PATH = require.resolve("../../dist/lib/nim");
@@ -107,6 +107,120 @@ describe("nim", () => {
       if (gpu && gpu.type === "apple") {
         expect(gpu.nimCapable).toBe(false);
         expect(gpu.name).toBeTruthy();
+      }
+    });
+
+    it("populates name and memory from primary nvidia-smi path", () => {
+      // Primary path returns name+memory.total in a single CSV line per GPU.
+      // Regression guard for #2669: the GB300 preflight line was missing the
+      // GPU model because only memory.total was being queried.
+      const runCapture = vi.fn((cmd: string | string[]) => {
+        if (!Array.isArray(cmd)) throw new Error("expected argv array");
+        if (
+          cmd[0] === "nvidia-smi" &&
+          cmd.some((a: string) => a.includes("name,memory.total"))
+        ) {
+          return "NVIDIA GB300, 284208\n";
+        }
+        return "";
+      });
+      const { nimModule, restore } = loadNimWithMockedRunner(runCapture);
+
+      try {
+        expect(nimModule.detectGpu()).toMatchObject({
+          type: "nvidia",
+          name: "NVIDIA GB300",
+          count: 1,
+          totalMemoryMB: 284208,
+          perGpuMB: 284208,
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it("aggregates totalMemoryMB across multiple GPUs from primary path", () => {
+      const runCapture = vi.fn((cmd: string | string[]) => {
+        if (!Array.isArray(cmd)) throw new Error("expected argv array");
+        if (
+          cmd[0] === "nvidia-smi" &&
+          cmd.some((a: string) => a.includes("name,memory.total"))
+        ) {
+          return "NVIDIA H100 80GB HBM3, 81920\nNVIDIA H100 80GB HBM3, 81920\n";
+        }
+        return "";
+      });
+      const { nimModule, restore } = loadNimWithMockedRunner(runCapture);
+
+      try {
+        expect(nimModule.detectGpu()).toMatchObject({
+          type: "nvidia",
+          name: "NVIDIA H100 80GB HBM3",
+          count: 2,
+          totalMemoryMB: 163840,
+          perGpuMB: 81920,
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it("preserves commas inside the GPU model name (last-comma split)", () => {
+      // The CSV split must use the LAST comma, not the first, so that GPU
+      // models whose names contain a comma round-trip intact. The split was
+      // designed for this; the test guards against future "split on first
+      // comma" regressions.
+      const runCapture = vi.fn((cmd: string | string[]) => {
+        if (!Array.isArray(cmd)) throw new Error("expected argv array");
+        if (
+          cmd[0] === "nvidia-smi" &&
+          cmd.some((a: string) => a.includes("name,memory.total"))
+        ) {
+          return "NVIDIA RTX A,B, 81920\n";
+        }
+        return "";
+      });
+      const { nimModule, restore } = loadNimWithMockedRunner(runCapture);
+
+      try {
+        expect(nimModule.detectGpu()).toMatchObject({
+          type: "nvidia",
+          name: "NVIDIA RTX A,B",
+          count: 1,
+          totalMemoryMB: 81920,
+          perGpuMB: 81920,
+        });
+      } finally {
+        restore();
+      }
+    });
+
+    it("drops name on mixed-model multi-GPU hosts so we don't attribute one model to the others", () => {
+      const runCapture = vi.fn((cmd: string | string[]) => {
+        if (!Array.isArray(cmd)) throw new Error("expected argv array");
+        if (
+          cmd[0] === "nvidia-smi" &&
+          cmd.some((a: string) => a.includes("name,memory.total"))
+        ) {
+          return "NVIDIA H100 80GB HBM3, 81920\nNVIDIA A100-SXM4-80GB, 81920\n";
+        }
+        return "";
+      });
+      const { nimModule, restore } = loadNimWithMockedRunner(runCapture);
+
+      try {
+        const result = nimModule.detectGpu();
+        expect(result).toMatchObject({
+          type: "nvidia",
+          count: 2,
+          totalMemoryMB: 163840,
+        });
+        // Mixed-model hosts must not pin a single name; the preflight line
+        // would otherwise read "2x NVIDIA H100" on a host that's actually
+        // half H100 and half A100.
+        expect(result?.name).toBeUndefined();
+      } finally {
+        restore();
       }
     });
 
@@ -300,6 +414,24 @@ describe("nim", () => {
       } finally {
         restore();
       }
+    });
+  });
+
+  describe("shouldShowNimLine", () => {
+    it("hides the line for cloud-only sandboxes (no container, nothing running)", () => {
+      expect(nim.shouldShowNimLine(null, false)).toBe(false);
+      expect(nim.shouldShowNimLine(undefined, false)).toBe(false);
+      expect(nim.shouldShowNimLine("", false)).toBe(false);
+    });
+
+    it("shows the line when the sandbox is bound to a NIM container", () => {
+      expect(nim.shouldShowNimLine("nim-foo", false)).toBe(true);
+      expect(nim.shouldShowNimLine("nim-foo", true)).toBe(true);
+    });
+
+    it("still surfaces an orphan NIM container even when none is registered", () => {
+      expect(nim.shouldShowNimLine(null, true)).toBe(true);
+      expect(nim.shouldShowNimLine(undefined, true)).toBe(true);
     });
   });
 

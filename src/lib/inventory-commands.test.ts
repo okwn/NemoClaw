@@ -3,9 +3,83 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { listSandboxesCommand, showStatusCommand } from "./inventory-commands";
+import { getSandboxInventory, listSandboxesCommand, showStatusCommand } from "./inventory-commands";
 
 describe("inventory commands", () => {
+  it("returns structured empty inventory for JSON consumers", async () => {
+    const getLiveInference = vi.fn().mockReturnValue(null);
+
+    const inventory = await getSandboxInventory({
+      recoverRegistryEntries: async () => ({ sandboxes: [], defaultSandbox: null }),
+      getLiveInference,
+      loadLastSession: () => ({ sandboxName: "alpha" }),
+    });
+
+    expect(inventory).toEqual({
+      schemaVersion: 1,
+      defaultSandbox: null,
+      recovery: {
+        recoveredFromSession: false,
+        recoveredFromGateway: 0,
+      },
+      lastOnboardedSandbox: "alpha",
+      sandboxes: [],
+    });
+    expect(getLiveInference).not.toHaveBeenCalled();
+  });
+
+  it("returns structured sandbox inventory with connection state", async () => {
+    const getLiveInference = vi.fn().mockReturnValue({
+      provider: "live-provider",
+      model: "live-model",
+    });
+
+    const inventory = await getSandboxInventory({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "alpha",
+            model: "configured-alpha",
+            provider: "configured-provider",
+            gpuEnabled: true,
+            policies: ["pypi"],
+            agent: "openclaw",
+          },
+        ],
+        defaultSandbox: "alpha",
+        recoveredFromSession: true,
+        recoveredFromGateway: 2,
+      }),
+      getLiveInference,
+      loadLastSession: () => ({ sandboxName: "alpha" }),
+      getActiveSessionCount: (sandboxName) => (sandboxName === "alpha" ? 1 : 0),
+    });
+
+    expect(inventory).toEqual({
+      schemaVersion: 1,
+      defaultSandbox: "alpha",
+      recovery: {
+        recoveredFromSession: true,
+        recoveredFromGateway: 2,
+      },
+      lastOnboardedSandbox: "alpha",
+      sandboxes: [
+        {
+          name: "alpha",
+          model: "configured-alpha",
+          provider: "configured-provider",
+          gpuEnabled: true,
+          policies: ["pypi"],
+          agent: "openclaw",
+          isDefault: true,
+          activeSessionCount: 1,
+          connected: true,
+        },
+      ],
+    });
+    expect(getLiveInference).not.toHaveBeenCalled();
+  });
+
   it("prints the empty-state onboarding hint when no sandboxes exist", async () => {
     const lines: string[] = [];
     await listSandboxesCommand({
@@ -46,11 +120,37 @@ describe("inventory commands", () => {
     expect(lines).toContain("  Recovered 1 sandbox entry from the live OpenShell gateway.");
     expect(lines).toContain("    alpha *");
     expect(lines).toContain(
-      "      model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  GPU  policies: pypi",
+      "      agent: openclaw  model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  GPU  policies: pypi",
     );
   });
 
-  it("shows stored sandbox inference instead of live gateway inference in list output", async () => {
+  it("prints the per-sandbox agent type in list output", async () => {
+    const lines: string[] = [];
+    await listSandboxesCommand({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "hermes",
+            model: "nvidia/nemotron-3-super-120b-a12b",
+            provider: "nvidia-prod",
+            gpuEnabled: false,
+            policies: [],
+            agent: "hermes",
+          },
+        ],
+        defaultSandbox: "hermes",
+      }),
+      getLiveInference: () => null,
+      loadLastSession: () => null,
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain(
+      "      agent: hermes  model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  CPU  policies: none",
+    );
+  });
+
+  it("uses live gateway inference for the default sandbox in list output (#2369)", async () => {
     const lines: string[] = [];
     await listSandboxesCommand({
       recoverRegistryEntries: async () => ({
@@ -77,15 +177,128 @@ describe("inventory commands", () => {
       log: (message = "") => lines.push(message),
     });
 
+    // Default sandbox reflects live gateway state, with an onboarded drift note.
     expect(lines).toContain(
-      "      model: configured-alpha  provider: configured-provider  GPU  policies: none",
+      "      agent: openclaw  model: live-model  provider: live-provider  GPU  policies: none",
     );
+    // Stale stored row for the default sandbox must not leak through.
     expect(lines).not.toContain(
-      "      model: live-model  provider: live-provider  GPU  policies: none",
+      "      agent: openclaw  model: configured-alpha  provider: configured-provider  GPU  policies: none",
     );
     expect(lines).toContain(
-      "      model: configured-beta  provider: beta-provider  CPU  policies: none",
+      "      (onboarded: model=configured-alpha, provider=configured-provider)",
     );
+    // Non-default sandbox keeps its stored config — the gateway only applies
+    // to whichever sandbox is currently connected.
+    expect(lines).toContain(
+      "      agent: openclaw  model: configured-beta  provider: beta-provider  CPU  policies: none",
+    );
+  });
+
+  it("does not annotate the default sandbox when live gateway matches onboarded config", async () => {
+    const lines: string[] = [];
+    await listSandboxesCommand({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "alpha",
+            model: "configured-alpha",
+            provider: "configured-provider",
+            gpuEnabled: true,
+            policies: [],
+          },
+        ],
+        defaultSandbox: "alpha",
+      }),
+      getLiveInference: () => ({ provider: "configured-provider", model: "configured-alpha" }),
+      loadLastSession: () => null,
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain(
+      "      agent: openclaw  model: configured-alpha  provider: configured-provider  GPU  policies: none",
+    );
+    expect(lines.some((l) => l.includes("onboarded"))).toBe(false);
+  });
+
+  it("falls back to onboarded config when the gateway is unreachable", async () => {
+    const lines: string[] = [];
+    await listSandboxesCommand({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "alpha",
+            model: "configured-alpha",
+            provider: "configured-provider",
+            gpuEnabled: true,
+            policies: [],
+          },
+        ],
+        defaultSandbox: "alpha",
+      }),
+      getLiveInference: () => null,
+      loadLastSession: () => null,
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain(
+      "      agent: openclaw  model: configured-alpha  provider: configured-provider  GPU  policies: none",
+    );
+    expect(lines.some((l) => l.includes("onboarded"))).toBe(false);
+  });
+
+  it("annotates only the drifting field when the live gateway reports partial overrides", async () => {
+    const lines: string[] = [];
+    await listSandboxesCommand({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "alpha",
+            model: "configured-alpha",
+            provider: "configured-provider",
+            gpuEnabled: true,
+            policies: [],
+          },
+        ],
+        defaultSandbox: "alpha",
+      }),
+      // Only the model changed at the gateway; provider matches onboarded.
+      getLiveInference: () => ({ provider: "configured-provider", model: "live-model" }),
+      loadLastSession: () => null,
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain(
+      "      agent: openclaw  model: live-model  provider: configured-provider  GPU  policies: none",
+    );
+    expect(lines).toContain("      (onboarded: model=configured-alpha)");
+  });
+
+  it("annotates only the provider field when the live gateway provider drifts", async () => {
+    const lines: string[] = [];
+    await listSandboxesCommand({
+      recoverRegistryEntries: async () => ({
+        sandboxes: [
+          {
+            name: "alpha",
+            model: "configured-alpha",
+            provider: "configured-provider",
+            gpuEnabled: true,
+            policies: [],
+          },
+        ],
+        defaultSandbox: "alpha",
+      }),
+      // Only the provider changed at the gateway; model matches onboarded.
+      getLiveInference: () => ({ provider: "live-provider", model: "configured-alpha" }),
+      loadLastSession: () => null,
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain(
+      "      agent: openclaw  model: configured-alpha  provider: live-provider  GPU  policies: none",
+    );
+    expect(lines).toContain("      (onboarded: provider=configured-provider)");
   });
 
   it("flags messaging bridge as degraded when checkMessagingBridgeHealth reports conflicts", () => {
@@ -219,7 +432,7 @@ describe("inventory commands", () => {
     expect(readGatewayLog).not.toHaveBeenCalled();
   });
 
-  it("prints stored sandbox models in status and delegates service status", () => {
+  it("prints sandbox models in status and delegates service status", () => {
     const lines: string[] = [];
     const showServiceStatus = vi.fn();
     showStatusCommand({
@@ -231,20 +444,76 @@ describe("inventory commands", () => {
           },
           {
             name: "beta",
-            model: "z-ai/glm5",
+            model: "z-ai/glm-5.1",
           },
         ],
         defaultSandbox: "alpha",
       }),
-      getLiveInference: () => ({ provider: "nvidia-prod", model: "moonshotai/kimi-k2.5" }),
+      getLiveInference: () => ({ provider: "nvidia-prod", model: "minimaxai/minimax-m2.5" }),
       showServiceStatus,
       log: (message = "") => lines.push(message),
     });
 
     expect(lines).toContain("  Sandboxes:");
-    expect(lines).toContain("    alpha * (nvidia/nemotron-3-super-120b-a12b)");
-    expect(lines).not.toContain("    alpha * (moonshotai/kimi-k2.5)");
-    expect(lines).toContain("    beta (z-ai/glm5)");
+    // Default sandbox shows the live gateway model (#2369), annotated with
+    // the onboarded model when they differ.
+    expect(lines).toContain("    alpha * (minimaxai/minimax-m2.5)");
+    expect(lines).toContain("      (onboarded: nvidia/nemotron-3-super-120b-a12b)");
+    // Non-default sandbox keeps its stored model — the gateway only applies
+    // to whichever sandbox is currently connected.
+    expect(lines).toContain("    beta (z-ai/glm-5.1)");
     expect(showServiceStatus).toHaveBeenCalledWith({ sandboxName: "alpha" });
+  });
+
+  it("does not annotate status when the live gateway matches the onboarded model", () => {
+    const lines: string[] = [];
+    showStatusCommand({
+      listSandboxes: () => ({
+        sandboxes: [{ name: "alpha", model: "nvidia/nemotron-3-super-120b-a12b" }],
+        defaultSandbox: "alpha",
+      }),
+      getLiveInference: () => ({
+        provider: "nvidia-prod",
+        model: "nvidia/nemotron-3-super-120b-a12b",
+      }),
+      showServiceStatus: vi.fn(),
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain("    alpha * (nvidia/nemotron-3-super-120b-a12b)");
+    expect(lines.some((l) => l.includes("onboarded"))).toBe(false);
+  });
+
+  it("falls back to stored status model when the gateway is unreachable", () => {
+    const lines: string[] = [];
+    showStatusCommand({
+      listSandboxes: () => ({
+        sandboxes: [{ name: "alpha", model: "nvidia/nemotron-3-super-120b-a12b" }],
+        defaultSandbox: "alpha",
+      }),
+      getLiveInference: () => null,
+      showServiceStatus: vi.fn(),
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain("    alpha * (nvidia/nemotron-3-super-120b-a12b)");
+    expect(lines.some((l) => l.includes("onboarded"))).toBe(false);
+  });
+
+  it("annotates status drift with 'unknown' when the onboarded model is missing", () => {
+    const lines: string[] = [];
+    showStatusCommand({
+      listSandboxes: () => ({
+        // sandbox registered without a model (possible per SandboxEntry type).
+        sandboxes: [{ name: "alpha" }],
+        defaultSandbox: "alpha",
+      }),
+      getLiveInference: () => ({ provider: "nvidia-prod", model: "minimaxai/minimax-m2.5" }),
+      showServiceStatus: vi.fn(),
+      log: (message = "") => lines.push(message),
+    });
+
+    expect(lines).toContain("    alpha * (minimaxai/minimax-m2.5)");
+    expect(lines).toContain("      (onboarded: unknown)");
   });
 });

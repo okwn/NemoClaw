@@ -6,8 +6,6 @@
 
 import fs from "node:fs";
 import path from "node:path";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const yaml: { load(input: string): unknown } = require("js-yaml");
 
 import { ROOT } from "./runner";
 import { DASHBOARD_PORT } from "./ports";
@@ -19,6 +17,9 @@ type ManifestValue = ManifestScalar | ManifestRecord | ManifestValue[];
 type ManifestRecord = { [key: string]: ManifestValue };
 type StringMap = { [key: string]: string };
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const yaml: { load(input: string): unknown } = require("js-yaml");
+
 export interface AgentHealthProbe {
   url: string;
   port: number;
@@ -26,8 +27,7 @@ export interface AgentHealthProbe {
 }
 
 export interface AgentConfigPaths {
-  immutableDir: string;
-  writableDir: string;
+  dir: string;
   configFile: string;
   envFile: string | null;
   format: string;
@@ -85,7 +85,6 @@ export interface AgentDefinition {
   readonly policyPermissivePath: string | null;
   readonly pluginDir: string | null;
   readonly legacyPaths: AgentLegacyPaths | null;
-  [key: string]: unknown;
 }
 
 export interface AgentChoice {
@@ -305,7 +304,7 @@ export function loadAgent(name: string): AgentDefinition {
     },
 
     get dashboard(): AgentDashboard {
-      const d = (raw.dashboard as Partial<AgentDashboard>) || {};
+      const d = readObject(raw, "dashboard") ?? {};
       const kind: AgentDashboardKind = d.kind === "api" ? "api" : "ui";
       const defaultLabel = kind === "api" ? "API" : "UI";
       const normalizedLabel = typeof d.label === "string" ? d.label.trim() : "";
@@ -320,8 +319,7 @@ export function loadAgent(name: string): AgentDefinition {
 
     get configPaths(): AgentConfigPaths {
       return {
-        immutableDir: readString(config ?? {}, "immutable_dir") ?? "/sandbox/.openclaw",
-        writableDir: readString(config ?? {}, "writable_dir") ?? "/sandbox/.openclaw-data",
+        dir: readString(config ?? {}, "dir") ?? "/sandbox/.openclaw",
         configFile: readString(config ?? {}, "config_file") ?? "openclaw.json",
         envFile: readString(config ?? {}, "env_file") ?? null,
         format: readString(config ?? {}, "format") ?? "json",

@@ -9,21 +9,24 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import { ROOT, run } from "./runner";
+import { ROOT, run, shellQuote } from "./runner";
+import { dockerBuild, dockerImageInspect } from "./docker";
 import { loadAgent, resolveAgentName, type AgentDefinition } from "./agent-defs";
+import { getAgentBranding } from "./branding";
 import { getProviderSelectionConfig } from "./inference-config";
 import * as onboardSession from "./onboard-session";
 import { sleepSeconds } from "./wait";
+import type { JsonValue as LooseValue, JsonObject as LooseObject } from "./json-types";
 
 export interface OnboardContext {
   step: (current: number, total: number, message: string) => void;
   runCaptureOpenshell: (args: string[], opts?: { ignoreError?: boolean }) => string | null;
   openshellShellCommand: (args: string[], options?: { openshellBinary?: string }) => string;
   openshellBinary: string;
-  buildSandboxConfigSyncScript: (config: Record<string, unknown>) => string;
+  buildSandboxConfigSyncScript: (config: LooseObject) => string;
   writeSandboxConfigSyncFile: (script: string) => string;
   cleanupTempDir: (file: string, prefix: string) => void;
-  startRecordedStep: (stepName: string, updates: Record<string, unknown>) => void;
+  startRecordedStep: (stepName: string, updates: LooseObject) => void;
   skippedStepMessage: (stepName: string, sandboxName: string) => void;
 }
 
@@ -54,18 +57,21 @@ export function createAgentSandbox(agent: AgentDefinition): {
   const agentDockerfile = agent.dockerfilePath;
   const baseDockerfile = agent.dockerfileBasePath;
 
+  if (!agentDockerfile) {
+    throw new Error(`${agent.displayName} is missing a sandbox Dockerfile`);
+  }
+
   if (baseDockerfile) {
     const baseImageTag = `ghcr.io/nvidia/nemoclaw/${agent.name}-sandbox-base:latest`;
-    const inspectResult = run(
-      ["docker", "image", "inspect", baseImageTag],
-      { ignoreError: true, suppressOutput: true },
-    );
+    const inspectResult = dockerImageInspect(baseImageTag, {
+      ignoreError: true,
+      suppressOutput: true,
+    });
     if (inspectResult.status !== 0) {
       console.log(`  Building ${agent.displayName} base image (first time only)...`);
-      run(
-        ["docker", "build", "-f", baseDockerfile, "-t", baseImageTag, ROOT],
-        { stdio: ["ignore", "inherit", "inherit"] },
-      );
+      dockerBuild(baseDockerfile, baseImageTag, ROOT, {
+        stdio: ["ignore", "inherit", "inherit"],
+      });
       console.log(`  \u2713 Base image built: ${baseImageTag}`);
     } else {
       console.log(`  Base image exists: ${baseImageTag}`);
@@ -81,7 +87,7 @@ export function createAgentSandbox(agent: AgentDefinition): {
     },
   });
   const stagedDockerfile = path.join(buildCtx, "Dockerfile");
-  fs.copyFileSync(agentDockerfile!, stagedDockerfile);
+  fs.copyFileSync(agentDockerfile, stagedDockerfile);
   console.log(`  Using ${agent.displayName} Dockerfile: ${agentDockerfile}`);
 
   return { buildCtx, stagedDockerfile };
@@ -105,6 +111,102 @@ function sleep(seconds: number): void {
   sleepSeconds(seconds);
 }
 
+function agentCliName(agent: AgentDefinition): string {
+  return getAgentBranding(agent.name).cli;
+}
+
+function agentExecutableName(agent: AgentDefinition): string {
+  const configuredPath = typeof agent.binary_path === "string" ? agent.binary_path.trim() : "";
+  return path.basename(configuredPath || agent.name);
+}
+
+type AgentBinaryAvailability =
+  | { available: true }
+  | {
+      available: false;
+      reason: "not_found" | "not_executable" | "path_mismatch";
+      binaryPath?: string;
+      resolvedPath?: string;
+    };
+
+function verifyAgentBinaryAvailable(
+  sandboxName: string,
+  agent: AgentDefinition,
+  runCaptureOpenshell: OnboardContext["runCaptureOpenshell"],
+): AgentBinaryAvailability {
+  const executable = agentExecutableName(agent);
+  const binaryPath = typeof agent.binary_path === "string" ? agent.binary_path.trim() : "";
+  const script = binaryPath
+    ? [
+        `resolved="$(command -v ${shellQuote(executable)} 2>/dev/null || true)"`,
+        `[ -n "$resolved" ] || { echo not_found; exit 1; }`,
+        `[ -x ${shellQuote(binaryPath)} ] || { echo not_executable; exit 1; }`,
+        `[ "$resolved" = ${shellQuote(binaryPath)} ] || { printf 'path_mismatch:%s\\n' "$resolved"; exit 1; }`,
+        "echo ok",
+      ].join(" && ")
+    : `command -v ${shellQuote(executable)} >/dev/null 2>&1 && echo ok || echo not_found`;
+  const result = runCaptureOpenshell(
+    ["sandbox", "exec", "-n", sandboxName, "--", "sh", "-lc", script],
+    {
+      ignoreError: true,
+    },
+  );
+  const status = result?.trim() ?? "";
+  if (status === "ok") {
+    return { available: true };
+  }
+  if (binaryPath && result) {
+    const mismatch = result.match(/path_mismatch:([^\n]+)/);
+    if (mismatch) {
+      return {
+        available: false,
+        reason: "path_mismatch",
+        binaryPath,
+        resolvedPath: mismatch[1].trim(),
+      };
+    }
+    if (result.includes("not_executable")) {
+      return { available: false, reason: "not_executable", binaryPath };
+    }
+  }
+  return { available: false, reason: "not_found", binaryPath: binaryPath || undefined };
+}
+
+function describeAgentBinaryFailure(
+  sandboxName: string,
+  agent: AgentDefinition,
+  result: Exclude<AgentBinaryAvailability, { available: true }>,
+): string {
+  const executable = agentExecutableName(agent);
+  if (result.reason === "path_mismatch") {
+    return `${agent.displayName} binary '${executable}' resolves to '${result.resolvedPath}', expected '${result.binaryPath}' inside sandbox '${sandboxName}'`;
+  }
+  if (result.reason === "not_executable") {
+    return `${agent.displayName} configured binary '${result.binaryPath}' is not executable inside sandbox '${sandboxName}'`;
+  }
+  return `${agent.displayName} binary '${executable}' is missing inside sandbox '${sandboxName}'`;
+}
+
+function failAgentSetup(sandboxName: string, agent: AgentDefinition, message: string): never {
+  onboardSession.markStepFailed("agent_setup", message);
+  console.error(`  \u2717 ${message}`);
+  console.error(`    Check: ${agentCliName(agent)} ${sandboxName} logs --follow`);
+  process.exit(1);
+}
+
+function isHealthProbeOk(result: string | null | undefined): boolean {
+  const body = (result ?? "").trim();
+  if (body === "ok") {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(body) as { status?: unknown };
+    return parsed.status === "ok";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Handle the full agent setup step (step 7) including resume detection.
  * For non-OpenClaw agents: writes config into the sandbox and verifies
@@ -116,7 +218,7 @@ export async function handleAgentSetup(
   provider: string,
   agent: AgentDefinition,
   resume: boolean,
-  _session: unknown,
+  _session: object | null,
   ctx: OnboardContext,
 ): Promise<void> {
   const {
@@ -135,10 +237,10 @@ export async function handleAgentSetup(
     const probe = agent.healthProbe;
     if (probe?.url) {
       const result = runCaptureOpenshell(
-        ["sandbox", "exec", sandboxName, "curl", "-sf", "--max-time", "3", probe.url],
+        ["sandbox", "exec", "-n", sandboxName, "--", "curl", "-sf", "--max-time", "3", probe.url],
         { ignoreError: true },
       );
-      if (result && result.includes("ok")) {
+      if (isHealthProbeOk(result)) {
         skippedStepMessage("agent_setup", sandboxName);
         onboardSession.markStepComplete("agent_setup", { sandboxName, provider, model });
         return;
@@ -148,6 +250,15 @@ export async function handleAgentSetup(
 
   startRecordedStep("agent_setup", { sandboxName, provider, model });
   step(7, 8, `Setting up ${agent.displayName} inside sandbox`);
+
+  const binaryAvailability = verifyAgentBinaryAvailable(sandboxName, agent, runCaptureOpenshell);
+  if (!binaryAvailability.available) {
+    failAgentSetup(
+      sandboxName,
+      agent,
+      describeAgentBinaryFailure(sandboxName, agent, binaryAvailability),
+    );
+  }
 
   const selectionConfig = getProviderSelectionConfig(provider, model);
   if (selectionConfig) {
@@ -160,10 +271,10 @@ export async function handleAgentSetup(
     const scriptFile = writeSandboxConfigSyncFile(script);
     try {
       const scriptContent = fs.readFileSync(scriptFile, "utf-8");
-      run(
-        [openshellBin, "sandbox", "connect", sandboxName],
-        { stdio: ["pipe", "ignore", "inherit"], input: scriptContent },
-      );
+      run([openshellBin, "sandbox", "connect", sandboxName], {
+        stdio: ["pipe", "ignore", "inherit"],
+        input: scriptContent,
+      });
     } finally {
       cleanupTempDir(scriptFile, "nemoclaw-sync");
     }
@@ -178,10 +289,10 @@ export async function handleAgentSetup(
     let healthy = false;
     for (let i = 0; i < maxAttempts; i++) {
       const result = runCaptureOpenshell(
-        ["sandbox", "exec", sandboxName, "curl", "-sf", "--max-time", "3", probe.url],
+        ["sandbox", "exec", "-n", sandboxName, "--", "curl", "-sf", "--max-time", "3", probe.url],
         { ignoreError: true },
       );
-      if (result && result.includes("ok")) {
+      if (isHealthProbeOk(result)) {
         healthy = true;
         break;
       }
@@ -190,11 +301,10 @@ export async function handleAgentSetup(
     if (healthy) {
       console.log(`  \u2713 ${agent.displayName} gateway is healthy`);
     } else {
-      console.log(
-        `  \u26a0 ${agent.displayName} gateway did not respond within ${timeoutSecs}s.`,
-      );
-      console.log(
-        `    The gateway may still be starting. Check: nemoclaw ${sandboxName} logs`,
+      failAgentSetup(
+        sandboxName,
+        agent,
+        `${agent.displayName} gateway did not respond within ${timeoutSecs}s`,
       );
     }
   } else {

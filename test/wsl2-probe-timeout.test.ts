@@ -1,4 +1,3 @@
-// @ts-nocheck
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +5,31 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-import { getValidationProbeCurlArgs } from "../dist/lib/onboard";
+type OnboardValidationInternals = {
+  getValidationProbeCurlArgs: (opts?: { isWsl?: boolean }) => string[];
+};
+
+type OnboardValidationCandidate = {
+  getValidationProbeCurlArgs?: unknown;
+  default?: unknown;
+} | null;
+
+function isOnboardValidationInternals(
+  value: OnboardValidationCandidate,
+): value is OnboardValidationInternals {
+  return value !== null && typeof value.getValidationProbeCurlArgs === "function";
+}
+
+const loadedOnboardValidationModule = await import("../dist/lib/onboard.js");
+const onboardValidationInternals = isOnboardValidationInternals(loadedOnboardValidationModule)
+  ? loadedOnboardValidationModule
+  : isOnboardValidationInternals(loadedOnboardValidationModule.default)
+    ? loadedOnboardValidationModule.default
+    : null;
+if (!isOnboardValidationInternals(onboardValidationInternals)) {
+  throw new Error("Expected onboard validation internals to expose getValidationProbeCurlArgs");
+}
+const { getValidationProbeCurlArgs } = onboardValidationInternals;
 
 describe("WSL2 inference verification timeouts (issue #987)", () => {
   describe("getValidationProbeCurlArgs", () => {
@@ -42,8 +65,9 @@ describe("WSL2 inference verification timeouts (issue #987)", () => {
     // The retry logic is embedded in probeOpenAiLikeEndpoint which is not
     // exported. Verify the retry triggers on the correct curl exit codes by
     // scanning the compiled source for the guard condition.
+    // probeOpenAiLikeEndpoint moved to onboard-inference-probes.ts
     const onboardSrc = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "dist", "lib", "onboard.js"),
+      path.join(import.meta.dirname, "..", "dist", "lib", "onboard-inference-probes.js"),
       "utf-8",
     );
 
@@ -60,12 +84,18 @@ describe("WSL2 inference verification timeouts (issue #987)", () => {
     it("does not retry on curl exit code 0 (success) or 22 (HTTP error)", () => {
       // The isTimeoutOrConnFailure guard only matches 6, 7, and 28.
       // A successful probe (exit 0) returns early before reaching the retry
-      // block, and HTTP errors (exit 22) are not in the retry set.
+      // block, and HTTP curl failures (exit 22) are not in the retry set.
       // Verify the retry guard is exactly these three codes.
       const guardMatch = onboardSrc.match(
         /isTimeoutOrConnFailure\s*=\s*\(cs\)\s*=>\s*cs\s*===\s*28\s*\|\|\s*cs\s*===\s*6\s*\|\|\s*cs\s*===\s*7/,
       );
       expect(guardMatch).not.toBeNull();
+    });
+
+    it("retries HTTP 429 validation throttling from successful curl invocations", () => {
+      expect(onboardSrc).toMatch(/RETRIABLE_HTTP_PROBE_STATUSES\s*=\s*new Set\(\[429\]\)/);
+      expect(onboardSrc).toMatch(/result\.curlStatus\s*===\s*0/);
+      expect(onboardSrc).toMatch(/executeProbeWithHttpRetry/);
     });
 
     it("doubles timeout values for the retry attempt", () => {

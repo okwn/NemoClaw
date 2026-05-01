@@ -182,6 +182,16 @@ Install the CLI, configure inference, and launch your first sandboxed agent.
 {bdg-secondary}`Tutorial`
 :::
 
+:::{grid-item-card} NemoClaw Quickstart for Hermes
+:link: get-started/quickstart-hermes
+:link-type: doc
+
+Launch Hermes in an OpenShell sandbox with the `nemohermes` alias.
+
++++
+{bdg-secondary}`Tutorial`
+:::
+
 :::{grid-item-card} Commands
 :link: reference/commands
 :link-type: doc
@@ -287,7 +297,7 @@ This software automatically retrieves, accesses or interacts with external mater
 :hidden:
 
 Overview <about/overview>
-How It Works <about/how-it-works>
+Architecture Overview <about/how-it-works>
 Ecosystem <about/ecosystem>
 Release Notes <about/release-notes>
 ```
@@ -296,8 +306,9 @@ Release Notes <about/release-notes>
 :caption: Get Started
 :hidden:
 
-Quickstart <get-started/quickstart>
-Windows Prerequisites <get-started/windows-setup>
+Prerequisites <get-started/prerequisites>
+Quickstart with OpenClaw <get-started/quickstart>
+Quickstart with Hermes <get-started/quickstart-hermes>
 ```
 
 ```{toctree}
@@ -307,6 +318,7 @@ Windows Prerequisites <get-started/windows-setup>
 Inference Options <inference/inference-options>
 Use Local Inference <inference/use-local-inference>
 Switch Inference Providers <inference/switch-inference-providers>
+Set Up Task-Specific Sub-Agents <inference/set-up-sub-agent>
 ```
 
 ```{toctree}
@@ -332,6 +344,7 @@ OpenClaw Controls <security/openclaw-controls>
 
 Deploy to a Remote GPU Instance <deployment/deploy-to-remote-gpu>
 Set Up Telegram <deployment/set-up-telegram-bridge>
+Install OpenClaw Plugins <deployment/install-openclaw-plugins>
 Sandbox Hardening <deployment/sandbox-hardening>
 ```
 

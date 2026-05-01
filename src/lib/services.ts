@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execSync, spawn } from "node:child_process";
+import { CLI_DISPLAY_NAME, AGENT_PRODUCT_NAME } from "./branding";
 import {
+  chmodSync,
   closeSync,
   existsSync,
+  fchmodSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -61,8 +64,9 @@ function warn(msg: string): void {
 
 function ensurePidDir(pidDir: string): void {
   if (!existsSync(pidDir)) {
-    mkdirSync(pidDir, { recursive: true });
+    mkdirSync(pidDir, { recursive: true, mode: 0o700 });
   }
+  chmodSync(pidDir, 0o700);
 }
 
 function readPid(pidDir: string, name: string): number | null {
@@ -103,8 +107,8 @@ function removePid(pidDir: string, name: string): void {
 // Service lifecycle
 // ---------------------------------------------------------------------------
 
-const SERVICE_NAMES = ["cloudflared"] as const;
-type ServiceName = (typeof SERVICE_NAMES)[number];
+type ServiceName = "cloudflared";
+const SERVICE_NAMES: readonly ServiceName[] = ["cloudflared"];
 
 function startService(
   pidDir: string,
@@ -123,7 +127,8 @@ function startService(
   // Uses child_process.spawn directly because execa's typed API
   // does not accept raw file descriptors for stdio.
   const logFile = join(pidDir, `${name}.log`);
-  const logFd = openSync(logFile, "w");
+  const logFd = openSync(logFile, "w", 0o600);
+  fchmodSync(logFd, 0o600);
   const subprocess = spawn(command, args, {
     detached: true,
     stdio: ["ignore", logFd, logFd],
@@ -243,6 +248,14 @@ export function showStatus(opts: ServiceOptions = {}): void {
 export function stopAll(opts: ServiceOptions = {}): void {
   const pidDir = resolvePidDir(opts);
   ensurePidDir(pidDir);
+
+  try {
+    const { unloadOllamaModels } = require("./onboard-ollama-proxy");
+    unloadOllamaModels();
+  } catch {
+    /* best-effort */
+  }
+
   stopService(pidDir, "cloudflared");
   info("All services stopped.");
 }
@@ -291,7 +304,7 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
   // Banner
   console.log("");
   console.log("  ┌─────────────────────────────────────────────────────┐");
-  console.log("  │  NemoClaw Services                                  │");
+  console.log(`  │  ${(CLI_DISPLAY_NAME + " Services").padEnd(52)}│`);
   console.log("  │                                                     │");
 
   let tunnelUrl = "";
@@ -308,7 +321,7 @@ export async function startAll(opts: ServiceOptions = {}): Promise<void> {
     console.log(`  │  Public URL:  ${tunnelUrl.padEnd(40)}│`);
   }
 
-  console.log("  │  Messaging:   via OpenClaw native channels (if configured) │");
+  console.log(`  │  ${("Messaging:   via " + AGENT_PRODUCT_NAME + " native channels (if configured)").padEnd(52)}│`);
 
   console.log("  │                                                     │");
   console.log("  │  Run 'openshell term' to monitor egress approvals   │");

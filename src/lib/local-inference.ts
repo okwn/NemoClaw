@@ -13,6 +13,7 @@ import { runCurlProbe } from "./http-probe";
 const { shellQuote, runCapture } = require("./runner");
 
 import { VLLM_PORT, OLLAMA_PORT, OLLAMA_PROXY_PORT } from "./ports";
+import { sleepSeconds } from "./wait";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { isWsl } = require("./platform");
@@ -28,6 +29,61 @@ export const LARGE_OLLAMA_MIN_MEMORY_MB = 32768;
 
 export type RunCaptureFn = (cmd: string | string[], opts?: { ignoreError?: boolean }) => string;
 
+// Hosts that the WSL-side onboard CLI tries when probing Ollama. Native Linux
+// and macOS only ever reach Ollama on the local loopback. WSL with Docker
+// Desktop can also reach a Windows-host Ollama through the docker-desktop
+// integration's `host.docker.internal` alias when Ollama is bound to a
+// non-loopback interface (typically OLLAMA_HOST=0.0.0.0).
+export const OLLAMA_LOCALHOST = "127.0.0.1";
+export const OLLAMA_HOST_DOCKER_INTERNAL = "host.docker.internal";
+
+let _resolvedOllamaHost: string | null = null;
+
+function ollamaCandidateHosts(): string[] {
+  return isWsl() ? [OLLAMA_LOCALHOST, OLLAMA_HOST_DOCKER_INTERNAL] : [OLLAMA_LOCALHOST];
+}
+
+// Probe each candidate host for a responding Ollama. Returns the first host
+// whose `/api/tags` succeeds, or null if none responds. Result is cached for
+// the rest of the onboard run; call resetOllamaHostCache() in tests.
+export function findReachableOllamaHost(runCaptureImpl?: RunCaptureFn): string | null {
+  if (_resolvedOllamaHost !== null) return _resolvedOllamaHost;
+  const capture = runCaptureImpl ?? runCapture;
+  for (const host of ollamaCandidateHosts()) {
+    // Explicit timeouts: a blackholed host (e.g., firewalled host.docker.internal)
+    // would otherwise stall the synchronous onboard probe for the OS connect
+    // timeout (~75-130s on Linux). Matches the convention used in
+    // getLocalProviderHealthStatus probes.
+    const result = capture(
+      [
+        "curl",
+        "-sf",
+        "--connect-timeout",
+        "3",
+        "--max-time",
+        "5",
+        `http://${host}:${OLLAMA_PORT}/api/tags`,
+      ],
+      { ignoreError: true },
+    );
+    if (result) {
+      _resolvedOllamaHost = host;
+      return host;
+    }
+  }
+  return null;
+}
+
+// Returns the resolved host if a probe has succeeded, otherwise OLLAMA_LOCALHOST.
+// Used by URL-builder helpers that need a string and don't want to re-probe.
+export function getResolvedOllamaHost(): string {
+  return _resolvedOllamaHost ?? OLLAMA_LOCALHOST;
+}
+
+export function resetOllamaHostCache(): void {
+  _resolvedOllamaHost = null;
+}
+
 export interface GpuInfo {
   totalMemoryMB: number;
 }
@@ -35,6 +91,7 @@ export interface GpuInfo {
 export interface ValidationResult {
   ok: boolean;
   message?: string;
+  diagnostic?: string;
 }
 
 export interface LocalProviderHealthStatus {
@@ -46,6 +103,20 @@ export interface LocalProviderHealthStatus {
 
 export interface LocalProviderHealthProbeOptions {
   runCurlProbeImpl?: (argv: string[]) => CurlProbeResult;
+}
+
+export function validateOllamaPortConfiguration(): ValidationResult {
+  if (!isWsl() && OLLAMA_PORT === OLLAMA_PROXY_PORT) {
+    return {
+      ok: false,
+      message:
+        `NEMOCLAW_OLLAMA_PORT and NEMOCLAW_OLLAMA_PROXY_PORT both resolve to ${OLLAMA_PORT}. ` +
+        "Run Ollama on a different port or set NEMOCLAW_OLLAMA_PROXY_PORT to a free port so " +
+        "the auth proxy does not route back to itself.",
+    };
+  }
+
+  return { ok: true };
 }
 
 export function getLocalProviderBaseUrl(provider: string): string | null {
@@ -65,7 +136,7 @@ export function getLocalProviderValidationBaseUrl(provider: string): string | nu
     case "vllm-local":
       return `http://127.0.0.1:${VLLM_PORT}/v1`;
     case "ollama-local":
-      return `http://127.0.0.1:${OLLAMA_PORT}/v1`;
+      return `http://${getResolvedOllamaHost()}:${OLLAMA_PORT}/v1`;
     default:
       return null;
   }
@@ -76,7 +147,7 @@ export function getLocalProviderHealthEndpoint(provider: string): string | null 
     case "vllm-local":
       return `http://127.0.0.1:${VLLM_PORT}/v1/models`;
     case "ollama-local":
-      return `http://127.0.0.1:${OLLAMA_PORT}/api/tags`;
+      return `http://${getResolvedOllamaHost()}:${OLLAMA_PORT}/api/tags`;
     default:
       return null;
   }
@@ -157,30 +228,58 @@ export function getLocalProviderContainerReachabilityCheck(provider: string): st
   switch (provider) {
     case "vllm-local":
       return [
-        "docker", "run", "--rm",
-        "--add-host", "host.openshell.internal:host-gateway",
+        "docker",
+        "run",
+        "--rm",
+        "--add-host",
+        "host.openshell.internal:host-gateway",
         CONTAINER_REACHABILITY_IMAGE,
-        "-sf", `http://host.openshell.internal:${VLLM_PORT}/v1/models`,
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "10",
+        "-sf",
+        `http://host.openshell.internal:${VLLM_PORT}/v1/models`,
       ];
     case "ollama-local":
       // Check the auth proxy port, not Ollama directly. The proxy listens
       // on 0.0.0.0 and is reachable from containers; Ollama is on 127.0.0.1.
       return [
-        "docker", "run", "--rm",
-        "--add-host", "host.openshell.internal:host-gateway",
+        "docker",
+        "run",
+        "--rm",
+        "--add-host",
+        "host.openshell.internal:host-gateway",
         CONTAINER_REACHABILITY_IMAGE,
-        "-sf", `http://host.openshell.internal:${OLLAMA_CONTAINER_PORT}/api/tags`,
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "10",
+        "-sf",
+        `http://host.openshell.internal:${OLLAMA_CONTAINER_PORT}/api/tags`,
       ];
     default:
       return null;
   }
 }
 
+const CONTAINER_CHECK_MAX_ATTEMPTS = 3;
+const CONTAINER_CHECK_RETRY_DELAY_SECS = 2;
+
 export function validateLocalProvider(
   provider: string,
   runCaptureImpl?: RunCaptureFn,
+  sleepFn?: (seconds: number) => void,
 ): ValidationResult {
+  if (provider === "ollama-local") {
+    const portValidation = validateOllamaPortConfiguration();
+    if (!portValidation.ok) {
+      return portValidation;
+    }
+  }
+
   const capture = runCaptureImpl ?? runCapture;
+  const sleep = sleepFn ?? sleepSeconds;
   const command = getLocalProviderHealthCheck(provider);
   if (!command) {
     return { ok: true };
@@ -197,8 +296,7 @@ export function validateLocalProvider(
       case "ollama-local":
         return {
           ok: false,
-          message:
-            `Local Ollama was selected, but nothing is responding on http://127.0.0.1:${OLLAMA_PORT}.`,
+          message: `Local Ollama was selected, but nothing is responding on http://${getResolvedOllamaHost()}:${OLLAMA_PORT}.`,
         };
       default:
         return { ok: false, message: "The selected local inference provider is unavailable." };
@@ -210,33 +308,103 @@ export function validateLocalProvider(
     return { ok: true };
   }
 
-  const containerOutput = capture(containerCommand, { ignoreError: true });
-  if (containerOutput) {
-    return { ok: true };
+  // Retry container reachability check with backoff
+  for (let attempt = 1; attempt <= CONTAINER_CHECK_MAX_ATTEMPTS; attempt++) {
+    const containerOutput = capture(containerCommand, { ignoreError: true });
+    if (containerOutput) {
+      return { ok: true };
+    }
+    if (attempt < CONTAINER_CHECK_MAX_ATTEMPTS) {
+      sleep(CONTAINER_CHECK_RETRY_DELAY_SECS);
+    }
   }
+
+  // All retries exhausted — collect diagnostics
+  const diagnostic = collectContainerDiagnostic(provider, capture);
 
   switch (provider) {
     case "vllm-local":
       return {
         ok: false,
-        message:
-          `Local vLLM is responding on 127.0.0.1, but containers cannot reach http://host.openshell.internal:${VLLM_PORT}. Ensure the server is reachable from containers, not only from the host shell.`,
+        message: `Local vLLM is responding on 127.0.0.1, but the Docker container reachability check failed for http://host.openshell.internal:${VLLM_PORT}. This may be a Docker networking issue — the sandbox uses a different network path and may still work.`,
+        diagnostic,
       };
     case "ollama-local":
       return {
         ok: false,
-        message:
-          `Local Ollama is responding on 127.0.0.1, but containers cannot reach the auth proxy at http://host.openshell.internal:${OLLAMA_CONTAINER_PORT}. Ensure the Ollama auth proxy is running.`,
+        message: `Local Ollama is responding on ${getResolvedOllamaHost()}, but the Docker container reachability check failed for http://host.openshell.internal:${OLLAMA_CONTAINER_PORT}. This may be a Docker networking issue — the sandbox uses a different network path and may still work.`,
+        diagnostic,
       };
     default:
       return {
         ok: false,
         message: "The selected local inference provider is unavailable from containers.",
+        diagnostic,
       };
   }
 }
 
-export function parseOllamaList(output: unknown): string[] {
+function getContainerCheckUrl(provider: string): string {
+  switch (provider) {
+    case "vllm-local":
+      return `http://host.openshell.internal:${VLLM_PORT}/v1/models`;
+    case "ollama-local":
+      return `http://host.openshell.internal:${OLLAMA_CONTAINER_PORT}/api/tags`;
+    default:
+      return "http://host.openshell.internal/";
+  }
+}
+
+function collectContainerDiagnostic(provider: string, capture: RunCaptureFn): string {
+  const url = getContainerCheckUrl(provider);
+  try {
+    // Get HTTP status code
+    const httpStatus = capture(
+      [
+        "docker", "run", "--rm",
+        "--add-host", "host.openshell.internal:host-gateway",
+        CONTAINER_REACHABILITY_IMAGE,
+        "-s", "-o", "/dev/null", "-w", "%{http_code}",
+        "--connect-timeout", "5", "--max-time", "10",
+        url,
+      ],
+      { ignoreError: true },
+    );
+
+    // Get /etc/hosts to see host-gateway resolution
+    const hostsOutput = capture(
+      [
+        "docker", "run", "--rm",
+        "--add-host", "host.openshell.internal:host-gateway",
+        CONTAINER_REACHABILITY_IMAGE,
+        "cat", "/etc/hosts",
+      ],
+      { ignoreError: true },
+    );
+
+    if (!httpStatus && !hostsOutput) {
+      return `Docker command failed (image pull error or runtime failure). Retried ${CONTAINER_CHECK_MAX_ATTEMPTS} times.`;
+    }
+
+    const parts: string[] = [];
+    if (httpStatus) {
+      parts.push(`Container curl returned HTTP ${httpStatus.trim()}`);
+    }
+    if (hostsOutput) {
+      const gwLine = hostsOutput.split(/\r?\n/).find((l: string) => l.includes("host.openshell.internal"));
+      if (gwLine) {
+        const ip = gwLine.trim().split(/\s+/)[0];
+        parts.push(`host-gateway resolved to: ${ip}`);
+      }
+    }
+    parts.push(`Retried ${CONTAINER_CHECK_MAX_ATTEMPTS} times over ~${(CONTAINER_CHECK_MAX_ATTEMPTS - 1) * CONTAINER_CHECK_RETRY_DELAY_SECS}s`);
+    return parts.join(". ") + ".";
+  } catch {
+    return `Docker command failed (image pull error or runtime failure). Retried ${CONTAINER_CHECK_MAX_ATTEMPTS} times.`;
+  }
+}
+
+export function parseOllamaList(output: string | null | undefined): string[] {
   return String(output || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -246,7 +414,7 @@ export function parseOllamaList(output: unknown): string[] {
     .filter(Boolean);
 }
 
-export function parseOllamaTags(output: unknown): string[] {
+export function parseOllamaTags(output: string | null | undefined): string[] {
   try {
     const parsed = JSON.parse(String(output || ""));
     return Array.isArray(parsed?.models)
@@ -259,9 +427,19 @@ export function parseOllamaTags(output: unknown): string[] {
 
 export function getOllamaModelOptions(runCaptureImpl?: RunCaptureFn): string[] {
   const capture = runCaptureImpl ?? runCapture;
-  const tagsOutput = capture(["curl", "-sf", `http://127.0.0.1:${OLLAMA_PORT}/api/tags`], {
-    ignoreError: true,
-  });
+  const host = getResolvedOllamaHost();
+  const tagsOutput = capture(
+    [
+      "curl",
+      "-sf",
+      "--connect-timeout",
+      "3",
+      "--max-time",
+      "5",
+      `http://${host}:${OLLAMA_PORT}/api/tags`,
+    ],
+    { ignoreError: true },
+  );
   const tagsParsed = parseOllamaTags(tagsOutput);
   if (tagsParsed.length > 0) {
     return tagsParsed;
@@ -298,13 +476,15 @@ export function getOllamaWarmupCommand(model: string, keepAlive = "15m"): string
     stream: false,
     keep_alive: keepAlive,
   });
+  const host = getResolvedOllamaHost();
   // backgrounding (nohup ... &) and output redirection require a shell wrapper.
   // The payload is safe: model name is JSON-serialized (escaping all special
   // chars) then shellQuote'd (single-quoted), so injection through model
   // names is not feasible. This is the one intentional bash -c exception.
   return [
-    "bash", "-c",
-    `nohup curl -s http://127.0.0.1:${OLLAMA_PORT}/api/generate -H 'Content-Type: application/json' -d ${shellQuote(payload)} >/dev/null 2>&1 &`,
+    "bash",
+    "-c",
+    `nohup curl -s http://${host}:${OLLAMA_PORT}/api/generate -H 'Content-Type: application/json' -d ${shellQuote(payload)} >/dev/null 2>&1 &`,
   ];
 }
 
@@ -319,12 +499,17 @@ export function getOllamaProbeCommand(
     stream: false,
     keep_alive: keepAlive,
   });
+  const host = getResolvedOllamaHost();
   return [
-    "curl", "-sS",
-    "--max-time", String(timeoutSeconds),
-    `http://127.0.0.1:${OLLAMA_PORT}/api/generate`,
-    "-H", "Content-Type: application/json",
-    "-d", payload,
+    "curl",
+    "-sS",
+    "--max-time",
+    String(timeoutSeconds),
+    `http://${host}:${OLLAMA_PORT}/api/generate`,
+    "-H",
+    "Content-Type: application/json",
+    "-d",
+    payload,
   ];
 }
 
