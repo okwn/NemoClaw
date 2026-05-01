@@ -1172,8 +1172,12 @@ install_vllm() {
   info "Waiting for vLLM to become ready on :${port}…"
   info "First-time downloads of large models can take 30+ minutes; this is normal."
 
-  local timeout_sec=3600 poll_sec=5
-  local start_ts now elapsed remaining last_stage="" stage logs
+  # poll_sec: how often we check /health and the container state.
+  # print_every_sec: how often we print a progress line (kept low cadence so
+  #   the install log stays readable for long downloads). Stage transitions
+  #   are always printed immediately, regardless of this throttle.
+  local timeout_sec=3600 poll_sec=5 print_every_sec=30
+  local start_ts now elapsed remaining last_stage="" last_print_ts=0 stage logs
   local mm_e ss_e mm_r ss_r
   start_ts=$(date +%s)
 
@@ -1213,12 +1217,19 @@ install_vllm() {
     mm_e=$(( elapsed / 60 ));   ss_e=$(( elapsed % 60 ))
     mm_r=$(( remaining / 60 )); ss_r=$(( remaining % 60 ))
 
+    # Print the stage banner whenever the stage flips (immediate visibility),
+    # but throttle the "still loading" heartbeat to once every print_every_sec.
     if [[ "$stage" != "$last_stage" ]]; then
       printf "  ${C_CYAN}[vLLM]${C_RESET} stage: %s\n" "$stage"
       last_stage="$stage"
+      printf "  ${C_CYAN}[vLLM]${C_RESET} %s — still loading… %dm%02ds elapsed (timeout in %dm%02ds)\n" \
+        "$stage" "$mm_e" "$ss_e" "$mm_r" "$ss_r"
+      last_print_ts=$now
+    elif (( now - last_print_ts >= print_every_sec )); then
+      printf "  ${C_CYAN}[vLLM]${C_RESET} %s — still loading… %dm%02ds elapsed (timeout in %dm%02ds)\n" \
+        "$stage" "$mm_e" "$ss_e" "$mm_r" "$ss_r"
+      last_print_ts=$now
     fi
-    printf "  ${C_CYAN}[vLLM]${C_RESET} %s — still loading… %dm%02ds elapsed (timeout in %dm%02ds)\n" \
-      "$stage" "$mm_e" "$ss_e" "$mm_r" "$ss_r"
     sleep "$poll_sec"
   done
 
