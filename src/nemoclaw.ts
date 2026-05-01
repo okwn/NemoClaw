@@ -358,7 +358,6 @@ function checkAndRecoverSandboxProcesses(
 }
 
 exports.runtimeBridge = {
-  runOpenshell,
   sandboxConnect,
   sandboxDestroy,
   sandboxRebuild,

@@ -15,6 +15,7 @@ import {
 } from "./onboard-action";
 import { recoverNamedGatewayRuntime as recoverNamedGatewayRuntimeAction } from "./gateway-runtime-action";
 import { getNemoClawRuntimeBridge } from "./nemoclaw-runtime-bridge";
+import { runOpenshell } from "./openshell-runtime";
 import { help, version } from "./root-help-action";
 
 export async function runOnboardAction(args: string[] = []): Promise<void> {
@@ -61,5 +62,5 @@ export function runOpenshellProviderCommand(
   args: string[],
   opts?: { ignoreError?: boolean; stdio?: import("node:child_process").StdioOptions },
 ) {
-  return getNemoClawRuntimeBridge().runOpenshell(args, opts);
+  return runOpenshell(args, opts);
 }
