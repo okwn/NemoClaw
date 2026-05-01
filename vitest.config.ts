@@ -56,8 +56,8 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      include: ["nemoclaw/src/**/*.ts"],
-      exclude: ["**/*.test.ts"],
+      include: ["src/**/*.ts", "bin/**/*.js", "nemoclaw/src/**/*.ts"],
+      exclude: ["**/*.test.ts", "dist/**"],
       reporter: ["text", "json-summary"],
     },
   },
