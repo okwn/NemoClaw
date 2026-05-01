@@ -78,13 +78,21 @@ describe("WSL2 inference verification timeouts (issue #987)", () => {
         calls.push(args);
         const status = statuses[index++] ?? 0;
         if (status === 0) {
-          return { ok: true, curlStatus: 0, httpStatus: 200, body: "{}", message: "ok" };
+          return {
+            ok: true,
+            curlStatus: 0,
+            httpStatus: 200,
+            body: "{}",
+            stderr: "",
+            message: "ok",
+          };
         }
         return {
           ok: false,
           curlStatus: status,
           httpStatus: 0,
           body: "",
+          stderr: `curl exited ${status}`,
           message: `curl ${status}`,
         };
       };
@@ -133,10 +141,16 @@ describe("WSL2 inference verification timeouts (issue #987)", () => {
       expect(httpError.calls.length).toBe(2);
     });
 
-    function runProbeWithResults(
-      results: Array<{ ok: boolean; curlStatus: number; httpStatus: number; message: string }>,
-      opts: { isWsl?: boolean } = {},
-    ) {
+    type ProbeResultFixture = {
+      ok: boolean;
+      curlStatus: number;
+      httpStatus: number;
+      body: string;
+      stderr: string;
+      message: string;
+    };
+
+    function runProbeWithResults(results: ProbeResultFixture[], opts: { isWsl?: boolean } = {}) {
       const httpProbePath = require.resolve("../dist/lib/http-probe.js");
       const platformPath = require.resolve("../dist/lib/platform.js");
       const probesPath = require.resolve("../dist/lib/onboard-inference-probes.js");
@@ -177,8 +191,22 @@ describe("WSL2 inference verification timeouts (issue #987)", () => {
     }
 
     it("retries HTTP 429 validation throttling from successful curl invocations", () => {
-      const throttled = { ok: false, curlStatus: 0, httpStatus: 429, message: "HTTP 429" };
-      const success = { ok: true, curlStatus: 0, httpStatus: 200, message: "ok" };
+      const throttled = {
+        ok: false,
+        curlStatus: 0,
+        httpStatus: 429,
+        body: "",
+        stderr: "",
+        message: "HTTP 429",
+      };
+      const success = {
+        ok: true,
+        curlStatus: 0,
+        httpStatus: 200,
+        body: "{}",
+        stderr: "",
+        message: "ok",
+      };
       const { result, calls } = runProbeWithResults([throttled, success]);
       expect(result.ok).toBe(true);
       expect(calls.length).toBe(2);
@@ -192,7 +220,14 @@ describe("WSL2 inference verification timeouts (issue #987)", () => {
     });
 
     it("appends WSL2 hint when retry fails on WSL2", () => {
-      const failure = { ok: false, curlStatus: 28, httpStatus: 0, message: "timeout" };
+      const failure = {
+        ok: false,
+        curlStatus: 28,
+        httpStatus: 0,
+        body: "",
+        stderr: "curl timed out",
+        message: "timeout",
+      };
       const { result } = runProbeWithResults([failure, failure, failure], { isWsl: true });
       expect(result.ok).toBe(false);
       expect(result.message).toContain("WSL2 detected");

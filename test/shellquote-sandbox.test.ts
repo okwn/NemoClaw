@@ -10,26 +10,57 @@ import { spawnSync } from "child_process";
 import { describe, it, expect } from "vitest";
 
 describe("sandboxName command hardening in onboard.js", () => {
-  const src = fs.readFileSync(
-    path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-    "utf-8",
-  );
+  it("re-validates sandboxName before runner commands at the createSandbox boundary", () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-invalid-sandbox-"));
+    const scriptPath = path.join(tmpDir, "invalid-sandbox-name.mjs");
+    const onboardUrl = JSON.stringify(
+      pathToFileURL(path.join(repoRoot, "dist", "lib", "onboard.js")).href,
+    );
+    const runnerUrl = JSON.stringify(
+      pathToFileURL(path.join(repoRoot, "dist", "lib", "runner.js")).href,
+    );
 
-  it("re-validates sandboxName at the createSandbox boundary", async () => {
-    const onboardModule = await import("../dist/lib/onboard.js");
-    const { createSandbox } = (onboardModule.default ?? onboardModule) as unknown as {
-      createSandbox: (
-        gpu: null,
-        model: string,
-        provider: string,
-        preferredInferenceApi: null,
-        sandboxNameOverride: string,
-      ) => Promise<string>;
-    };
+    fs.writeFileSync(
+      scriptPath,
+      `
+const runner = (await import(${runnerUrl})).default;
+const commands = [];
+runner.run = (command, opts = {}) => { commands.push({ type: "run", command, opts }); return { status: 0 }; };
+runner.runCapture = (command, opts = {}) => { commands.push({ type: "runCapture", command, opts }); return ""; };
+runner.runFile = (file, args = [], opts = {}) => { commands.push({ type: "runFile", file, args, opts }); return { status: 0 }; };
+const { createSandbox } = await import(${onboardUrl});
+try {
+  await createSandbox(null, "test-model", "nvidia-prod", null, "bad; touch /tmp/pwned");
+  console.log(JSON.stringify({ message: "unexpected success", commands }));
+  process.exit(2);
+} catch (error) {
+  console.log(JSON.stringify({ message: error && error.message ? error.message : String(error), commands }));
+}
+`,
+      { mode: 0o700 },
+    );
 
-    await expect(
-      createSandbox(null, "test-model", "nvidia-prod", null, "bad; touch /tmp/pwned"),
-    ).rejects.toThrow(/Invalid sandbox name/);
+    try {
+      const result = spawnSync(process.execPath, [scriptPath], {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        env: { HOME: tmpDir, PATH: process.env.PATH || "" },
+        timeout: 5000,
+      });
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      const payloadLine = result.stdout
+        .trim()
+        .split("\n")
+        .reverse()
+        .find((line) => line.startsWith("{") && line.endsWith("}"));
+      expect(payloadLine).toBeTruthy();
+      const payload = JSON.parse(payloadLine!) as { message: string; commands: unknown[] };
+      expect(payload.message).toMatch(/Invalid sandbox name/);
+      expect(payload.commands).toEqual([]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   it("runs setup-dns-proxy.sh through the argv helper instead of bash -c interpolation", () => {
@@ -197,21 +228,5 @@ console.log(JSON.stringify(captured));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
-
-  it("does not have raw sandboxName interpolation in run or runCapture template literals", () => {
-    // Match run()/runCapture() calls that span multiple lines and contain
-    // template literals, so multiline invocations are not missed.
-    const callPattern = /\b(run|runCapture)\s*\(\s*`([^`]*)`/g;
-    const violations = [];
-    let match;
-    while ((match = callPattern.exec(src)) !== null) {
-      const template = match[2];
-      if (template.includes("${sandboxName}") && !template.includes("shellQuote(sandboxName)")) {
-        const line = src.slice(0, match.index).split("\n").length;
-        violations.push(`Line ${line}: ${match[0].slice(0, 120).trim()}`);
-      }
-    }
-    expect(violations).toEqual([]);
   });
 });
