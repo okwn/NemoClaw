@@ -139,6 +139,12 @@ type RecoveredSandboxMetadata = Partial<
   policyPresets?: string[] | null;
 };
 
+type SandboxLogsOptions = {
+  follow: boolean;
+  lines: string;
+  since: string | null;
+};
+
 const REMOTE_UNINSTALL_URL = buildVersionedUninstallUrl(getVersion());
 let OPENSHELL_BIN: string | null = null;
 const NEMOCLAW_GATEWAY_NAME = "nemoclaw";
@@ -1935,15 +1941,75 @@ async function sandboxStatus(sandboxName: string) {
   console.log("");
 }
 
-function sandboxLogs(sandboxName: string, follow: boolean) {
-  if (follow) {
-    streamSandboxFollowLogs(sandboxName);
+function printSandboxLogsUsage(): void {
+  console.log(
+    `  Usage: ${CLI_NAME} <name> logs [--follow] [--tail <lines>|-n <lines>] [--since <duration>]`,
+  );
+  console.log("");
+  console.log("  Options:");
+  console.log("    --follow          Stream live logs");
+  console.log("    --tail, -n        Number of lines to return (default: 200)");
+  console.log("    --since           Only show logs from this duration ago (for example 5m, 1h, 30s)");
+  console.log("    --help, -h        Show this help");
+}
+
+function parseSandboxLogsArgs(args: string[]): SandboxLogsOptions | null {
+  const options: SandboxLogsOptions = { follow: false, lines: "200", since: null };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--help" || arg === "-h") {
+      printSandboxLogsUsage();
+      return null;
+    }
+    if (arg === "--follow") {
+      options.follow = true;
+      continue;
+    }
+    if (arg === "--tail" || arg === "-n") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("-")) {
+        console.error(`  ${arg} requires a positive line count.`);
+        printSandboxLogsUsage();
+        process.exit(1);
+      }
+      if (!/^[1-9][0-9]*$/.test(value)) {
+        console.error(`  Invalid log line count: ${value}`);
+        printSandboxLogsUsage();
+        process.exit(1);
+      }
+      options.lines = value;
+      index += 1;
+      continue;
+    }
+    if (arg === "--since") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("-")) {
+        console.error("  --since requires a duration (for example 5m, 1h, 30s).");
+        printSandboxLogsUsage();
+        process.exit(1);
+      }
+      options.since = value;
+      index += 1;
+      continue;
+    }
+    console.error(`  Unknown logs argument: ${arg}`);
+    printSandboxLogsUsage();
+    process.exit(1);
+  }
+  return options;
+}
+
+function sandboxLogs(sandboxName: string, options: SandboxLogsOptions) {
+  if (options.follow) {
+    streamSandboxFollowLogs(sandboxName, options);
     return;
   }
 
   enableSandboxAuditLogs(sandboxName);
-  runOpenclawGatewayLogs(sandboxName, false);
-  const args = buildSandboxLogsArgs(sandboxName, false);
+  if (!options.since) {
+    runOpenclawGatewayLogs(sandboxName, options);
+  }
+  const args = buildSandboxLogsArgs(sandboxName, options);
   const result = runOpenshell(args, {
     stdio: "inherit",
     ignoreError: true,
@@ -1974,8 +2040,11 @@ function describeLogProbeResult(result: SpawnLikeResult): string {
   return `exit ${result.status ?? "unknown"}`;
 }
 
-function runOpenclawGatewayLogs(sandboxName: string, follow: boolean): SpawnLikeResult {
-  const args = buildSandboxOpenclawGatewayLogsArgs(sandboxName, follow);
+function runOpenclawGatewayLogs(
+  sandboxName: string,
+  options: SandboxLogsOptions,
+): SpawnLikeResult {
+  const args = buildSandboxOpenclawGatewayLogsArgs(sandboxName, options);
   const result = runOpenshell(args, {
     stdio: "inherit",
     ignoreError: true,
@@ -1990,9 +2059,11 @@ function runOpenclawGatewayLogs(sandboxName: string, follow: boolean): SpawnLike
   return result;
 }
 
-function streamSandboxFollowLogs(sandboxName: string): void {
-  const openclawArgs = buildSandboxOpenclawGatewayLogsArgs(sandboxName, true);
-  const openshellArgs = buildSandboxLogsArgs(sandboxName, true);
+function streamSandboxFollowLogs(sandboxName: string, options: SandboxLogsOptions): void {
+  const openclawArgs = options.since
+    ? null
+    : buildSandboxOpenclawGatewayLogsArgs(sandboxName, options);
+  const openshellArgs = buildSandboxLogsArgs(sandboxName, options);
   const spawnOptions = {
     cwd: ROOT,
     env: process.env,
@@ -2087,7 +2158,9 @@ function streamSandboxFollowLogs(sandboxName: string): void {
     });
   };
 
-  addSource("OpenClaw log source", openclawArgs);
+  if (openclawArgs) {
+    addSource("OpenClaw log source", openclawArgs);
+  }
   enableSandboxAuditLogs(sandboxName);
   addSource("OpenShell log source", openshellArgs);
   setupComplete = true;
@@ -2126,18 +2199,24 @@ function buildEnableSandboxAuditLogsArgs(sandboxName: string): string[] {
   return ["settings", "set", sandboxName, "--key", "ocsf_json_enabled", "--value", "true"];
 }
 
-function buildSandboxOpenclawGatewayLogsArgs(sandboxName: string, follow: boolean): string[] {
-  const args = ["sandbox", "exec", "-n", sandboxName, "--", "tail", "-n", "200"];
-  if (follow) {
+function buildSandboxOpenclawGatewayLogsArgs(
+  sandboxName: string,
+  options: SandboxLogsOptions,
+): string[] {
+  const args = ["sandbox", "exec", "-n", sandboxName, "--", "tail", "-n", options.lines];
+  if (options.follow) {
     args.push("-f");
   }
   args.push("/tmp/gateway.log");
   return args;
 }
 
-function buildSandboxLogsArgs(sandboxName: string, follow: boolean): string[] {
-  const args = ["logs", sandboxName, "-n", "200", "--source", "all"];
-  if (follow) {
+function buildSandboxLogsArgs(sandboxName: string, options: SandboxLogsOptions): string[] {
+  const args = ["logs", sandboxName, "-n", options.lines, "--source", "all"];
+  if (options.since) {
+    args.push("--since", options.since);
+  }
+  if (options.follow) {
     args.push("--tail");
   }
   return args;
@@ -4483,7 +4562,12 @@ const [cmd, ...args] = process.argv.slice(2);
         await sandboxStatus(cmd);
         break;
       case "logs":
-        sandboxLogs(cmd, actionArgs.includes("--follow"));
+        {
+          const logsOptions = parseSandboxLogsArgs(actionArgs);
+          if (logsOptions) {
+            sandboxLogs(cmd, logsOptions);
+          }
+        }
         break;
       case "policy-add":
         await sandboxPolicyAdd(cmd, actionArgs);

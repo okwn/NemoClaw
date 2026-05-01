@@ -696,6 +696,76 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain(FAKE_OPENSHELL_LOG_LINE);
   });
 
+  it("shows logs help without calling OpenShell", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-help-");
+    const r = setup.runLogs("alpha logs --help");
+
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Usage: nemoclaw <name> logs");
+    expect(r.out).toContain("--follow");
+    expect(r.out).toContain("--tail");
+    expect(r.out).toContain("--since");
+    expect(setup.readCalls()).toEqual([]);
+  });
+
+  it("passes --tail line count to both log sources", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-tail-");
+    const r = setup.runLogs("alpha logs --tail 50");
+
+    const calls = setup.readCalls();
+    expect(r.code).toBe(0);
+    expect(calls).toEqual([
+      "settings set alpha --key ocsf_json_enabled --value true",
+      "sandbox exec -n alpha -- tail -n 50 /tmp/gateway.log",
+      "logs alpha -n 50 --source all",
+    ]);
+  });
+
+  it("passes -n line count to both log sources", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-n-");
+    const r = setup.runLogs("alpha logs -n 25");
+
+    const calls = setup.readCalls();
+    expect(r.code).toBe(0);
+    expect(calls).toEqual([
+      "settings set alpha --key ocsf_json_enabled --value true",
+      "sandbox exec -n alpha -- tail -n 25 /tmp/gateway.log",
+      "logs alpha -n 25 --source all",
+    ]);
+  });
+
+  it("passes --since to OpenShell logs without an unfiltered gateway tail", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-since-");
+    const r = setup.runLogs("alpha logs --since 5m");
+
+    const calls = setup.readCalls();
+    expect(r.code).toBe(0);
+    expect(calls).toEqual([
+      "settings set alpha --key ocsf_json_enabled --value true",
+      "logs alpha -n 200 --source all --since 5m",
+    ]);
+    expect(calls.some((call) => call.startsWith("sandbox exec -n alpha"))).toBe(false);
+  });
+
+  it("rejects unknown logs flags", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-unknown-");
+    const r = setup.runLogs("alpha logs --bogus 2>&1");
+
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Unknown logs argument: --bogus");
+    expect(r.out).toContain("Usage: nemoclaw <name> logs");
+    expect(setup.readCalls()).toEqual([]);
+  });
+
+  it("rejects --tail without a line count", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-tail-missing-");
+    const r = setup.runLogs("alpha logs --tail 2>&1");
+
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("--tail requires a positive line count");
+    expect(setup.readCalls()).toEqual([]);
+  });
+
   it("enables OpenShell audit events before reading logs", () => {
     const setup = createLogsTestSetup("nemoclaw-cli-logs-audit-");
     const r = setup.runLogs();
