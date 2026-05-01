@@ -44,8 +44,12 @@ from urllib.parse import urlparse
 
 def _coerce_positive_int(env: dict, name: str, default: int) -> int:
     raw = env.get(name) or str(default)
-    if raw.isdigit() and int(raw) > 0:
-        return int(raw)
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value > 0:
+        return value
     print(
         f'[SECURITY] {name} must be a positive integer, got "{raw}" '
         f"— skipping override, falling back to default ({default})",

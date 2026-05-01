@@ -344,12 +344,26 @@ describe("generate-openclaw-config.py: numeric env var validation", () => {
   });
 
   it("skips negative NEMOCLAW_CONTEXT_WINDOW and falls back to the default", () => {
-    const { config } = runCapturingStderr({ NEMOCLAW_CONTEXT_WINDOW: "-1" });
+    const { config, stderr } = runCapturingStderr({ NEMOCLAW_CONTEXT_WINDOW: "-1" });
     expect(config.models.providers["test-provider"].models[0].contextWindow).toBe(131072);
+    expect(stderr).toMatch(/NEMOCLAW_CONTEXT_WINDOW must be a positive integer/);
   });
 
   it("skips negative NEMOCLAW_MAX_TOKENS and falls back to the default", () => {
-    const { config } = runCapturingStderr({ NEMOCLAW_MAX_TOKENS: "-1" });
+    const { config, stderr } = runCapturingStderr({ NEMOCLAW_MAX_TOKENS: "-1" });
     expect(config.models.providers["test-provider"].models[0].maxTokens).toBe(4096);
+    expect(stderr).toMatch(/NEMOCLAW_MAX_TOKENS must be a positive integer/);
+  });
+
+  it("skips NEMOCLAW_CONTEXT_WINDOW that exceeds Python's int-string digit limit", () => {
+    const { config, stderr } = runCapturingStderr({ NEMOCLAW_CONTEXT_WINDOW: "9".repeat(10000) });
+    expect(config.models.providers["test-provider"].models[0].contextWindow).toBe(131072);
+    expect(stderr).toMatch(/NEMOCLAW_CONTEXT_WINDOW must be a positive integer/);
+  });
+
+  it("skips NEMOCLAW_MAX_TOKENS that exceeds Python's int-string digit limit", () => {
+    const { config, stderr } = runCapturingStderr({ NEMOCLAW_MAX_TOKENS: "9".repeat(10000) });
+    expect(config.models.providers["test-provider"].models[0].maxTokens).toBe(4096);
+    expect(stderr).toMatch(/NEMOCLAW_MAX_TOKENS must be a positive integer/);
   });
 });
