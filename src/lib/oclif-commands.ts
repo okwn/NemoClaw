@@ -15,6 +15,7 @@ import {
   SandboxPolicyListCommand,
   SandboxStatusCommand,
 } from "./sandbox-inspection-cli-command";
+import ShareCommand from "./share-command";
 import StatusCommand from "./status-command";
 import {
   DeprecatedStartCommand,
@@ -34,6 +35,7 @@ export default {
   "sandbox:config:get": SandboxConfigGetCommand,
   "sandbox:policy-list": SandboxPolicyListCommand,
   "sandbox:status": SandboxStatusCommand,
+  share: ShareCommand,
   status: StatusCommand,
   start: DeprecatedStartCommand,
   stop: DeprecatedStopCommand,
