@@ -7,6 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { execTimeout, testTimeout, testTimeoutOptions } from "./helpers/timeouts";
+
 const CLI = path.join(import.meta.dirname, "..", "bin", "nemoclaw.js");
 const HERMES_CLI = path.join(import.meta.dirname, "..", "bin", "nemohermes.js");
 
@@ -60,7 +62,7 @@ function run(args: string): CliRunResult {
 function runWithEnv(
   args: string,
   env: Record<string, string | undefined> = {},
-  timeout: number = Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+  timeout: number = execTimeout(),
 ): CliRunResult {
   try {
     const out = execSync(`node "${CLI}" ${args}`, {
@@ -187,8 +189,13 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
 
 describe("CLI dispatch", () => {
   it("config get validates flags and values before dispatch", () => {
-    const src = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "nemoclaw.ts"), "utf-8");
-    const configGet = src.match(/case "get": \{([\s\S]*?)sandboxConfig\.configGet\(cmd, configOpts\);/);
+    const src = fs.readFileSync(
+      path.join(import.meta.dirname, "..", "src", "nemoclaw.ts"),
+      "utf-8",
+    );
+    const configGet = src.match(
+      /case "get": \{([\s\S]*?)sandboxConfig\.configGet\(cmd, configOpts\);/,
+    );
     expect(configGet).toBeTruthy();
     expect(configGet![1]).toContain("--key requires a value");
     expect(configGet![1]).toContain("--format requires a value");
@@ -220,7 +227,7 @@ describe("CLI dispatch", () => {
     expect(r.out.includes("nemoclaw")).toBeTruthy();
   });
 
-  it("bare unknown name surfaces sandbox-not-found (#2164)", { timeout: 35000 }, () => {
+  it("bare unknown name surfaces sandbox-not-found (#2164)", testTimeoutOptions(35_000), () => {
     // Longer timeout: when openshell is installed but the gateway is down,
     // the CLI probes the gateway before reporting "not found" and the
     // default 10s is not enough for the connection to time out.
@@ -252,7 +259,7 @@ describe("CLI dispatch", () => {
   it("nemohermes list --help uses alias branding", () => {
     const out = execSync(`node "${HERMES_CLI}" list --help`, {
       encoding: "utf-8",
-      timeout: Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+      timeout: execTimeout(),
       env: {
         ...process.env,
         HOME: `/tmp/nemoclaw-cli-test-${Date.now()}`,
@@ -405,7 +412,7 @@ describe("CLI dispatch", () => {
 
   it(
     "start does not prompt for NVIDIA_API_KEY before launching local services",
-    { timeout: 35000 },
+    testTimeoutOptions(35_000),
     () => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-start-no-key-"));
       const localBin = path.join(home, "bin");
@@ -541,7 +548,7 @@ describe("CLI dispatch", () => {
     expect(r.out.includes("--output")).toBeTruthy();
   });
 
-  it("debug --quick exits 0 and produces diagnostic output", { timeout: 30000 }, () => {
+  it("debug --quick exits 0 and produces diagnostic output", testTimeoutOptions(30_000), () => {
     const r = runWithEnv(
       "debug --quick",
       createDebugCommandTestEnv("nemoclaw-cli-debug-quick-"),
@@ -567,7 +574,7 @@ describe("CLI dispatch", () => {
     expect(r.out.includes("nemoclaw debug")).toBeTruthy();
   });
 
-  it("debug --sandbox NAME targets the specified sandbox", { timeout: 30000 }, () => {
+  it("debug --sandbox NAME targets the specified sandbox", testTimeoutOptions(30_000), () => {
     const r = runWithEnv(
       "debug --quick --sandbox mybox",
       createDebugCommandTestEnv("nemoclaw-cli-debug-sandbox-"),
@@ -582,7 +589,7 @@ describe("CLI dispatch", () => {
     expect(r.code).not.toBe(0);
   });
 
-  it("debug warns when default sandbox is stale", { timeout: 15000 }, () => {
+  it("debug warns when default sandbox is stale", testTimeoutOptions(), () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-stale-"));
     fs.mkdirSync(path.join(home, ".nemoclaw"), { recursive: true });
     fs.writeFileSync(
@@ -597,7 +604,7 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("--sandbox NAME");
   });
 
-  it("debug --sandbox skips stale default warning", { timeout: 15000 }, () => {
+  it("debug --sandbox skips stale default warning", testTimeoutOptions(), () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-stale-"));
     fs.mkdirSync(path.join(home, ".nemoclaw"), { recursive: true });
     fs.writeFileSync(
@@ -728,7 +735,7 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain(FAKE_OPENSHELL_LOG_LINE);
   });
 
-  it("keeps logs --follow running when one log source exits", { timeout: 15000 }, async () => {
+  it("keeps logs --follow running when one log source exits", testTimeoutOptions(), async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-logs-follow-source-exit-"));
     const localBin = path.join(home, "bin");
     const registryDir = path.join(home, ".nemoclaw");
@@ -785,11 +792,7 @@ describe("CLI dispatch", () => {
 
     try {
       let calls: string[] = [];
-      const configuredTimeout = Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000);
-      const pollTimeoutMs = Math.min(
-        Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 10000,
-        10000,
-      );
+      const pollTimeoutMs = Math.min(testTimeout(10_000), Math.max(1_000, testTimeout() - 5_000));
       const deadline = Date.now() + pollTimeoutMs;
       while (Date.now() < deadline) {
         calls = readCalls();
@@ -812,7 +815,7 @@ describe("CLI dispatch", () => {
     }
   });
 
-  it("waits for logs --follow children to stop after SIGTERM", { timeout: 15000 }, async () => {
+  it("waits for logs --follow children to stop after SIGTERM", testTimeoutOptions(), async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-logs-follow-sigterm-wait-"));
     const localBin = path.join(home, "bin");
     const markerFile = path.join(home, "logs-follow-sigterm-wait-args");
@@ -2281,7 +2284,7 @@ describe("CLI dispatch", () => {
           HOME: home,
           PATH: `${localBin}:${process.env.PATH || ""}`,
         },
-        Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+        execTimeout(),
       );
 
       expect(r.code).toBe(0);
@@ -2290,7 +2293,7 @@ describe("CLI dispatch", () => {
       const saved = JSON.parse(fs.readFileSync(path.join(registryDir, "sandboxes.json"), "utf8"));
       expect(saved.sandboxes.alpha).toBeTruthy();
     },
-    Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000),
+    testTimeout(10_000),
   );
 
   it("recovers status after gateway runtime is reattached", () => {
@@ -2507,7 +2510,7 @@ describe("CLI dispatch", () => {
           HOME: home,
           PATH: `${localBin}:${process.env.PATH || ""}`,
         },
-        Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+        execTimeout(),
       );
 
       expect(r.code).toBe(0);
@@ -2515,7 +2518,7 @@ describe("CLI dispatch", () => {
       expect(r.out.includes("Could not verify sandbox 'alpha'")).toBeTruthy();
       expect(r.out.includes("verify the active gateway")).toBeTruthy();
     },
-    Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000),
+    testTimeout(10_000),
   );
 
   it(
@@ -2575,13 +2578,13 @@ describe("CLI dispatch", () => {
           HOME: home,
           PATH: `${localBin}:${process.env.PATH || ""}`,
         },
-        Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+        execTimeout(),
       );
 
       expect(r.code).toBe(0);
       expect(r.out.includes("current gateway/runtime is not reachable")).toBeTruthy();
     },
-    Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000),
+    testTimeout(10_000),
   );
 
   it(
@@ -2641,7 +2644,7 @@ describe("CLI dispatch", () => {
           HOME: home,
           PATH: `${localBin}:${process.env.PATH || ""}`,
         },
-        Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+        execTimeout(),
       );
 
       expect(r.code).toBe(0);
@@ -2649,7 +2652,7 @@ describe("CLI dispatch", () => {
         r.out.includes("Verify the active gateway and retry after re-establishing the runtime."),
       ).toBeTruthy();
     },
-    Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000),
+    testTimeout(10_000),
   );
 
   it("explains unrecoverable gateway trust rotation after restart", () => {
@@ -2706,7 +2709,7 @@ describe("CLI dispatch", () => {
         HOME: home,
         PATH: `${localBin}:${process.env.PATH || ""}`,
       },
-      Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+      execTimeout(),
     );
     expect(statusResult.code).toBe(0);
     expect(statusResult.out.includes("gateway trust material rotated after restart")).toBeTruthy();
@@ -2787,7 +2790,7 @@ describe("CLI dispatch", () => {
           HOME: home,
           PATH: `${localBin}:${process.env.PATH || ""}`,
         },
-        Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+        execTimeout(),
       );
       expect(statusResult.code).toBe(0);
       expect(
@@ -2807,7 +2810,7 @@ describe("CLI dispatch", () => {
       ).toBeTruthy();
       expect(connectResult.out.includes("If the gateway never becomes healthy")).toBeTruthy();
     },
-    Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000),
+    testTimeout(10_000),
   );
 
   it(
@@ -2868,7 +2871,7 @@ describe("CLI dispatch", () => {
           HOME: home,
           PATH: `${localBin}:${process.env.PATH || ""}`,
         },
-        Number(process.env.NEMOCLAW_EXEC_TIMEOUT || 10000),
+        execTimeout(),
       );
       expect(statusResult.code).toBe(0);
       expect(
@@ -2876,7 +2879,7 @@ describe("CLI dispatch", () => {
       ).toBeTruthy();
       expect(statusResult.out.includes("Start the gateway again")).toBeTruthy();
     },
-    Number(process.env.NEMOCLAW_TEST_TIMEOUT || 10000),
+    testTimeout(10_000),
   );
 });
 
@@ -2991,7 +2994,7 @@ describe("list shows live gateway inference", () => {
 
   it(
     "upgrade-sandboxes --check detects a stale sandbox after NemoClaw upgrade (#1904)",
-    { timeout: 15000 },
+    testTimeoutOptions(),
     () => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-upgrade-sandboxes-"));
       const localBin = path.join(home, "bin");
@@ -3051,7 +3054,7 @@ describe("list shows live gateway inference", () => {
 
   it(
     "upgrade-sandboxes --check reports all-current when no sandboxes are stale (#1904)",
-    { timeout: 15000 },
+    testTimeoutOptions(),
     () => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-upgrade-current-"));
       const localBin = path.join(home, "bin");
