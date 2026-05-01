@@ -712,6 +712,11 @@ describe("CLI dispatch", () => {
     expect(status.out).toContain("<name> status");
     expect(status.out).not.toContain("sandbox:status");
 
+    const logs = runWithEnv("alpha logs --help", { HOME: home });
+    expect(logs.code).toBe(0);
+    expect(logs.out).toContain("<name> logs [--follow]");
+    expect(logs.out).not.toContain("sandbox:logs");
+
     const policy = runWithEnv("alpha policy-list --help", { HOME: home });
     expect(policy.code).toBe(0);
     expect(policy.out).toContain("<name> policy-list");

@@ -575,6 +575,7 @@ exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
 exports.recoverRegistryEntries = recoverRegistryEntries;
 exports.runOpenshell = runOpenshell;
 exports.sandboxChannelsList = sandboxChannelsList;
+exports.sandboxLogs = sandboxLogs;
 exports.sandboxPolicyList = sandboxPolicyList;
 exports.sandboxStatus = sandboxStatus;
 exports.upgradeSandboxes = upgradeSandboxes;
@@ -4062,7 +4063,11 @@ const [cmd, ...args] = process.argv.slice(2);
         await runOclif("sandbox:status", [cmd, ...actionArgs]);
         break;
       case "logs":
-        sandboxLogs(cmd, actionArgs.includes("--follow"));
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage("logs [--follow]");
+          break;
+        }
+        await runOclif("sandbox:logs", [cmd, ...actionArgs]);
         break;
       case "policy-add":
         await sandboxPolicyAdd(cmd, actionArgs);
