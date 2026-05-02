@@ -15,7 +15,7 @@ import { execTimeout } from "./helpers/timeouts";
 const requireForTest = createRequire(import.meta.url);
 const readline = requireForTest("node:readline") as typeof import("node:readline");
 const REPO_ROOT = path.join(import.meta.dirname, "..");
-const CLI_PATH = JSON.stringify(path.join(REPO_ROOT, "bin", "nemoclaw.js"));
+const CLI_PATH = JSON.stringify(path.join(REPO_ROOT, "dist", "nemoclaw.js"));
 const CREDENTIALS_PATH = JSON.stringify(path.join(REPO_ROOT, "dist", "lib", "credentials.js"));
 const POLICIES_PATH = JSON.stringify(path.join(REPO_ROOT, "dist", "lib", "policies.js"));
 const REGISTRY_PATH = JSON.stringify(path.join(REPO_ROOT, "dist", "lib", "registry.js"));
