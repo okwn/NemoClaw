@@ -9,6 +9,12 @@ import {
 import DebugCliCommand from "./debug-cli-command";
 import GatewayTokenCliCommand from "./gateway-token-cli-command";
 import ListCommand from "./list-command";
+import {
+  SandboxChannelsListCommand,
+  SandboxConfigGetCommand,
+  SandboxPolicyListCommand,
+  SandboxStatusCommand,
+} from "./sandbox-inspection-cli-command";
 import ShareCommand from "./share-command";
 import StatusCommand from "./status-command";
 import {
@@ -25,6 +31,10 @@ export default {
   "credentials:reset": CredentialsResetCommand,
   debug: DebugCliCommand,
   list: ListCommand,
+  "sandbox:channels:list": SandboxChannelsListCommand,
+  "sandbox:config:get": SandboxConfigGetCommand,
+  "sandbox:policy-list": SandboxPolicyListCommand,
+  "sandbox:status": SandboxStatusCommand,
   share: ShareCommand,
   status: StatusCommand,
   start: DeprecatedStartCommand,

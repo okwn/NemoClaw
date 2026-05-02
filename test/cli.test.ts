@@ -783,6 +783,31 @@ describe("CLI dispatch", () => {
     expect(r.out).not.toContain("sandbox:gateway-token");
   });
 
+  it("sandbox inspection help keeps public sandbox-scoped usage", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-inspection-help-"));
+    writeSandboxRegistry(home);
+
+    const status = runWithEnv("alpha status --help", { HOME: home });
+    expect(status.code).toBe(0);
+    expect(status.out).toContain("<name> status");
+    expect(status.out).not.toContain("sandbox:status");
+
+    const policy = runWithEnv("alpha policy-list --help", { HOME: home });
+    expect(policy.code).toBe(0);
+    expect(policy.out).toContain("<name> policy-list");
+    expect(policy.out).not.toContain("sandbox:policy-list");
+
+    const channels = runWithEnv("alpha channels list --help", { HOME: home });
+    expect(channels.code).toBe(0);
+    expect(channels.out).toContain("<name> channels list");
+    expect(channels.out).not.toContain("sandbox:channels:list");
+
+    const config = runWithEnv("alpha config get --help", { HOME: home });
+    expect(config.code).toBe(0);
+    expect(config.out).toContain("<name> config get");
+    expect(config.out).not.toContain("sandbox:config:get");
+  });
+
   it("routes logs to OpenClaw and OpenShell log sources", () => {
     const setup = createLogsTestSetup("nemoclaw-cli-logs-routing-");
     const r = setup.runLogs();
