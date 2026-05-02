@@ -322,7 +322,8 @@ else
   fail "shields down did not report success: ${SHIELDS_DOWN_OUTPUT}"
 fi
 
-# Check permissions changed — should be sandbox:sandbox 660/2770 (group-writable mutable default)
+# Check permissions changed — OpenClaw shields-down uses sandbox:sandbox
+# 660/2770 so the gateway UID can write the mutable config tree.
 PERMS_DOWN=$(openshell sandbox exec --name "${SANDBOX_NAME}" -- \
   stat -c '%a %U:%G' "${CONFIG_PATH}" 2>/dev/null || true)
 info "Config perms (shields DOWN): ${PERMS_DOWN}"
