@@ -136,6 +136,7 @@ describe("nemoclaw-start non-root fallback", () => {
       "set -euo pipefail",
       'id() { if [ "${1:-}" = "-u" ]; then printf "1000"; else command id "$@"; fi; }',
       'verify_config_integrity_if_locked() { printf "nonroot:%s\\n" "$*"; }',
+      'normalize_mutable_config_perms() { :; }',
       nonRootIntegrityGateBlock(src),
       'echo "NONROOT_CONTINUED"',
     ].join("\n");
@@ -248,6 +249,7 @@ describe("nemoclaw-start non-root fallback", () => {
       "set -euo pipefail",
       'id() { if [ "${1:-}" = "-u" ]; then printf "1000"; else command id "$@"; fi; }',
       'verify_config_integrity_if_locked() { :; }',
+      'normalize_mutable_config_perms() { :; }',
       'apply_model_override() { :; }',
       'apply_cors_override() { :; }',
       'export_gateway_token() { :; }',
@@ -301,12 +303,13 @@ describe("nemoclaw-start non-root fallback", () => {
       for (const dir of ["workspace", "memory", "credentials", "flows", "telegram", "media"]) {
         expect(fs.statSync(path.join(openclawDir, dir)).isDirectory()).toBe(true);
       }
-      expect((fs.statSync(openclawDir).mode & 0o777).toString(8)).toBe("700");
+      expect((fs.statSync(openclawDir).mode & 0o777).toString(8)).toBe("770");
+      expect(fs.statSync(openclawDir).mode & 0o2000).toBe(0o2000);
       expect((fs.statSync(path.join(openclawDir, "openclaw.json")).mode & 0o777).toString(8)).toBe(
-        "600",
+        "660",
       );
       expect((fs.statSync(path.join(openclawDir, ".config-hash")).mode & 0o777).toString(8)).toBe(
-        "600",
+        "660",
       );
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1451,7 +1454,6 @@ describe("Telegram diagnostics (#2766)", () => {
         'harden_auth_profiles() { :; }',
         'chown() { :; }',
         'chown_tree_no_symlink_follow() { :; }',
-        'normalize_mutable_config_perms() { :; }',
         'start_persistent_gateway_log_mirror() { :; }',
         'gosu() { shift; "$@"; }',
         'validate_tmp_permissions() { printf "VALIDATE:%s\\n" "$*"; }',

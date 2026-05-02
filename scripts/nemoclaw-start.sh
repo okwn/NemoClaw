@@ -210,7 +210,7 @@ _SANDBOX_HOME="/sandbox"          # Home dir for the sandbox user (useradd -d /s
 # In root mode the gateway runs as the gateway UID; the file is owned
 # sandbox:sandbox. Without group write, every toggle EACCESs.
 #
-# Make the mutable-default tree group-writable + setgid so both
+# Make the mutable-default tree group-readable/writable + setgid so both
 # `gateway` (now a member of the sandbox group via Dockerfile.base
 # usermod -aG) and `sandbox` can write. Setgid means new files
 # inherit group=sandbox regardless of which UID created them, so the
@@ -219,24 +219,21 @@ _SANDBOX_HOME="/sandbox"          # Home dir for the sandbox user (useradd -d /s
 # Idempotent. Skips when shields are UP (config dir owned by root) so
 # the lock is not weakened.
 normalize_mutable_config_perms() {
-  # Only effective in root mode. Non-root containers can't chmod files
-  # they don't own; if shields are down they were normalized by an
-  # earlier root-mode startup.
-  [ "$(id -u)" -eq 0 ] || return 0
-
   local config_dir="/sandbox/.openclaw"
   [ -d "$config_dir" ] || return 0
 
   # Detect shields-up. Config dir owned by root means shields are
   # currently locked; normalizing would weaken the contract.
   local config_dir_owner
-  config_dir_owner="$(stat -c '%U' "$config_dir" 2>/dev/null || echo unknown)"
+  config_dir_owner="$(stat -c '%U' "$config_dir" 2>/dev/null || stat -f '%Su' "$config_dir" 2>/dev/null || echo unknown)"
   if [ "$config_dir_owner" = "root" ]; then
     return 0
   fi
 
-  chmod -R g+w "$config_dir" 2>/dev/null || true
+  chmod -R g+rwX,o-rwx "$config_dir" 2>/dev/null || true
   find "$config_dir" -type d -exec chmod g+s {} + 2>/dev/null || true
+  chmod 2770 "$config_dir" 2>/dev/null || true
+  chmod 660 "$config_dir/openclaw.json" "$config_dir/.config-hash" 2>/dev/null || true
 }
 
 # ── Runtime model/provider override ──────────────────────────────
@@ -2399,6 +2396,7 @@ if [ "$(id -u)" -ne 0 ]; then
     echo "[SECURITY] Config integrity check failed — refusing to start (non-root mode)" >&2
     exit 1
   fi
+  normalize_mutable_config_perms
   apply_model_override
   apply_cors_override
   export_gateway_token
@@ -2432,10 +2430,11 @@ if [ "$(id -u)" -ne 0 ]; then
         && echo "[setup] fixed ownership on ${openclaw_dir}" >&2 \
         || echo "[setup] could not fix ownership on ${openclaw_dir}; writes may fail" >&2
     fi
-    chmod 700 "$openclaw_dir" 2>/dev/null || true
-    chmod 600 "$openclaw_dir/openclaw.json" "$openclaw_dir/.config-hash" 2>/dev/null || true
+    chmod 2770 "$openclaw_dir" 2>/dev/null || true
+    chmod 660 "$openclaw_dir/openclaw.json" "$openclaw_dir/.config-hash" 2>/dev/null || true
   }
   fix_openclaw_ownership
+  normalize_mutable_config_perms
   write_auth_profile
   harden_auth_profiles
 

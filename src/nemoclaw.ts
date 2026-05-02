@@ -128,6 +128,8 @@ type SandboxCommandResult = {
   stderr: string;
 };
 
+const SANDBOX_EXEC_STARTED_MARKER = "__NEMOCLAW_SANDBOX_EXEC_STARTED__";
+
 type RecoveredSandboxMetadata = Partial<
   Pick<SandboxEntry, "model" | "provider" | "gpuEnabled" | "policies" | "nimContainer" | "agent">
 > & {
@@ -245,6 +247,7 @@ function executeSandboxCommand(sandboxName: string, command: string): SandboxCom
     timeout: OPENSHELL_PROBE_TIMEOUT_MS,
   });
   if (sshConfigResult.status !== 0) return null;
+  if (!sshConfigResult.output.trim()) return null;
 
   const tmpFile = path.join(os.tmpdir(), `nemoclaw-ssh-${process.pid}-${Date.now()}.conf`);
   fs.writeFileSync(tmpFile, sshConfigResult.output, { mode: 0o600 });
@@ -283,6 +286,46 @@ function executeSandboxCommand(sandboxName: string, command: string): SandboxCom
   }
 }
 
+function executeSandboxExecCommand(
+  sandboxName: string,
+  command: string,
+  timeout = 15000,
+): SandboxCommandResult | null {
+  const markedCommand = `printf '%s\\n' '${SANDBOX_EXEC_STARTED_MARKER}'; ${command}`;
+  try {
+    const result = spawnSync(
+      getOpenshellBinary(),
+      ["sandbox", "exec", "--name", sandboxName, "--", "sh", "-c", markedCommand],
+      {
+        cwd: ROOT,
+        encoding: "utf-8",
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout,
+      },
+    );
+    const stdout = (result.stdout || "").trim();
+    const stdoutLines = stdout.split(/\r?\n/);
+    const markerIndex = stdoutLines.indexOf(SANDBOX_EXEC_STARTED_MARKER);
+    if (markerIndex === -1) return null;
+    const commandStdoutLines = stdoutLines.slice(markerIndex + 1);
+    return {
+      status: result.error ? 1 : (result.status ?? 1),
+      stdout: commandStdoutLines.join("\n").trim(),
+      stderr: (result.stderr || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseSandboxGatewayProbe(result: SandboxCommandResult | null): boolean | null {
+  if (!result) return null;
+  if (result.stdout === "RUNNING") return true;
+  if (result.stdout === "STOPPED") return false;
+  return null;
+}
+
 /**
  * Check whether the OpenClaw gateway process is running inside the sandbox.
  * Uses the gateway's HTTP endpoint (dashboard port) as the source of truth,
@@ -292,62 +335,72 @@ function executeSandboxCommand(sandboxName: string, command: string): SandboxCom
 function isSandboxGatewayRunning(sandboxName: string): boolean | null {
   const agent = agentRuntime.getSessionAgent(sandboxName);
   const probeUrl = agentRuntime.getHealthProbeUrl(agent);
-  const result = executeSandboxCommand(
-    sandboxName,
-    `curl -sf --max-time 3 ${shellQuote(probeUrl)} > /dev/null 2>&1 && echo RUNNING || echo STOPPED`,
-  );
-  if (!result) return null;
-  if (result.stdout === "RUNNING") return true;
-  if (result.stdout === "STOPPED") return false;
-  return null;
+  const command = `curl -sf --max-time 3 ${shellQuote(probeUrl)} > /dev/null 2>&1 && echo RUNNING || echo STOPPED`;
+  const execProbe = parseSandboxGatewayProbe(executeSandboxExecCommand(sandboxName, command));
+  if (execProbe !== null) return execProbe;
+  return parseSandboxGatewayProbe(executeSandboxCommand(sandboxName, command));
 }
 
 /**
- * Restart the OpenClaw gateway process inside the sandbox after a pod restart.
+ * Restart the gateway process inside the sandbox after a pod restart.
  * Cleans stale lock/temp files, sources proxy config, and launches the gateway
  * in the background. Returns true on success.
  */
 function recoverSandboxProcesses(sandboxName: string): boolean {
   const agent = agentRuntime.getSessionAgent(sandboxName);
   const agentScript = agentRuntime.buildRecoveryScript(agent, agent?.forwardPort ?? DASHBOARD_PORT);
-  const script =
-    agentScript ||
-    [
-      // Source /tmp/nemoclaw-proxy-env.sh explicitly so NODE_OPTIONS preload
-      // guards (safety-net, ciao, slack, …) survive gateway respawn. Without
-      // this, library errors crash-loop the gateway because the original
-      // .bashrc-only path silently failed when the env file was unreadable
-      // or the shell did not source ~/.bashrc. See #2478. Mirrors the
-      // hardened block in src/lib/agent-runtime.ts:buildRecoveryScript.
-      // Defer warning emission until AFTER touch+chmod gateway.log so
-      // warnings land in the persistent log a sysadmin would tail. Stderr
-      // alone hides them because executeSandboxCommand captures stderr
-      // without surfacing it. Mirrors src/lib/agent-runtime.ts.
-      "if [ -r /tmp/nemoclaw-proxy-env.sh ]; then . /tmp/nemoclaw-proxy-env.sh; _PE_MISSING=0; else _PE_MISSING=1; fi;",
-      "[ -f ~/.bashrc ] && . ~/.bashrc;",
-      'case "${NODE_OPTIONS:-}" in *nemoclaw-sandbox-safety-net*) _SN_MISSING=0 ;; *) _SN_MISSING=1 ;; esac; case "${NODE_OPTIONS:-}" in *nemoclaw-ciao-network-guard*) _CIAO_MISSING=0 ;; *) _CIAO_MISSING=1 ;; esac; if [ "$_SN_MISSING" = "0" ] && [ "$_CIAO_MISSING" = "0" ]; then _GUARDS_MISSING=0; else _GUARDS_MISSING=1; fi;',
-      `if curl -sf --max-time 3 http://127.0.0.1:${DASHBOARD_PORT}/ > /dev/null 2>&1; then echo ALREADY_RUNNING; exit 0; fi;`,
-      "rm -rf /tmp/openclaw-*/gateway.*.lock 2>/dev/null;",
-      "rm -f /tmp/gateway.log /tmp/auto-pair.log;",
-      "touch /tmp/gateway.log; chmod 600 /tmp/gateway.log;",
-      "touch /tmp/auto-pair.log; chmod 600 /tmp/auto-pair.log;",
-      '[ "$_PE_MISSING" = "1" ] && { _W="[gateway-recovery] WARNING: /tmp/nemoclaw-proxy-env.sh missing — gateway launching without library guards (#2478)"; echo "$_W" >&2; echo "$_W" >> /tmp/gateway.log; };',
-      '[ "$_GUARDS_MISSING" = "1" ] && { _W="[gateway-recovery] WARNING: NODE_OPTIONS missing safety-net preload or ciao preload — gateway may crash on unhandled library errors (#2478)"; echo "$_W" >&2; echo "$_W" >> /tmp/gateway.log; };',
-      'OPENCLAW="$(command -v openclaw)";',
-      'if [ -z "$OPENCLAW" ]; then echo OPENCLAW_MISSING; exit 1; fi;',
-      // Append rather than truncate so [gateway-recovery] WARNING lines
-      // written above survive past the launch. (#2478)
-      `nohup "$OPENCLAW" gateway run --port ${DASHBOARD_PORT} >> /tmp/gateway.log 2>&1 &`,
-      "GPID=$!; sleep 2;",
-      'if kill -0 "$GPID" 2>/dev/null; then echo "GATEWAY_PID=$GPID"; else echo GATEWAY_FAILED; cat /tmp/gateway.log 2>/dev/null | tail -5; fi',
-    ].join(" ");
+  const hasRecoveryMarker = (result: SandboxCommandResult | null) =>
+    !!(
+      result &&
+      (result.stdout.includes("GATEWAY_PID=") || result.stdout.includes("ALREADY_RUNNING"))
+    );
+  const recoveredSsh = (result: SandboxCommandResult | null) =>
+    !!(result && result.status === 0 && hasRecoveryMarker(result));
 
-  const result = executeSandboxCommand(sandboxName, script);
-  if (!result) return false;
-  return (
-    result.status === 0 &&
-    (result.stdout.includes("GATEWAY_PID=") || result.stdout.includes("ALREADY_RUNNING"))
+  if (agentScript) {
+    // Non-OpenClaw manifests do not yet declare a runtime user for root
+    // sandbox exec. Recover them over SSH so the launch inherits the sandbox
+    // login user instead of creating root-owned agent state under /sandbox.
+    return recoveredSsh(executeSandboxCommand(sandboxName, agentScript));
+  }
+
+  const script = agentRuntime.buildOpenClawRecoveryScript(DASHBOARD_PORT);
+  const execResult = executeSandboxExecCommand(sandboxName, script, 30000);
+  if (hasRecoveryMarker(execResult)) return true;
+  if (execResult !== null) return false;
+  return recoveredSsh(executeSandboxCommand(sandboxName, script));
+}
+
+function readNonNegativeNumberEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function waitForRecoveredSandboxGateway(sandboxName: string): boolean {
+  const timeoutSeconds = readNonNegativeNumberEnv(
+    "NEMOCLAW_GATEWAY_RECOVERY_WAIT_SECONDS",
+    30,
   );
+  const intervalSeconds = readNonNegativeNumberEnv(
+    "NEMOCLAW_GATEWAY_RECOVERY_POLL_INTERVAL_SECONDS",
+    3,
+  );
+  const attempts =
+    intervalSeconds > 0
+      ? Math.max(1, Math.floor(timeoutSeconds / intervalSeconds) + 1)
+      : Math.max(1, Math.floor(timeoutSeconds) + 1);
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (isSandboxGatewayRunning(sandboxName) === true) {
+      return true;
+    }
+    if (attempt < attempts - 1) {
+      sleepSeconds(intervalSeconds);
+    }
+  }
+  return false;
 }
 
 /**
@@ -392,9 +445,9 @@ function checkAndRecoverSandboxProcesses(
 
   const recovered = recoverSandboxProcesses(sandboxName);
   if (recovered) {
-    // Wait for gateway to bind its HTTP port before declaring success
-    sleepSeconds(3);
-    if (isSandboxGatewayRunning(sandboxName) !== true) {
+    // Wait for gateway to bind its HTTP port before declaring success. The
+    // recovered process can be alive before the OpenAI-compatible API is ready.
+    if (!waitForRecoveredSandboxGateway(sandboxName)) {
       if (!quiet) {
         console.error("  Gateway process started but is not responding.");
         console.error("  Check /tmp/gateway.log inside the sandbox for details.");
@@ -593,8 +646,15 @@ exports.garbageCollectImages = garbageCollectImages;
 exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
 exports.recoverRegistryEntries = recoverRegistryEntries;
 exports.runOpenshell = runOpenshell;
+exports.sandboxChannelsAdd = sandboxChannelsAdd;
 exports.sandboxChannelsList = sandboxChannelsList;
+exports.sandboxChannelsRemove = sandboxChannelsRemove;
+exports.sandboxChannelsStart = sandboxChannelsStart;
+exports.sandboxChannelsStop = sandboxChannelsStop;
+exports.sandboxLogs = sandboxLogs;
 exports.sandboxPolicyList = sandboxPolicyList;
+exports.sandboxSkillInstall = sandboxSkillInstall;
+exports.sandboxSnapshot = sandboxSnapshot;
 exports.sandboxStatus = sandboxStatus;
 exports.ensureLiveSandboxOrExit = ensureLiveSandboxOrExit;
 exports.G = G;
@@ -1230,9 +1290,89 @@ function printSandboxActionUsage(action: string): void {
 
 // ── Sandbox-scoped actions ───────────────────────────────────────
 
-async function sandboxConnect(sandboxName: string) {
+type SandboxConnectOptions = {
+  probeOnly?: boolean;
+};
+
+const SANDBOX_CONNECT_FLAGS = new Set(["--dangerously-skip-permissions", "--probe-only", "--help", "-h"]);
+
+function isSandboxConnectFlag(arg: string | undefined): boolean {
+  return typeof arg === "string" && SANDBOX_CONNECT_FLAGS.has(arg);
+}
+
+function printSandboxConnectHelp(sandboxName = "<name>") {
+  console.log("");
+  console.log(`  Usage: ${CLI_NAME} ${sandboxName} connect [--probe-only]`);
+  console.log("");
+  console.log("  Options:");
+  console.log(
+    "    --probe-only                    Run recovery checks and exit without opening SSH",
+  );
+  console.log("    -h, --help                      Show this help");
+  console.log("");
+}
+
+function parseSandboxConnectArgs(sandboxName: string, actionArgs: string[]): SandboxConnectOptions {
+  const options: SandboxConnectOptions = {};
+  for (const arg of actionArgs) {
+    if (!isSandboxConnectFlag(arg)) {
+      console.error(`  Unknown flag for connect: ${arg}`);
+      printSandboxConnectHelp(sandboxName);
+      process.exit(1);
+    }
+    switch (arg) {
+      case "--dangerously-skip-permissions":
+        console.error("  --dangerously-skip-permissions was removed; use shields commands instead.");
+        printSandboxConnectHelp(sandboxName);
+        process.exit(1);
+      case "--probe-only":
+        options.probeOnly = true;
+        break;
+      case "--help":
+      case "-h":
+        printSandboxConnectHelp(sandboxName);
+        process.exit(0);
+        break;
+    }
+  }
+  return options;
+}
+
+function runSandboxConnectProbe(sandboxName: string): void {
+  const processCheck = checkAndRecoverSandboxProcesses(sandboxName, { quiet: true });
+  const agent = agentRuntime.getSessionAgent(sandboxName);
+  const agentName = agentRuntime.getAgentDisplayName(agent);
+  if (!processCheck.checked) {
+    console.error(
+      `  Probe failed: could not inspect the ${agentName} gateway inside sandbox '${sandboxName}'.`,
+    );
+    process.exit(1);
+  }
+  if (processCheck.wasRunning) {
+    console.log(`  Probe complete: ${agentName} gateway is running in '${sandboxName}'.`);
+    return;
+  }
+  if (processCheck.recovered) {
+    console.log(`  Probe complete: recovered ${agentName} gateway in '${sandboxName}'.`);
+    return;
+  }
+  console.error(
+    `  Probe failed: ${agentName} gateway is not running in '${sandboxName}' and automatic recovery failed.`,
+  );
+  console.error("  Check /tmp/gateway.log inside the sandbox for details.");
+  process.exit(1);
+}
+
+async function sandboxConnect(
+  sandboxName: string,
+  { probeOnly = false }: SandboxConnectOptions = {},
+) {
   const { isSandboxReady, parseSandboxStatus } = require("./lib/onboard");
   await ensureLiveSandboxOrExit(sandboxName, { allowNonReadyPhase: true });
+
+  if (probeOnly) {
+    return runSandboxConnectProbe(sandboxName);
+  }
 
   // Version staleness check — warn but don't block
   try {
@@ -4679,11 +4819,24 @@ const [cmd, ...args] = process.argv.slice(2);
   }
 
   // Sandbox-scoped commands: nemoclaw <name> <action>
+  const firstSandboxArg = args[0];
+  const implicitConnectArg = isSandboxConnectFlag(firstSandboxArg);
+  const requestedSandboxAction =
+    !firstSandboxArg || implicitConnectArg ? "connect" : firstSandboxArg;
+  const requestedSandboxActionArgs = !firstSandboxArg || implicitConnectArg ? args : args.slice(1);
+  if (
+    requestedSandboxAction === "connect" &&
+    requestedSandboxActionArgs.some((arg) => arg === "--help" || arg === "-h")
+  ) {
+    validateName(cmd, "sandbox name");
+    printSandboxConnectHelp(cmd);
+    return;
+  }
+
   // If the registry doesn't know this name but the action is a sandbox-scoped
   // command, attempt recovery — the sandbox may still be live with a stale registry.
   // Derived from command registry — single source of truth
   const sandboxActions = sandboxActionTokens();
-  const requestedSandboxAction = args[0] || "connect";
   if (!registry.getSandbox(cmd) && sandboxActions.includes(requestedSandboxAction)) {
     validateName(cmd, "sandbox name");
     await recoverRegistryEntries({ requestedSandboxName: cmd });
@@ -4727,28 +4880,12 @@ const [cmd, ...args] = process.argv.slice(2);
   const sandbox = registry.getSandbox(cmd);
   if (sandbox) {
     validateName(cmd, "sandbox name");
-    const action = args[0] || "connect";
-    const actionArgs = args.slice(1);
+    const action = requestedSandboxAction;
+    const actionArgs = requestedSandboxActionArgs;
 
     switch (action) {
       case "connect":
-        if (actionArgs.length > 0) {
-          console.error(
-            `  Unknown connect argument${actionArgs.length === 1 ? "" : "s"}: ${actionArgs.join(" ")}`,
-          );
-          if (actionArgs.includes("--dangerously-skip-permissions")) {
-            console.error(
-              "  --dangerously-skip-permissions was removed; use shields commands instead.",
-            );
-          }
-          const reorderedCandidate = findRegisteredSandboxName(actionArgs);
-          if (reorderedCandidate) {
-            printConnectOrderHint(reorderedCandidate);
-          }
-          console.error(`  Usage: ${CLI_NAME} <name> connect`);
-          process.exit(1);
-        }
-        await sandboxConnect(cmd);
+        await sandboxConnect(cmd, parseSandboxConnectArgs(cmd, actionArgs));
         break;
       case "status":
         if (hasHelpFlag(actionArgs)) {
@@ -4761,7 +4898,11 @@ const [cmd, ...args] = process.argv.slice(2);
         await sandboxDoctor(cmd, actionArgs);
         break;
       case "logs":
-        sandboxLogs(cmd, actionArgs.includes("--follow"));
+        if (hasHelpFlag(actionArgs)) {
+          printSandboxActionUsage("logs [--follow]");
+          break;
+        }
+        await runOclif("sandbox:logs", [cmd, ...actionArgs]);
         break;
       case "policy-add":
         await sandboxPolicyAdd(cmd, actionArgs);
@@ -4786,15 +4927,49 @@ const [cmd, ...args] = process.argv.slice(2);
         }
         await runOclif("sandbox:gateway-token", [cmd, ...actionArgs]);
         break;
-      case "skill":
-        await sandboxSkillInstall(cmd, actionArgs);
+      case "skill": {
+        const skillSub = actionArgs[0];
+        const skillArgs = actionArgs.slice(1);
+        if (!skillSub || skillSub === "help" || skillSub === "--help" || skillSub === "-h") {
+          await sandboxSkillInstall(cmd, actionArgs);
+        } else if (skillSub === "install") {
+          if (hasHelpFlag(skillArgs)) {
+            await sandboxSkillInstall(cmd, actionArgs);
+          } else {
+            await runOclif("sandbox:skill:install", [cmd, ...skillArgs]);
+          }
+        } else {
+          await sandboxSkillInstall(cmd, actionArgs);
+        }
         break;
+      }
       case "rebuild":
         await sandboxRebuild(cmd, actionArgs);
         break;
-      case "snapshot":
-        await sandboxSnapshot(cmd, actionArgs);
+      case "snapshot": {
+        const snapshotSub = actionArgs[0];
+        const snapshotArgs = actionArgs.slice(1);
+        switch (snapshotSub) {
+          case "list":
+            if (hasHelpFlag(snapshotArgs)) {
+              printSandboxActionUsage("snapshot list");
+              break;
+            }
+            await runOclif("sandbox:snapshot:list", [cmd, ...snapshotArgs]);
+            break;
+          case "create":
+            if (hasHelpFlag(snapshotArgs)) {
+              printSandboxActionUsage("snapshot create [--name <name>]");
+              break;
+            }
+            await runOclif("sandbox:snapshot:create", [cmd, ...snapshotArgs]);
+            break;
+          default:
+            await sandboxSnapshot(cmd, actionArgs);
+            break;
+        }
         break;
+      }
       case "share":
         await runRegisteredOclifCommand("share", [cmd, ...actionArgs], {
           rootDir: ROOT,
@@ -4804,48 +4979,30 @@ const [cmd, ...args] = process.argv.slice(2);
         break;
       case "shields": {
         const shieldsSub = actionArgs[0];
-        const shieldsFlags = actionArgs.slice(1);
+        const shieldsArgs = actionArgs.slice(1);
         switch (shieldsSub) {
-          case "down": {
-            const opts: { timeout: string | null; reason: string | null; policy: string } = {
-              timeout: null,
-              reason: null,
-              policy: "permissive",
-            };
-            for (let i = 0; i < shieldsFlags.length; i++) {
-              if (shieldsFlags[i] === "--timeout") {
-                if (i + 1 >= shieldsFlags.length || shieldsFlags[i + 1].startsWith("--")) {
-                  console.error("  --timeout requires a value (e.g. 5m, 30m, 300)");
-                  process.exit(1);
-                }
-                opts.timeout = shieldsFlags[++i];
-              } else if (shieldsFlags[i] === "--reason") {
-                if (i + 1 >= shieldsFlags.length || shieldsFlags[i + 1].startsWith("--")) {
-                  console.error("  --reason requires a value");
-                  process.exit(1);
-                }
-                opts.reason = shieldsFlags[++i];
-              } else if (shieldsFlags[i] === "--policy") {
-                if (i + 1 >= shieldsFlags.length || shieldsFlags[i + 1].startsWith("--")) {
-                  console.error(
-                    "  --policy requires a value (e.g. permissive, /path/to/policy.yaml)",
-                  );
-                  process.exit(1);
-                }
-                opts.policy = shieldsFlags[++i];
-              } else {
-                console.error(`  Unknown flag: ${shieldsFlags[i]}`);
-                process.exit(1);
-              }
+          case "down":
+            if (hasHelpFlag(shieldsArgs)) {
+              printSandboxActionUsage(
+                "shields down [--timeout 5m] [--reason 'text'] [--policy permissive]",
+              );
+              break;
             }
-            shields.shieldsDown(cmd, opts);
+            await runOclif("sandbox:shields:down", [cmd, ...shieldsArgs]);
             break;
-          }
           case "up":
-            shields.shieldsUp(cmd);
+            if (hasHelpFlag(shieldsArgs)) {
+              printSandboxActionUsage("shields up");
+              break;
+            }
+            await runOclif("sandbox:shields:up", [cmd, ...shieldsArgs]);
             break;
           case "status":
-            shields.shieldsStatus(cmd);
+            if (hasHelpFlag(shieldsArgs)) {
+              printSandboxActionUsage("shields status");
+              break;
+            }
+            await runOclif("sandbox:shields:status", [cmd, ...shieldsArgs]);
             break;
           default:
             console.error(`  Usage: ${CLI_NAME} <name> shields <down|up|status>`);
@@ -4872,16 +5029,32 @@ const [cmd, ...args] = process.argv.slice(2);
             await runOclif("sandbox:channels:list", [cmd]);
             break;
           case "add":
-            await sandboxChannelsAdd(cmd, channelsArgs);
+            if (hasHelpFlag(channelsArgs)) {
+              printSandboxActionUsage("channels add <channel> [--dry-run]");
+              break;
+            }
+            await runOclif("sandbox:channels:add", [cmd, ...channelsArgs]);
             break;
           case "remove":
-            await sandboxChannelsRemove(cmd, channelsArgs);
+            if (hasHelpFlag(channelsArgs)) {
+              printSandboxActionUsage("channels remove <channel> [--dry-run]");
+              break;
+            }
+            await runOclif("sandbox:channels:remove", [cmd, ...channelsArgs]);
             break;
           case "stop":
-            await sandboxChannelsStop(cmd, channelsArgs);
+            if (hasHelpFlag(channelsArgs)) {
+              printSandboxActionUsage("channels stop <channel> [--dry-run]");
+              break;
+            }
+            await runOclif("sandbox:channels:stop", [cmd, ...channelsArgs]);
             break;
           case "start":
-            await sandboxChannelsStart(cmd, channelsArgs);
+            if (hasHelpFlag(channelsArgs)) {
+              printSandboxActionUsage("channels start <channel> [--dry-run]");
+              break;
+            }
+            await runOclif("sandbox:channels:start", [cmd, ...channelsArgs]);
             break;
           case "--help":
           case "-h":

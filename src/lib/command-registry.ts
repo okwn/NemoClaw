@@ -98,6 +98,7 @@ export const COMMANDS: readonly CommandDef[] = [
   {
     usage: "nemoclaw <name> connect",
     description: "Shell into a running sandbox",
+    flags: "[--probe-only]",
     group: "Sandbox Management",
     scope: "sandbox",
   },
@@ -427,7 +428,6 @@ export const COMMANDS: readonly CommandDef[] = [
     scope: "global",
     hidden: true,
   },
-
 ] as const;
 
 /** All global-scope commands. */
