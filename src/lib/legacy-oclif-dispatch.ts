@@ -19,7 +19,7 @@ export type UsageErrorDispatch = {
 
 export type LegacyDispatch = {
   kind: "legacy";
-  target: "connect-args" | "policy-add" | "skill" | "snapshot";
+  target: "doctor" | "policy-add" | "skill" | "snapshot";
 };
 
 export type UnknownSubcommandDispatch = {
@@ -102,14 +102,15 @@ export function resolveSandboxOclifDispatch(
   switch (action) {
     case "connect":
       if (hasHelpFlag(actionArgs)) return { kind: "help", usage: "connect" };
-      if (actionArgs.length > 0) return { kind: "legacy", target: "connect-args" };
-      return { kind: "oclif", commandId: "sandbox:connect", args: [sandboxName] };
+      return { kind: "oclif", commandId: "sandbox:connect", args: [sandboxName, ...actionArgs] };
     case "status":
       if (hasHelpFlag(actionArgs)) return { kind: "help", usage: "status" };
       return { kind: "oclif", commandId: "sandbox:status", args: [sandboxName, ...actionArgs] };
     case "logs":
       if (hasHelpFlag(actionArgs)) return { kind: "help", usage: "logs [--follow]" };
       return { kind: "oclif", commandId: "sandbox:logs", args: [sandboxName, ...actionArgs] };
+    case "doctor":
+      return { kind: "legacy", target: "doctor" };
     case "policy-add":
       if (hasHelpFlag(actionArgs)) {
         return {
@@ -148,6 +149,8 @@ export function resolveSandboxOclifDispatch(
     case "rebuild":
       if (hasHelpFlag(actionArgs)) return { kind: "help", usage: "rebuild [--yes|--force] [--verbose|-v]" };
       return { kind: "oclif", commandId: "sandbox:rebuild", args: [sandboxName, ...actionArgs] };
+    case "share":
+      return { kind: "oclif", commandId: "share", args: [sandboxName, ...actionArgs] };
     case "snapshot": {
       const snapshotSub = actionArgs[0];
       const snapshotArgs = actionArgs.slice(1);
