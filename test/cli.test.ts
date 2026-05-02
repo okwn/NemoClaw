@@ -4123,6 +4123,7 @@ describe("CLI dispatch", () => {
       const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-gateway-unreachable-"));
       const localBin = path.join(home, "bin");
       const registryDir = path.join(home, ".nemoclaw");
+      const markerFile = path.join(home, "openshell-calls");
       fs.mkdirSync(localBin, { recursive: true });
       fs.mkdirSync(registryDir, { recursive: true });
       fs.writeFileSync(
@@ -4145,6 +4146,7 @@ describe("CLI dispatch", () => {
         path.join(localBin, "openshell"),
         [
           "#!/usr/bin/env bash",
+          `printf '%s\\n' "$*" >> ${JSON.stringify(markerFile)}`,
           'if [ "$1" = "sandbox" ] && [ "$2" = "get" ] && [ "$3" = "alpha" ]; then',
           "  echo 'Error: transport error: Connection refused' >&2",
           "  exit 1",
@@ -4206,6 +4208,7 @@ describe("CLI dispatch", () => {
       expect(statusResult.out).toContain(
         "Inference: not verified (gateway/sandbox state not verified)",
       );
+      expect(fs.readFileSync(markerFile, "utf8")).not.toContain("inference get");
       expect(
         statusResult.out.includes("gateway is still refusing connections after restart"),
       ).toBeTruthy();
@@ -4464,6 +4467,7 @@ describe("list shows live gateway inference", () => {
   it("lists registered sandboxes when runtime inference probing is degraded", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-list-runtime-degraded-"));
     const localBin = path.join(home, "bin");
+    const markerFile = path.join(home, "openshell-calls");
     fs.mkdirSync(localBin, { recursive: true });
     writeSandboxRegistry(home, {
       model: "configured-model",
@@ -4475,11 +4479,12 @@ describe("list shows live gateway inference", () => {
       path.join(localBin, "openshell"),
       [
         "#!/usr/bin/env bash",
+        `printf '%s\\n' "$*" >> ${JSON.stringify(markerFile)}`,
         'if [ "$1" = "inference" ] && [ "$2" = "get" ]; then',
         "  echo 'Error: client error (Connect)' >&2",
         "  exit 1",
         "fi",
-        "exit 1",
+        "exit 0",
       ].join("\n"),
       { mode: 0o755 },
     );
@@ -4494,6 +4499,7 @@ describe("list shows live gateway inference", () => {
     expect(r.out).toContain("alpha *");
     expect(r.out).toContain("model: configured-model");
     expect(r.out).toContain("provider: nvidia-prod");
+    expect(fs.readFileSync(markerFile, "utf8")).toContain("inference get");
   });
 
   // ── Issue #1904: sandbox not upgraded after NemoClaw upgrade ───
