@@ -17,10 +17,10 @@ import type { CommandDef } from "./command-registry";
 
 describe("command-registry", () => {
   describe("COMMANDS array", () => {
-    it("should contain exactly 45 commands", () => {
+    it("should contain exactly 49 commands", () => {
       // 23 global (18 visible + 5 hidden help/version aliases)
-      // 22 sandbox (18 visible + 4 hidden shields/config)
-      expect(COMMANDS).toHaveLength(45);
+      // 26 sandbox (22 visible + 4 hidden shields/config)
+      expect(COMMANDS).toHaveLength(49);
     });
 
     it("should have no duplicate usage strings", () => {
@@ -52,9 +52,9 @@ describe("command-registry", () => {
   });
 
   describe("sandboxCommands()", () => {
-    it("should return exactly 22 entries", () => {
-      // 18 visible + 4 hidden (shields×3 + config get)
-      expect(sandboxCommands()).toHaveLength(22);
+    it("should return exactly 26 entries", () => {
+      // 22 visible + 4 hidden (shields×3 + config get)
+      expect(sandboxCommands()).toHaveLength(26);
     });
 
     it("every entry has scope sandbox", () => {
@@ -65,10 +65,10 @@ describe("command-registry", () => {
   });
 
   describe("visibleCommands()", () => {
-    it("should exclude 9 hidden commands (36 visible)", () => {
+    it("should exclude 9 hidden commands (40 visible)", () => {
       // 5 hidden global (help, --help, -h, --version, -v) +
       // 4 hidden sandbox (shields×3, config get)
-      expect(visibleCommands()).toHaveLength(36);
+      expect(visibleCommands()).toHaveLength(40);
     });
 
     it("no visible command has hidden=true", () => {
@@ -128,6 +128,12 @@ describe("command-registry", () => {
       }
     });
 
+    it("keeps optional flags out of canonical usage strings", () => {
+      for (const entry of canonicalUsageList()) {
+        expect(entry).not.toContain("[");
+      }
+    });
+
     it("excludes hidden commands", () => {
       const list = canonicalUsageList();
       expect(list).not.toContain("nemoclaw <name> shields down");
@@ -165,13 +171,14 @@ describe("command-registry", () => {
   });
 
   describe("sandboxActionTokens()", () => {
-    it("returns exactly 15 unique action tokens including empty string", () => {
+    it("returns exactly 17 unique action tokens including empty string", () => {
       const tokens = sandboxActionTokens();
-      expect(tokens).toHaveLength(15);
-      // Must contain the same set as the old sandboxActions array
+      expect(tokens).toHaveLength(17);
+      // Must contain every first-level sandbox action plus the empty default action.
       const expected = new Set([
         "connect",
         "status",
+        "doctor",
         "logs",
         "policy-add",
         "policy-remove",
@@ -180,6 +187,7 @@ describe("command-registry", () => {
         "skill",
         "rebuild",
         "snapshot",
+        "share",
         "shields",
         "config",
         "channels",
