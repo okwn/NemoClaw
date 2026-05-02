@@ -13,6 +13,10 @@ export interface GatewayRecoveryResult {
   recovered: boolean;
 }
 
+export interface SandboxConnectOptions {
+  probeOnly?: boolean;
+}
+
 export interface NemoClawRuntimeBridge {
   backupAll: () => void;
   deploy: (instanceName?: string) => Promise<void>;
@@ -30,7 +34,7 @@ export interface NemoClawRuntimeBridge {
   sandboxChannelsRemove: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxChannelsStart: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxChannelsStop: (sandboxName: string, args?: string[]) => Promise<void>;
-  sandboxConnect: (sandboxName: string) => Promise<void>;
+  sandboxConnect: (sandboxName: string, options?: SandboxConnectOptions) => Promise<void>;
   sandboxDestroy: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxLogs: (sandboxName: string, follow: boolean) => void;
   sandboxPolicyAdd: (sandboxName: string, args?: string[]) => Promise<void>;
