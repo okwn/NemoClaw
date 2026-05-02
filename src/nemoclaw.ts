@@ -699,37 +699,39 @@ async function recoverRegistryEntries({
   };
 }
 
-exports.captureOpenshell = captureOpenshell;
-exports.backupAll = backupAll;
-exports.deploy = deploy;
-exports.garbageCollectImages = garbageCollectImages;
-exports.help = help;
-exports.onboard = onboard;
-exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
-exports.recoverRegistryEntries = recoverRegistryEntries;
-exports.runOpenshell = runOpenshell;
-exports.sandboxConnect = sandboxConnect;
-exports.sandboxDestroy = sandboxDestroy;
-exports.sandboxChannelsAdd = sandboxChannelsAdd;
-exports.sandboxChannelsList = sandboxChannelsList;
-exports.sandboxChannelsRemove = sandboxChannelsRemove;
-exports.sandboxChannelsStart = sandboxChannelsStart;
-exports.sandboxChannelsStop = sandboxChannelsStop;
-exports.sandboxLogs = sandboxLogs;
-exports.sandboxPolicyAdd = sandboxPolicyAdd;
-exports.sandboxPolicyList = sandboxPolicyList;
-exports.sandboxPolicyRemove = sandboxPolicyRemove;
-exports.sandboxRebuild = sandboxRebuild;
-exports.sandboxSkillInstall = sandboxSkillInstall;
-exports.sandboxSnapshot = sandboxSnapshot;
-exports.sandboxStatus = sandboxStatus;
-exports.setup = setup;
-exports.setupSpark = setupSpark;
+exports.runtimeBridge = {
+  captureOpenshell,
+  backupAll,
+  deploy,
+  garbageCollectImages,
+  help,
+  onboard,
+  recoverNamedGatewayRuntime,
+  recoverRegistryEntries,
+  runOpenshell,
+  sandboxConnect,
+  sandboxDestroy,
+  sandboxChannelsAdd,
+  sandboxChannelsList,
+  sandboxChannelsRemove,
+  sandboxChannelsStart,
+  sandboxChannelsStop,
+  sandboxLogs,
+  sandboxPolicyAdd,
+  sandboxPolicyList,
+  sandboxPolicyRemove,
+  sandboxRebuild,
+  sandboxSkillInstall,
+  sandboxSnapshot,
+  sandboxStatus,
+  setup,
+  setupSpark,
+  upgradeSandboxes,
+  version,
+};
 exports.ensureLiveSandboxOrExit = ensureLiveSandboxOrExit;
 exports.G = G;
 exports.R = R;
-exports.upgradeSandboxes = upgradeSandboxes;
-exports.version = version;
 
 function hasNamedGateway(output = ""): boolean {
   return stripAnsi(output).includes("Gateway: nemoclaw");

@@ -63,7 +63,12 @@ export interface NemoClawRuntimeBridge {
   version: () => void;
 }
 
-let runtimeFactory = (): NemoClawRuntimeBridge => require("../nemoclaw") as NemoClawRuntimeBridge;
+let runtimeFactory = (): NemoClawRuntimeBridge => {
+  const runtimeModule = require("../nemoclaw") as {
+    runtimeBridge?: NemoClawRuntimeBridge;
+  } & NemoClawRuntimeBridge;
+  return runtimeModule.runtimeBridge ?? runtimeModule;
+};
 
 export function setNemoClawRuntimeBridgeFactoryForTest(
   factory: () => NemoClawRuntimeBridge,
