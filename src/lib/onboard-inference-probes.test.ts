@@ -51,6 +51,7 @@ describe("OpenAI-compatible inference probes", () => {
       authHeader: ["-H", "Authorization: Bearer nvapi-test"],
       model: "deepseek-ai/deepseek-v4-pro",
       url: "https://integrate.api.nvidia.com/v1/chat/completions",
+      isWsl: false,
     });
 
     expect(args).toContain("--max-time");

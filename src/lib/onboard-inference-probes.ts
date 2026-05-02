@@ -213,10 +213,12 @@ function getChatCompletionsProbePayload(model) {
   return payload;
 }
 
-function getChatCompletionsProbeCurlArgs({ authHeader, model, url }) {
+function getChatCompletionsProbeCurlArgs({ authHeader, model, url, isWsl: isWslOverride }) {
+  const platformOptions =
+    typeof isWslOverride === "boolean" ? { isWsl: isWslOverride } : undefined;
   const timingArgs = isDeepSeekV4ProModel(model)
-    ? getDeepSeekV4ProValidationProbeCurlArgs()
-    : getValidationProbeCurlArgs();
+    ? getDeepSeekV4ProValidationProbeCurlArgs(platformOptions)
+    : getValidationProbeCurlArgs(platformOptions);
   return [
     "-sS",
     ...timingArgs,
@@ -229,8 +231,13 @@ function getChatCompletionsProbeCurlArgs({ authHeader, model, url }) {
   ];
 }
 
-function runChatCompletionsProbe({ authHeader, model, url }) {
-  const args = getChatCompletionsProbeCurlArgs({ authHeader, model, url });
+function runChatCompletionsProbe({ authHeader, model, url, isWsl: isWslOverride }) {
+  const args = getChatCompletionsProbeCurlArgs({
+    authHeader,
+    model,
+    url,
+    isWsl: isWslOverride,
+  });
   if (isDeepSeekV4ProModel(model)) {
     return runChatCompletionsStreamingProbe(args, {
       timeoutMs: getProbeProcessTimeoutMs(args),
@@ -239,7 +246,6 @@ function runChatCompletionsProbe({ authHeader, model, url }) {
   return runCurlProbe(args);
 }
 
-// eslint-disable-next-line complexity
 function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
   const useQueryParam = options.authMode === "query-param";
   const normalizedKey = apiKey ? normalizeCredentialValue(apiKey) : "";
@@ -286,6 +292,7 @@ function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
         authHeader,
         model,
         url: appendKey("/chat/completions"),
+        isWsl: options.isWsl,
       }),
   };
 

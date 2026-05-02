@@ -1030,7 +1030,7 @@ describe("nemoclaw-start gateway launch signal handling", () => {
         "start_auto_pair() { sleep 30 & AUTO_PAIR_PID=$!; }",
         "cleanup_on_signal() { :; }",
         launchBlock(kind, gatewayLog),
-        "sleep 0.5",
+        `for _attempt in 1 2 3 4 5 6 7 8 9 10; do [ -s ${JSON.stringify(openclawLog)} ] && break; sleep 0.1; done`,
         'printf "GATEWAY_PID=%s\\n" "$GATEWAY_PID"',
         'printf "AUTO_PAIR_PID=%s\\n" "${AUTO_PAIR_PID:-}"',
         'printf "TAIL_PID=%s\\n" "${GATEWAY_LOG_TAIL_PID:-}"',

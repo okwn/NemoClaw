@@ -570,7 +570,9 @@ async function recoverRegistryEntries({
 }
 
 exports.captureOpenshell = captureOpenshell;
+exports.recoverNamedGatewayRuntime = recoverNamedGatewayRuntime;
 exports.recoverRegistryEntries = recoverRegistryEntries;
+exports.runOpenshell = runOpenshell;
 exports.ensureLiveSandboxOrExit = ensureLiveSandboxOrExit;
 exports.G = G;
 exports.R = R;
@@ -855,7 +857,6 @@ function printGatewayLifecycleHint(output = "", sandboxName = "", writer = conso
   }
 }
 
-// eslint-disable-next-line complexity
 async function getReconciledSandboxGatewayState(sandboxName: string) {
   let lookup = getSandboxGatewayState(sandboxName);
   if (lookup.state === "present") {
@@ -1158,197 +1159,25 @@ async function uninstall(args: string[]): Promise<void> {
   await runOclif("uninstall", args);
 }
 
-// Suffixes that mark a per-sandbox messaging integration in the gateway's
-// provider list, not a NemoClaw-managed credential. The bridge providers are
-// created during onboarding (see src/lib/onboard.ts:3203,3208,3218) and torn
-// down by the channels/sandbox-delete flows. `nemoclaw credentials list`
-// hides them and `nemoclaw credentials reset` refuses to touch them so
-// users cannot accidentally break a live integration via the credentials
-// surface.
-const BRIDGE_PROVIDER_SUFFIXES: readonly string[] = [
-  "-telegram-bridge",
-  "-discord-bridge",
-  "-slack-bridge",
-  // Slack registers a second provider for the App-Level Token (used for
-  // Socket Mode). bridgeProviderName() emits `${sandbox}-slack-app` for
-  // SLACK_APP_TOKEN, so the guardrails must match that suffix too —
-  // otherwise the slack-app provider shows up as an ordinary credential
-  // and `credentials reset` would happily delete it.
-  "-slack-app",
-];
-
-function isBridgeProviderName(name: string): boolean {
-  return BRIDGE_PROVIDER_SUFFIXES.some((suffix) => name.endsWith(suffix));
-}
-
 async function credentialsCommand(args: string[]): Promise<void> {
   const sub = args[0];
   if (!sub || sub === "help" || sub === "--help" || sub === "-h") {
-    console.log("");
-    console.log(`  Usage: ${CLI_NAME} credentials <subcommand>`);
-    console.log("");
-    console.log("  Subcommands:");
-    console.log(
-      "    list                  List provider credentials registered with the OpenShell gateway",
-    );
-    console.log(
-      "    reset <PROVIDER> [--yes]   Remove a provider credential so onboard re-prompts",
-    );
-    console.log("");
-    console.log(
-      "  Credentials live in the OpenShell gateway. Inspect with `openshell provider list`.",
-    );
-    console.log(
-      "  Nothing is persisted to host disk; deploy/non-onboard commands read from env vars.",
-    );
-    console.log("");
+    await runOclif("credentials", []);
     return;
   }
 
-  if (sub === "list") {
-    // Pin to the NemoClaw gateway so a different active gateway cannot make
-    // us list (or later delete) providers from the wrong place.
-    const recovery = await recoverNamedGatewayRuntime();
-    if (!recovery.recovered) {
-      console.error(`  Could not query the ${CLI_DISPLAY_NAME} OpenShell gateway. Is it running?`);
-      console.error(
-        `  Run 'openshell gateway start --name nemoclaw' or '${CLI_NAME} onboard' first.`,
-      );
+  switch (sub) {
+    case "list":
+      await runOclif("credentials:list", args.slice(1));
+      return;
+    case "reset":
+      await runOclif("credentials:reset", args.slice(1));
+      return;
+    default:
+      console.error(`  Unknown credentials subcommand: ${sub}`);
+      console.error(`  Run '${CLI_NAME} credentials help' for usage.`);
       process.exit(1);
-    }
-    const result = runOpenshell(["provider", "list", "--names"], {
-      ignoreError: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status !== 0) {
-      console.error("  Could not query OpenShell gateway. Is it running?");
-      console.error(
-        `  Run 'openshell gateway start --name nemoclaw' or '${CLI_NAME} onboard' first.`,
-      );
-      process.exit(1);
-    }
-    const allNames = String(result.stdout || "")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
-    // Show only credential providers. Per-sandbox messaging bridges are
-    // live integrations managed by the channels surface; surfacing them
-    // here would invite users to "reset" what looks like a credential and
-    // accidentally destroy a running bridge.
-    const credentialNames = allNames.filter((n) => !isBridgeProviderName(n)).sort();
-    const bridgeNames = allNames.filter((n) => isBridgeProviderName(n));
-    if (credentialNames.length === 0) {
-      console.log("  No provider credentials registered.");
-    } else {
-      console.log("  Providers registered with the OpenShell gateway:");
-      for (const name of credentialNames) {
-        console.log(`    ${name}`);
-      }
-    }
-    if (bridgeNames.length > 0) {
-      console.log("");
-      console.log(
-        `  ${String(bridgeNames.length)} per-sandbox messaging bridge(s) are also registered.`,
-      );
-      console.log(
-        `  Manage those with \`${CLI_NAME} <sandbox> channels list/remove/stop\` — not this command.`,
-      );
-    }
-    return;
   }
-
-  if (sub === "reset") {
-    const key = args[1];
-    // Validate that <PROVIDER> is a real positional argument, not a flag like
-    // `--yes` that the user passed without a key.
-    if (!key || key.startsWith("-")) {
-      console.error(`  Usage: ${CLI_NAME} credentials reset <PROVIDER> [--yes]`);
-      console.error(
-        `  PROVIDER is an OpenShell provider name. Run '${CLI_NAME} credentials list' first.`,
-      );
-      process.exit(1);
-    }
-    // Reject unknown trailing arguments to keep scripted use predictable.
-    const extraArgs = args.slice(2).filter((arg) => arg !== "--yes" && arg !== "-y");
-    if (extraArgs.length > 0) {
-      console.error(`  Unknown argument(s) for credentials reset: ${extraArgs.join(", ")}`);
-      console.error(`  Usage: ${CLI_NAME} credentials reset <PROVIDER> [--yes]`);
-      process.exit(1);
-    }
-    // Refuse to delete a per-sandbox messaging bridge — those are live
-    // integrations created/destroyed by the channels surface, not
-    // NemoClaw-managed credentials. Without this guard, scripting against
-    // the gateway provider list could tear down a running bridge and
-    // leave the sandbox in a half-configured state.
-    if (isBridgeProviderName(key)) {
-      console.error(`  '${key}' is a per-sandbox messaging bridge, not a credential.`);
-      console.error(
-        `  Use \`${CLI_NAME} <sandbox> channels remove <telegram|discord|slack>\` to retire`,
-      );
-      console.error(
-        "  the integration (it tears down the bridge provider and rebuilds the sandbox),",
-      );
-      console.error(
-        `  or \`${CLI_NAME} <sandbox> channels stop <…>\` to pause it without clearing tokens.`,
-      );
-      process.exit(1);
-    }
-    const skipPrompt = args.includes("--yes") || args.includes("-y");
-    if (!skipPrompt) {
-      const answer = (
-        await askPrompt(`  Remove provider '${key}' from the OpenShell gateway? [y/N]: `)
-      )
-        .trim()
-        .toLowerCase();
-      if (answer !== "y" && answer !== "yes") {
-        console.log("  Cancelled.");
-        return;
-      }
-    }
-    // Pin to the NemoClaw gateway so we cannot accidentally delete a
-    // provider from a different active gateway. We deliberately do NOT
-    // touch process.env here — `key` is an OpenShell provider name, and
-    // calling deleteCredential on it would silently strip an unrelated
-    // env entry whenever a provider name happens to share the shape of
-    // a credential env variable.
-    const recovery = await recoverNamedGatewayRuntime();
-    if (!recovery.recovered) {
-      console.error(`  Could not reach the ${CLI_DISPLAY_NAME} OpenShell gateway. Is it running?`);
-      console.error(
-        `  Run 'openshell gateway start --name nemoclaw' or '${CLI_NAME} onboard' first.`,
-      );
-      process.exit(1);
-    }
-    const result = runOpenshell(["provider", "delete", key], {
-      ignoreError: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status === 0) {
-      console.log(`  Removed provider '${key}' from the OpenShell gateway.`);
-      console.log(`  Re-run '${CLI_NAME} onboard' to enter a new value.`);
-    } else {
-      console.error(`  Could not remove provider '${key}'.`);
-      // Earlier releases accepted a credential env-var name (e.g.
-      // NVIDIA_API_KEY) here; the API now takes an OpenShell provider
-      // name (nvidia-prod, openai-api, telegram-bridge, …). Surface the
-      // rename to anyone whose script is still passing the old shape.
-      if (/^[A-Z][A-Z0-9_]+$/.test(key)) {
-        console.error("");
-        console.error(`  '${key}' looks like a credential env variable name.`);
-        console.error("  As of this release, 'credentials reset' takes an OpenShell");
-        console.error(`  provider name. Run '${CLI_NAME} credentials list' to see the`);
-        console.error("  registered providers, then retry with one of those names.");
-      }
-      const stderr = String(result.stderr || "").trim();
-      if (stderr) console.error(`  ${stderr}`);
-      process.exit(1);
-    }
-    return;
-  }
-
-  console.error(`  Unknown credentials subcommand: ${sub}`);
-  console.error(`  Run '${CLI_NAME} credentials help' for usage.`);
-  process.exit(1);
 }
 
 async function showStatus(args: string[] = []): Promise<void> {
@@ -1553,7 +1382,6 @@ async function sandboxConnect(sandboxName: string) {
   exitWithSpawnResult(result);
 }
 
-// eslint-disable-next-line complexity
 async function sandboxStatus(sandboxName: string) {
   const sb = registry.getSandbox(sandboxName);
   const live = parseGatewayInference(
@@ -4158,7 +3986,6 @@ function printConnectOrderHint(candidate: string | null): void {
 
 const [cmd, ...args] = process.argv.slice(2);
 
-// eslint-disable-next-line complexity
 (async () => {
   // No command → help
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {

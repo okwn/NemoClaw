@@ -493,6 +493,28 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("Deprecated alias");
   });
 
+  it("credentials help exits 0 and shows credential subcommands", () => {
+    const r = run("credentials --help");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Usage: nemoclaw credentials <subcommand>");
+    expect(r.out).toContain("list");
+    expect(r.out).toContain("reset <PROVIDER> [--yes]");
+  });
+
+  it("credentials list --help exits 0 and shows list usage", () => {
+    const r = run("credentials list --help");
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("credentials list");
+    expect(r.out).toContain("List provider credentials");
+  });
+
+  it("credentials reset without provider keeps provider-specific usage", () => {
+    const r = run("credentials reset --yes");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Usage: nemoclaw credentials reset <PROVIDER> [--yes]");
+    expect(r.out).toContain("PROVIDER is an OpenShell provider name");
+  });
+
   it("shows skill install help when --help follows install", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-skill-help-"));
     writeSandboxRegistry(home);

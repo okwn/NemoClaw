@@ -414,6 +414,18 @@ let RECREATE_SANDBOX = false;
 // null means "use auto-allocation" (skip dashboard port check in preflight).
 let _preflightDashboardPort: number | null = null;
 
+// Read TELEGRAM_REQUIRE_MENTION (set either by the interactive mention prompt
+// or by the user's shell) and map it to a boolean, or null when the env var
+// is unset / invalid. Used at build time to bake groupPolicy into
+// openclaw.json and at resume time to detect drift against the recorded
+// session state. See #1737 and the CodeRabbit follow-up on #2417.
+function computeTelegramRequireMention(): boolean | null {
+  const raw = process.env.TELEGRAM_REQUIRE_MENTION;
+  if (raw === "1") return true;
+  if (raw === "0") return false;
+  return null;
+}
+
 function isNonInteractive(): boolean {
   return NON_INTERACTIVE || process.env.NEMOCLAW_NON_INTERACTIVE === "1";
 }
@@ -1093,7 +1105,7 @@ function upsertProvider(
       // openshell receives `--credential <ENV>` and reads the value from the
       // `env` block passed here, falling back to the inherited process.env.
       // Use getCredential() for the env-fallback branch (per the
-      // no-direct-credential-env eslint rule from PR #2306) — it mirrors
+      // direct credential env guard from PR #2306) — it mirrors
       // openshell's resolution order while the staging contract has
       // already populated the same value into process.env.
       const upsertedValue = env[credentialEnv] ?? getCredential(credentialEnv);
@@ -1955,6 +1967,7 @@ function patchStagedDockerfile(
   messagingAllowedIds: LooseObject = {},
   discordGuilds: LooseObject = {},
   baseImageRef: string | null = null,
+  telegramConfig: LooseObject = {},
 ) {
   const { providerKey, primaryModelRef, inferenceBaseUrl, inferenceApi, inferenceCompat } =
     getSandboxInferenceConfig(model, provider, preferredInferenceApi);
@@ -2094,6 +2107,12 @@ function patchStagedDockerfile(
     dockerfile = dockerfile.replace(
       /^ARG NEMOCLAW_DISCORD_GUILDS_B64=.*$/m,
       `ARG NEMOCLAW_DISCORD_GUILDS_B64=${encodeDockerJsonArg(discordGuilds)}`,
+    );
+  }
+  if (telegramConfig && Object.keys(telegramConfig).length > 0) {
+    dockerfile = dockerfile.replace(
+      /^ARG NEMOCLAW_TELEGRAM_CONFIG_B64=.*$/m,
+      `ARG NEMOCLAW_TELEGRAM_CONFIG_B64=${encodeDockerJsonArg(telegramConfig)}`,
     );
   }
   fs.writeFileSync(dockerfilePath, dockerfile);
@@ -2743,7 +2762,6 @@ function waitForSandboxReady(sandboxName: string, attempts = 10, delaySeconds = 
 
 // ── Step 1: Preflight ────────────────────────────────────────────
 
-// eslint-disable-next-line complexity
 async function preflight(): Promise<ReturnType<typeof nim.detectGpu>> {
   step(1, 8, "Preflight checks");
 
@@ -3852,7 +3870,6 @@ function formatOnboardConfigSummary({
   ].join("\n");
 }
 
-// eslint-disable-next-line complexity
 async function createSandbox(
   gpu: ReturnType<typeof nim.detectGpu>,
   model: string,
@@ -4462,6 +4479,31 @@ async function createSandbox(
       };
     }
   }
+  // Telegram mention-only mode — parity with Discord's requireMention.
+  // Off by default so existing sandboxes behave the same; opt-in via
+  // TELEGRAM_REQUIRE_MENTION=1 or the interactive prompt. See #1737.
+  const telegramConfig: { requireMention?: boolean } = {};
+  if (enabledTokenEnvKeys.has("TELEGRAM_BOT_TOKEN")) {
+    const telegramRequireMention = computeTelegramRequireMention();
+    if (telegramRequireMention !== null) {
+      telegramConfig.requireMention = telegramRequireMention;
+    }
+  }
+  // Persist the effective Telegram config into the session so a later resume
+  // can detect drift (TELEGRAM_REQUIRE_MENTION changed since last build) and
+  // force a sandbox recreate — otherwise the old groupPolicy would stay baked
+  // in. Mirrors the pattern used for webSearchConfig. See CodeRabbit on #2417.
+  if (typeof telegramConfig.requireMention === "boolean") {
+    onboardSession.updateSession((current) => {
+      current.telegramConfig = { requireMention: telegramConfig.requireMention as boolean };
+      return current;
+    });
+  } else {
+    onboardSession.updateSession((current) => {
+      current.telegramConfig = null;
+      return current;
+    });
+  }
   // Pull the base image and resolve its digest so the Dockerfile is pinned to
   // exactly what we just fetched. This prevents stale :latest tags from
   // silently reusing a cached old image after NemoClaw upgrades (#1904).
@@ -4500,6 +4542,7 @@ async function createSandbox(
     messagingAllowedIds,
     discordGuilds,
     resolved ? resolved.ref : null,
+    telegramConfig,
   );
   // Only pass non-sensitive env vars to the sandbox. Credentials flow through
   // OpenShell providers — the gateway injects them as placeholders and the L7
@@ -4819,7 +4862,6 @@ async function createSandbox(
 
 // ── Step 3: Inference selection ──────────────────────────────────
 
-// eslint-disable-next-line complexity
 type ProviderChoice = { key: string; label: string };
 
 function providerNameToOptionKey(
@@ -5206,8 +5248,9 @@ async function setupNim(
           // Check raw process.env first — NEMOCLAW_PROVIDER_KEY is a user-facing
           // override that should take precedence before resolving from credentials.json.
           const _nvProviderKey = (process.env.NEMOCLAW_PROVIDER_KEY || "").trim();
-          // eslint-disable-next-line nemoclaw/no-direct-credential-env -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
-          if (_nvProviderKey && !process.env.NVIDIA_API_KEY) {
+          // check-direct-credential-env-ignore -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
+          const existingNvidiaKey = normalizeCredentialValue(process.env.NVIDIA_API_KEY ?? "");
+          if (_nvProviderKey && !existingNvidiaKey) {
             process.env.NVIDIA_API_KEY = _nvProviderKey;
           }
           if (isNonInteractive()) {
@@ -5245,9 +5288,12 @@ async function setupNim(
           // isn't already set, use NEMOCLAW_PROVIDER_KEY as the API key for this provider.
           // Check raw process.env — the override must apply before resolving from credentials.json.
           const _providerKeyHint = (process.env.NEMOCLAW_PROVIDER_KEY || "").trim();
-          // eslint-disable-next-line nemoclaw/no-direct-credential-env -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
-          if (_providerKeyHint && credentialEnv && !process.env[credentialEnv]) {
-            process.env[credentialEnv] = _providerKeyHint;
+          if (_providerKeyHint && credentialEnv) {
+            // check-direct-credential-env-ignore -- intentional: checking if env is already set before applying NEMOCLAW_PROVIDER_KEY override
+            const existingCredentialKey = normalizeCredentialValue(process.env[credentialEnv] ?? "");
+            if (!existingCredentialKey) {
+              process.env[credentialEnv] = _providerKeyHint;
+            }
           }
 
           if (isNonInteractive()) {
@@ -5824,7 +5870,6 @@ async function setupNim(
 
 // ── Step 4: Inference provider ───────────────────────────────────
 
-// eslint-disable-next-line complexity
 async function setupInference(
   sandboxName: string | null,
   model: string,
@@ -6342,17 +6387,23 @@ async function setupMessagingChannels(): Promise<string[]> {
         }
       }
     }
-    if (ch.requireMentionEnvKey && ch.serverIdEnvKey && process.env[ch.serverIdEnvKey]) {
-      const existingRequireMention = process.env[ch.requireMentionEnvKey];
+    // Mention-control prompt: fires for any channel that exposes a
+    // requireMention env key. Discord gates the prompt behind a configured
+    // server ID (mention control only makes sense in a guild). Telegram
+    // has no serverIdEnvKey because mention control applies to every group
+    // the bot is added to, so the prompt always fires there. See #1737.
+    const requireMentionKey = ch.requireMentionEnvKey;
+    if (requireMentionKey && (!ch.serverIdEnvKey || Boolean(process.env[ch.serverIdEnvKey]))) {
+      const existingRequireMention = process.env[requireMentionKey];
       if (existingRequireMention === "0" || existingRequireMention === "1") {
         const mode = existingRequireMention === "0" ? "all messages" : "@mentions only";
         console.log(`  ✓ ${ch.name} — reply mode already set: ${mode}`);
       } else {
         console.log(`  ${ch.requireMentionHelp}`);
         const answer = (await prompt("  Reply only when @mentioned? [Y/n]: ")).trim().toLowerCase();
-        process.env[ch.requireMentionEnvKey] = answer === "n" || answer === "no" ? "0" : "1";
+        process.env[requireMentionKey] = answer === "n" || answer === "no" ? "0" : "1";
         const mode =
-          process.env[ch.requireMentionEnvKey] === "0" ? "all messages" : "@mentions only";
+          process.env[requireMentionKey] === "0" ? "all messages" : "@mentions only";
         console.log(`  ✓ ${ch.name} reply mode saved: ${mode}`);
       }
     }
@@ -6465,7 +6516,6 @@ async function setupOpenclaw(sandboxName: string, model: string, provider: strin
 
 // ── Step 7: Policy presets ───────────────────────────────────────
 
-// eslint-disable-next-line complexity
 async function _setupPolicies(
   sandboxName: string,
   options: {
@@ -7089,7 +7139,6 @@ function computeSetupPresetSuggestions(
   return suggestions;
 }
 
-// eslint-disable-next-line complexity
 async function setupPoliciesWithSelection(
   sandboxName: string,
   options: {
@@ -7935,7 +7984,6 @@ function skippedStepMessage(
 
 // ── Main ─────────────────────────────────────────────────────────
 
-// eslint-disable-next-line complexity
 async function onboard(opts: OnboardOptions = {}): Promise<void> {
   setOnboardBrandingAgent(opts.agent || process.env.NEMOCLAW_AGENT || null);
   NON_INTERACTIVE = opts.nonInteractive || process.env.NEMOCLAW_NON_INTERACTIVE === "1";
@@ -8433,9 +8481,27 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
 
     const sandboxReuseState = getSandboxReuseState(sandboxName);
     const webSearchConfigChanged = Boolean(session?.webSearchConfig) !== Boolean(webSearchConfig);
+    // Telegram mention-mode is baked into openclaw.json at sandbox build time, so
+    // changes to TELEGRAM_REQUIRE_MENTION only take effect after a rebuild. Treat
+    // a mismatch between the recorded config and the current env value as drift
+    // so the reuse path forces a recreate (mirrors webSearchConfigChanged). See
+    // #1737 and the CodeRabbit review on #2417.
+    //
+    // Compare *effective* modes — null and false both produce groupPolicy: open
+    // at config-generation time (default behavior), so they collapse to the same
+    // bucket here. Without this, a sandbox built before TELEGRAM_REQUIRE_MENTION
+    // existed (recordedTelegramRequireMention === null) would be reused with the
+    // old groupPolicy: open even after the user sets TELEGRAM_REQUIRE_MENTION=1,
+    // and vice versa.
+    const currentTelegramRequireMention = computeTelegramRequireMention();
+    const recordedTelegramRequireMention = session?.telegramConfig?.requireMention ?? null;
+    const effectiveCurrent = currentTelegramRequireMention ?? false;
+    const effectiveRecorded = recordedTelegramRequireMention ?? false;
+    const telegramConfigChanged = effectiveCurrent !== effectiveRecorded;
     const resumeSandbox =
       resume &&
       !webSearchConfigChanged &&
+      !telegramConfigChanged &&
       session?.steps?.sandbox?.status === "complete" &&
       sandboxReuseState === "ready";
     if (resumeSandbox) {
@@ -8448,6 +8514,11 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       if (resume && session?.steps?.sandbox?.status === "complete") {
         if (webSearchConfigChanged) {
           note("  [resume] Web Search configuration changed; recreating sandbox.");
+          if (sandboxName) {
+            registry.removeSandbox(sandboxName);
+          }
+        } else if (telegramConfigChanged) {
+          note("  [resume] TELEGRAM_REQUIRE_MENTION changed; recreating sandbox.");
           if (sandboxName) {
             registry.removeSandbox(sandboxName);
           }

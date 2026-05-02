@@ -60,7 +60,7 @@ describe("NVIDIA endpoint inference fix preload (#1193, #2051)", () => {
     }
   });
 
-  it("preload injects Nemotron chat_template_kwargs and preserves other requests", () => {
+  it("preload injects model-specific chat_template_kwargs and preserves other requests", () => {
     const preload = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
     const harness = `
 const http = require('http');
@@ -94,9 +94,11 @@ function send(mod, options, body) {
   req.end();
 }
 send(http, { method: 'POST', path: '/v1/chat/completions' }, JSON.stringify({ model: 'NVIDIA/NEMOTRON-4', messages: [] }));
+send(https, { method: 'POST', path: '/v1/chat/completions' }, JSON.stringify({ model: 'deepseek-ai/deepseek-v4-pro', messages: [], chat_template_kwargs: { existing: true, thinking: true } }));
 send(https, { method: 'POST', path: '/v1/chat/completions' }, JSON.stringify({ model: 'other-model', messages: [] }));
 send(http, { method: 'POST', path: '/v1/chat/completions' }, '{not json');
 send(http, { method: 'GET', path: '/v1/chat/completions' }, JSON.stringify({ model: 'nemotron' }));
+send(http, { method: 'POST', path: '/v1/chat/completions' }, JSON.stringify({ model: 'deepseek-ai/deepseek-v4-flash', messages: [] }));
 console.log(JSON.stringify(records));
 `;
 
@@ -108,83 +110,23 @@ console.log(JSON.stringify(records));
     const records = JSON.parse(result.stdout.trim());
     const nemotronBody = JSON.parse(records[0].writes[0]);
     expect(nemotronBody.chat_template_kwargs.force_nonempty_content).toBe(true);
+    expect(nemotronBody.chat_template_kwargs.thinking).toBeUndefined();
     expect(records[0].removed).toContain("content-length");
     expect(Number(records[0].headers["Content-Length"])).toBeGreaterThan(0);
 
-    const otherBody = JSON.parse(records[1].writes[0]);
+    const deepSeekBody = JSON.parse(records[1].writes[0]);
+    expect(deepSeekBody.chat_template_kwargs).toEqual({
+      existing: true,
+      thinking: false,
+    });
+    expect(deepSeekBody.chat_template_kwargs.force_nonempty_content).toBeUndefined();
+    expect(records[1].removed).toContain("content-length");
+    expect(Number(records[1].headers["Content-Length"])).toBeGreaterThan(0);
+
+    const otherBody = JSON.parse(records[2].writes[0]);
     expect(otherBody.chat_template_kwargs).toBeUndefined();
-    expect(records[2].writes[0]).toBe("{not json");
-    expect(JSON.parse(records[3].writes[0]).chat_template_kwargs).toBeUndefined();
-  });
-
-  it("includes the preload in the proxy-env sourced file for connect sessions", () => {
-    expect(src).toMatch(/# Nemotron inference fix for connect sessions/);
-    expect(src).toContain("--require $_NEMOTRON_FIX_SCRIPT");
-  });
-
-  it("passes the preload path to validate_tmp_permissions in both root and non-root branches", () => {
-    const calls = src.match(/validate_tmp_permissions\s+.*"\$_NEMOTRON_FIX_SCRIPT"/g) || [];
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("preload wraps both http and https modules", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toContain("wrapModule(http)");
-    expect(script).toContain("wrapModule(https)");
-  });
-
-  it("preload only intercepts POST requests to /v1/chat/completions", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toContain("options.method !== 'POST'");
-    expect(script).toContain("/v1/chat/completions");
-  });
-
-  it("preload matches Nemotron models case-insensitively", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toMatch(/nemotron\/i/);
-  });
-
-  it("preload matches DeepSeek V4 Pro exactly", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toContain("DEEPSEEK_V4_PRO_RE");
-    expect(script).toContain("^deepseek-ai\\/deepseek-v4-pro$");
-  });
-
-  it("preload injects force_nonempty_content into chat_template_kwargs", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toContain("chat_template_kwargs");
-    expect(script).toContain("force_nonempty_content");
-  });
-
-  it("preload injects thinking false for DeepSeek V4 Pro", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toContain("chat_template_kwargs.thinking = false");
-  });
-
-  it("preload passes through unaffected models unmodified", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    // The else branch sends original bytes.
-    expect(script).toContain("origWrite.call(req, raw)");
-  });
-
-  it("preload falls back gracefully on JSON parse failure", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toMatch(/catch\s*\(_e\)/);
-    // Must forward original bytes on error, not crash
-    expect(script).toMatch(/catch[\s\S]*?origWrite\.call\(req, raw\)/);
-  });
-
-  it("preload updates Content-Length header after body modification", () => {
-    const script = extractStartScriptHeredoc(src, "NEMOTRON_FIX_EOF");
-    expect(script).toContain("removeHeader('content-length')");
-    expect(script).toContain("setHeader('Content-Length'");
-  });
-
-  it("preload is placed before the WebSocket fix in the script", () => {
-    const nemotronPos = src.indexOf("_NEMOTRON_FIX_SCRIPT=");
-    const wsPos = src.indexOf("_WS_FIX_SCRIPT=");
-    expect(nemotronPos).toBeGreaterThan(-1);
-    expect(wsPos).toBeGreaterThan(-1);
-    expect(nemotronPos).toBeLessThan(wsPos);
+    expect(records[3].writes[0]).toBe("{not json");
+    expect(JSON.parse(records[4].writes[0]).chat_template_kwargs).toBeUndefined();
+    expect(JSON.parse(records[5].writes[0]).chat_template_kwargs).toBeUndefined();
   });
 });

@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  CredentialsCommand,
+  CredentialsListCommand,
+  CredentialsResetCommand,
+} from "./credentials-cli-command";
 import DebugCliCommand from "./debug-cli-command";
 import GatewayTokenCliCommand from "./gateway-token-cli-command";
 import ListCommand from "./list-command";
@@ -15,6 +20,9 @@ import {
 import UninstallCliCommand from "./uninstall-cli-command";
 
 export default {
+  credentials: CredentialsCommand,
+  "credentials:list": CredentialsListCommand,
+  "credentials:reset": CredentialsResetCommand,
   debug: DebugCliCommand,
   list: ListCommand,
   share: ShareCommand,
