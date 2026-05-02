@@ -67,6 +67,7 @@ function runWithEnv(
   try {
     const out = execSync(`node "${CLI}" ${args}`, {
       encoding: "utf-8",
+      stdio: "pipe",
       timeout,
       env: {
         ...process.env,
@@ -188,17 +189,52 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
 }
 
 describe("CLI dispatch", () => {
-  it("config get validates flags and values before dispatch", () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-config-flags-"));
-    writeSandboxRegistry(home);
+  it("config get validates flags and values before dispatch", async () => {
+    const sandboxConfigModule = await import("../dist/lib/sandbox-config.js");
+    const { parseConfigGetArgs } = (sandboxConfigModule.default ?? sandboxConfigModule) as {
+      parseConfigGetArgs: (
+        args: string[],
+      ) =>
+        | { ok: true; opts: { key: string | null; format: string } }
+        | { ok: false; errors: string[] };
+    };
 
-    const invalidFormat = runWithEnv("alpha config get --format xml", { HOME: home });
-    expect(invalidFormat.code).toBe(1);
-    expect(invalidFormat.out).toContain("Unknown format: xml. Use json or yaml.");
+    const missingKey = parseConfigGetArgs(["--key"]);
+    expect(missingKey.ok).toBe(false);
+    expect(missingKey).toEqual(
+      expect.objectContaining({
+        errors: expect.arrayContaining([expect.stringContaining("--key requires a value")]),
+      }),
+    );
 
-    const missingKey = runWithEnv("alpha config get --key", { HOME: home });
-    expect(missingKey.code).not.toBe(0);
-    expect(missingKey.out).toContain("Flag --key expects a value");
+    const missingFormat = parseConfigGetArgs(["--format"]);
+    expect(missingFormat.ok).toBe(false);
+    expect(missingFormat).toEqual(
+      expect.objectContaining({
+        errors: expect.arrayContaining([expect.stringContaining("--format requires a value")]),
+      }),
+    );
+
+    const badFormat = parseConfigGetArgs(["--format", "xml"]);
+    expect(badFormat.ok).toBe(false);
+    expect(badFormat).toEqual(
+      expect.objectContaining({
+        errors: expect.arrayContaining([expect.stringContaining("Unknown format: xml")]),
+      }),
+    );
+
+    const unknownFlag = parseConfigGetArgs(["--bogus"]);
+    expect(unknownFlag.ok).toBe(false);
+    expect(unknownFlag).toEqual(
+      expect.objectContaining({
+        errors: expect.arrayContaining([expect.stringContaining("Unknown flag: --bogus")]),
+      }),
+    );
+
+    expect(parseConfigGetArgs(["--key", "gateway.auth", "--format", "yaml"])).toEqual({
+      ok: true,
+      opts: { key: "gateway.auth", format: "yaml" },
+    });
   });
 
   it("help exits 0 and shows sections", () => {
@@ -319,6 +355,7 @@ describe("CLI dispatch", () => {
   it("nemohermes list --help uses alias branding", () => {
     const out = execSync(`node "${HERMES_CLI}" list --help`, {
       encoding: "utf-8",
+      stdio: "pipe",
       timeout: execTimeout(),
       env: {
         ...process.env,

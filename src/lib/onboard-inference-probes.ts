@@ -162,7 +162,6 @@ function probeResponsesToolCalling(endpointUrl, model, apiKey, options = {}) {
 }
 
 // ── OpenAI-like probe ────────────────────────────────────────────
-// eslint-disable-next-line complexity
 function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
   const useQueryParam = options.authMode === "query-param";
   const normalizedKey = apiKey ? normalizeCredentialValue(apiKey) : "";

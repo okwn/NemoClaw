@@ -111,7 +111,6 @@ export function summarizeProbeFailure(body = "", status = 0, curlStatus = 0, std
   return summarizeProbeError(body, status);
 }
 
-// eslint-disable-next-line complexity
 export function runCurlProbe(argv: string[], opts: CurlProbeOptions = {}): CurlProbeResult {
   const bodyFile = secureTempFile("nemoclaw-curl-probe", ".json");
   try {

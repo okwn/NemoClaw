@@ -859,7 +859,6 @@ function printGatewayLifecycleHint(output = "", sandboxName = "", writer = conso
   }
 }
 
-// eslint-disable-next-line complexity
 async function getReconciledSandboxGatewayState(sandboxName: string) {
   let lookup = getSandboxGatewayState(sandboxName);
   if (lookup.state === "present") {
@@ -1393,7 +1392,6 @@ async function sandboxConnect(sandboxName: string) {
   exitWithSpawnResult(result);
 }
 
-// eslint-disable-next-line complexity
 async function sandboxStatus(sandboxName: string) {
   const sb = registry.getSandbox(sandboxName);
   const live = parseGatewayInference(
@@ -3998,7 +3996,6 @@ function printConnectOrderHint(candidate: string | null): void {
 
 const [cmd, ...args] = process.argv.slice(2);
 
-// eslint-disable-next-line complexity
 (async () => {
   // No command → help
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {

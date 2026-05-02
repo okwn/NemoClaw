@@ -125,7 +125,6 @@ export function getOpenClawPrimaryModel(provider: string, model?: string): strin
 
 export function parseGatewayInference(output: string | null | undefined): GatewayInference | null {
   if (!output) return null;
-  // eslint-disable-next-line no-control-regex
   const stripped = output.replace(/\u001b\[[0-9;]*m/g, "");
   const lines = stripped.split("\n");
   let inGateway = false;

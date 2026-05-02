@@ -10,12 +10,27 @@ const REPO_ROOT = path.join(import.meta.dirname, "..");
 const RUNTIME_PATH = require.resolve(path.join(REPO_ROOT, "dist", "nemoclaw.js"));
 const COMMANDS_PATH = path.join(REPO_ROOT, "dist", "lib", "credentials-cli-command.js");
 
+type RequireCacheEntry = NonNullable<(typeof require.cache)[string]>;
 type CredentialsCommandModule = typeof import("../dist/lib/credentials-cli-command.js");
 type SpawnLikeResult = { status: number | null; stdout?: string; stderr?: string };
-type RuntimeBridge = {
-  recoverNamedGatewayRuntime: () => Promise<{ recovered: boolean }>;
-  runOpenshell: (args: string[]) => SpawnLikeResult;
+type RuntimeRecovery = {
+  recovered: boolean;
+  before?: unknown;
+  after?: unknown;
+  attempted?: boolean;
+  via?: string;
 };
+type RuntimeBridgeRunOptions = {
+  env?: Record<string, string | undefined>;
+  stdio?: unknown;
+  ignoreError?: boolean;
+  timeout?: number;
+};
+type RuntimeBridge = {
+  recoverNamedGatewayRuntime: () => Promise<RuntimeRecovery>;
+  runOpenshell: (args: string[], opts?: RuntimeBridgeRunOptions) => SpawnLikeResult;
+};
+type OpenshellCall = { args: string[]; opts?: RuntimeBridgeRunOptions };
 
 class ProcessExitError extends Error {
   constructor(readonly code: number) {
@@ -24,25 +39,27 @@ class ProcessExitError extends Error {
 }
 
 function loadCommands(): CredentialsCommandModule {
+  delete require.cache[COMMANDS_PATH];
   return require(COMMANDS_PATH) as CredentialsCommandModule;
 }
 
-function installRuntimeBridge(bridge: Partial<RuntimeBridge> = {}): string[][] {
-  const calls: string[][] = [];
+function installRuntimeBridge(bridge: Partial<RuntimeBridge> = {}): OpenshellCall[] {
+  const calls: OpenshellCall[] = [];
   const runtime: RuntimeBridge = {
     recoverNamedGatewayRuntime: async () => ({ recovered: true }),
-    runOpenshell: (args: string[]) => {
-      calls.push(args);
+    runOpenshell: (args: string[], opts?: RuntimeBridgeRunOptions) => {
+      calls.push({ args, opts });
       return { status: 0, stdout: "", stderr: "" };
     },
     ...bridge,
   };
-  require.cache[RUNTIME_PATH] = {
+  const cacheEntry = {
     id: RUNTIME_PATH,
     filename: RUNTIME_PATH,
     loaded: true,
     exports: runtime,
-  } as NodeJS.Module;
+  } as RequireCacheEntry;
+  require.cache[RUNTIME_PATH] = cacheEntry;
   return calls;
 }
 
@@ -111,6 +128,7 @@ async function expectProcessExit(
 }
 
 afterEach(() => {
+  delete require.cache[COMMANDS_PATH];
   delete require.cache[RUNTIME_PATH];
 });
 
@@ -126,8 +144,8 @@ describe("credentials oclif commands", () => {
 
   it("lists provider credentials and separates messaging bridges", async () => {
     const calls = installRuntimeBridge({
-      runOpenshell: (args) => {
-        calls.push(args);
+      runOpenshell: (args, opts) => {
+        calls.push({ args, opts });
         return {
           status: 0,
           stdout: [
@@ -144,7 +162,12 @@ describe("credentials oclif commands", () => {
 
     const output = await captureOutput(() => CredentialsListCommand.run([]));
 
-    expect(calls).toEqual([["provider", "list", "--names"]]);
+    expect(calls).toEqual([
+      {
+        args: ["provider", "list", "--names"],
+        opts: { ignoreError: true, stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 },
+      },
+    ]);
     expect(output.stdout).toContain("openai-prod");
     expect(output.stdout).toContain("nvidia-prod");
     expect(output.stdout).toContain("2 per-sandbox messaging bridge(s)");
@@ -180,8 +203,8 @@ describe("credentials oclif commands", () => {
 
   it("deletes a provider credential with --yes", async () => {
     const calls = installRuntimeBridge({
-      runOpenshell: (args) => {
-        calls.push(args);
+      runOpenshell: (args, opts) => {
+        calls.push({ args, opts });
         return { status: 0 };
       },
     });
@@ -189,7 +212,12 @@ describe("credentials oclif commands", () => {
 
     const output = await captureOutput(() => CredentialsResetCommand.run(["nvidia-prod", "--yes"]));
 
-    expect(calls).toEqual([["provider", "delete", "nvidia-prod"]]);
+    expect(calls).toEqual([
+      {
+        args: ["provider", "delete", "nvidia-prod"],
+        opts: { ignoreError: true, stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 },
+      },
+    ]);
     expect(output.stdout).toContain("Removed provider 'nvidia-prod'");
     expect(output.stdout).toContain("Re-run 'nemoclaw onboard'");
   });
