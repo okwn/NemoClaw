@@ -6,10 +6,11 @@ import { describe, expect, it } from "vitest";
 import { resolveSandboxOclifDispatch } from "./legacy-oclif-dispatch";
 
 describe("resolveSandboxOclifDispatch", () => {
-  it("keeps sandbox status on the direct runtime path", () => {
+  it("routes sandbox status through oclif", () => {
     expect(resolveSandboxOclifDispatch("alpha", "status", [])).toEqual({
-      kind: "legacy",
-      target: "status",
+      kind: "oclif",
+      commandId: "sandbox:status",
+      args: ["alpha"],
     });
   });
 
