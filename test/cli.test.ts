@@ -3767,6 +3767,7 @@ describe("CLI dispatch", () => {
   it("prints healthy inference only after the sandbox and gateway are verified", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-status-healthy-"));
     const localBin = path.join(home, "bin");
+    const markerFile = path.join(home, "openshell-calls");
     fs.mkdirSync(localBin, { recursive: true });
     writeSandboxRegistry(home, {
       model: "configured-model",
@@ -3778,6 +3779,7 @@ describe("CLI dispatch", () => {
       path.join(localBin, "openshell"),
       [
         "#!/usr/bin/env bash",
+        `printf '%s\\n' "$*" >> ${JSON.stringify(markerFile)}`,
         'if [ "$1" = "sandbox" ] && [ "$2" = "get" ] && [ "$3" = "alpha" ]; then',
         "  echo 'Sandbox:'",
         "  echo",
@@ -3834,6 +3836,11 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("Inference:");
     expect(r.out).toContain("healthy");
     expect(r.out).not.toContain("not verified");
+    const calls = fs.readFileSync(markerFile, "utf8").trim().split("\n").filter(Boolean);
+    const sandboxGetIdx = calls.indexOf("sandbox get alpha");
+    const inferenceGetIdx = calls.indexOf("inference get");
+    expect(sandboxGetIdx).toBeGreaterThanOrEqual(0);
+    expect(inferenceGetIdx).toBeGreaterThan(sandboxGetIdx);
   });
 
   it(
