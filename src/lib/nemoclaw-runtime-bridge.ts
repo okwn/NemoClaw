@@ -15,6 +15,10 @@ export interface GatewayRecoveryResult {
   recovered: boolean;
 }
 
+export interface SandboxConnectOptions {
+  probeOnly?: boolean;
+}
+
 export interface NemoClawRuntimeBridge {
   captureOpenshell: (
     args: string[],
@@ -23,17 +27,24 @@ export interface NemoClawRuntimeBridge {
   backupAll: () => void;
   garbageCollectImages: (args?: string[]) => Promise<void>;
   recoverNamedGatewayRuntime: () => Promise<GatewayRecoveryResult>;
-  recoverRegistryEntries: (options?: { requestedSandboxName?: string | null }) => Promise<RecoveryResult>;
+  recoverRegistryEntries: (options?: {
+    requestedSandboxName?: string | null;
+  }) => Promise<RecoveryResult>;
   runOpenshell: (
     args: string[],
-    opts?: { ignoreError?: boolean; stdio?: import("node:child_process").StdioOptions },
+    opts?: {
+      env?: Record<string, string | undefined>;
+      ignoreError?: boolean;
+      stdio?: import("node:child_process").StdioOptions;
+      timeout?: number;
+    },
   ) => SpawnLikeResult;
   sandboxChannelsAdd: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxChannelsList: (sandboxName: string) => void;
   sandboxChannelsRemove: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxChannelsStart: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxChannelsStop: (sandboxName: string, args?: string[]) => Promise<void>;
-  sandboxConnect: (sandboxName: string) => Promise<void>;
+  sandboxConnect: (sandboxName: string, options?: SandboxConnectOptions) => Promise<void>;
   sandboxDestroy: (sandboxName: string, args?: string[]) => Promise<void>;
   sandboxLogs: (sandboxName: string, follow: boolean) => void;
   sandboxPolicyAdd: (sandboxName: string, args?: string[]) => Promise<void>;
@@ -46,8 +57,12 @@ export interface NemoClawRuntimeBridge {
   upgradeSandboxes: (args?: string[]) => Promise<void>;
 }
 
-let runtimeFactory = (): NemoClawRuntimeBridge =>
-  (require("../nemoclaw") as { runtimeBridge: NemoClawRuntimeBridge }).runtimeBridge;
+let runtimeFactory = (): NemoClawRuntimeBridge => {
+  const runtimeModule = require("../nemoclaw") as {
+    runtimeBridge?: NemoClawRuntimeBridge;
+  } & NemoClawRuntimeBridge;
+  return runtimeModule.runtimeBridge ?? runtimeModule;
+};
 
 export function setNemoClawRuntimeBridgeFactoryForTest(
   factory: () => NemoClawRuntimeBridge,

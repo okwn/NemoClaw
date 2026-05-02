@@ -54,7 +54,12 @@ export async function recoverNamedGatewayRuntime(): Promise<{ recovered: boolean
 
 export function runOpenshellProviderCommand(
   args: string[],
-  opts?: { ignoreError?: boolean; stdio?: import("node:child_process").StdioOptions },
+  opts?: {
+    env?: Record<string, string | undefined>;
+    ignoreError?: boolean;
+    stdio?: import("node:child_process").StdioOptions;
+    timeout?: number;
+  },
 ) {
   return getNemoClawRuntimeBridge().runOpenshell(args, opts);
 }

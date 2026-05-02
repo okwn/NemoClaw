@@ -91,20 +91,29 @@ export const COMMANDS: readonly CommandDef[] = [
 
   // ── Sandbox Management ──
   {
-    usage: "nemoclaw list [--json]",
+    usage: "nemoclaw list",
     description: "List all sandboxes",
+    flags: "[--json]",
     group: "Sandbox Management",
     scope: "global",
   },
   {
     usage: "nemoclaw <name> connect",
     description: "Shell into a running sandbox",
+    flags: "[--probe-only]",
     group: "Sandbox Management",
     scope: "sandbox",
   },
   {
     usage: "nemoclaw <name> status",
     description: "Sandbox health + NIM status",
+    group: "Sandbox Management",
+    scope: "sandbox",
+  },
+  {
+    usage: "nemoclaw <name> doctor",
+    description: "Run host, gateway, sandbox, and inference health checks",
+    flags: "[--json]",
     group: "Sandbox Management",
     scope: "sandbox",
   },
@@ -133,6 +142,27 @@ export const COMMANDS: readonly CommandDef[] = [
     description: "Restore state from a snapshot",
     flags:
       "[v<N>|name|timestamp] [--to <dst>] (omit version for latest; auto-creates <dst> from this sandbox image if needed)",
+    group: "Sandbox Management",
+    scope: "sandbox",
+  },
+  {
+    usage: "nemoclaw <name> share mount",
+    description: "Mount sandbox filesystem on the host via SSHFS",
+    flags: "[sandbox-path] [local-mount-point]",
+    group: "Sandbox Management",
+    scope: "sandbox",
+  },
+  {
+    usage: "nemoclaw <name> share unmount",
+    description: "Unmount a previously mounted sandbox filesystem",
+    flags: "[local-mount-point]",
+    group: "Sandbox Management",
+    scope: "sandbox",
+  },
+  {
+    usage: "nemoclaw <name> share status",
+    description: "Check whether the sandbox filesystem is currently mounted",
+    flags: "[local-mount-point]",
     group: "Sandbox Management",
     scope: "sandbox",
   },
@@ -305,6 +335,7 @@ export const COMMANDS: readonly CommandDef[] = [
   {
     usage: "nemoclaw status",
     description: "Show sandbox list and service status",
+    flags: "[--json]",
     group: "Services",
     scope: "global",
   },
@@ -400,7 +431,6 @@ export const COMMANDS: readonly CommandDef[] = [
     scope: "global",
     hidden: true,
   },
-
 ] as const;
 
 /** All global-scope commands. */

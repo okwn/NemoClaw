@@ -8,6 +8,8 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
+import { help as renderRootHelp } from "../src/lib/root-help-action";
+
 const ROOT = path.resolve(import.meta.dirname, "..");
 
 describe("image cleanup: sandbox destroy removes Docker image (#2086)", () => {
@@ -141,9 +143,19 @@ describe("image cleanup: gc command exists (#2086)", () => {
     expect(gcBody).toContain("--yes");
   });
 
-  it("gc appears in help text via registry", () => {
-    const rootHelpSrc = fs.readFileSync(path.join(ROOT, "src/lib/root-help-action.ts"), "utf-8");
-    expect(registrySrc).toContain('"nemoclaw gc"');
-    expect(rootHelpSrc).toContain("commandsByGroup");
+  it("gc appears in rendered help text", () => {
+    const originalLog = console.log;
+    let renderedHelp = "";
+    console.log = (message?: unknown) => {
+      renderedHelp += `${String(message ?? "")}\n`;
+    };
+    try {
+      renderRootHelp();
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(renderedHelp).toContain("nemoclaw gc");
+    expect(renderedHelp).toContain("Remove orphaned sandbox Docker images");
   });
 });

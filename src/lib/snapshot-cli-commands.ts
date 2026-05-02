@@ -9,7 +9,9 @@ import { runSandboxSnapshot } from "./sandbox-runtime-actions";
 
 let runtimeBridgeFactory = () => ({ sandboxSnapshot: runSandboxSnapshot });
 
-export function setSnapshotRuntimeBridgeFactoryForTest(factory: () => { sandboxSnapshot: (sandboxName: string, args: string[]) => Promise<void> }): void {
+export function setSnapshotRuntimeBridgeFactoryForTest(
+  factory: () => { sandboxSnapshot: (sandboxName: string, args: string[]) => Promise<void> },
+): void {
   runtimeBridgeFactory = factory;
 }
 
