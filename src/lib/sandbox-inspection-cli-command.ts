@@ -7,8 +7,8 @@ import { Args, Command, Flags } from "@oclif/core";
 
 import { CLI_NAME } from "./branding";
 import { listSandboxChannels, listSandboxPolicies } from "./policy-channel-actions";
-import { showSandboxStatus } from "./sandbox-runtime-actions";
 import * as sandboxConfig from "./sandbox-config";
+import { showSandboxStatus } from "./sandbox-runtime-actions";
 
 const sandboxNameArg = Args.string({
   name: "sandbox",

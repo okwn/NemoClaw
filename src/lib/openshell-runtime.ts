@@ -8,9 +8,11 @@ import type { StdioOptions } from "node:child_process";
 import { ROOT } from "./runner";
 import {
   captureOpenshellCommand,
+  captureOpenshellCommandAsync,
   getInstalledOpenshellVersion,
   runOpenshellCommand,
 } from "./openshell";
+import { OPENSHELL_PROBE_TIMEOUT_MS } from "./openshell-timeouts";
 import { resolveOpenshell } from "./resolve-openshell";
 
 type CommandArgs = string[];
@@ -56,6 +58,26 @@ export function captureOpenshell(args: CommandArgs, opts: RunnerOptions = {}) {
     errorLine: console.error,
     exit: (code: number) => process.exit(code),
   });
+}
+
+export function getStatusProbeTimeoutMs(): number {
+  const raw = process.env.NEMOCLAW_STATUS_PROBE_TIMEOUT_MS;
+  const parsed = raw ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : OPENSHELL_PROBE_TIMEOUT_MS;
+}
+
+export function captureOpenshellForStatus(args: CommandArgs, opts: RunnerOptions = {}) {
+  return captureOpenshellCommandAsync(getOpenshellBinary(), args, {
+    cwd: ROOT,
+    env: opts.env,
+    ignoreError: opts.ignoreError,
+    timeout: opts.timeout ?? getStatusProbeTimeoutMs(),
+    killGraceMs: 1000,
+  });
+}
+
+export function isCommandTimeout(result: { error?: Error }) {
+  return (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
 }
 
 export function getInstalledOpenshellVersionOrNull(): string | null {

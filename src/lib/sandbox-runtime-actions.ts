@@ -3,10 +3,14 @@
 
 /* v8 ignore start -- transitional action facade until implementations leave src/nemoclaw.ts. */
 
+import type { SandboxConnectOptions } from "./nemoclaw-runtime-bridge";
 import { getNemoClawRuntimeBridge } from "./nemoclaw-runtime-bridge";
 
-export async function connectSandbox(sandboxName: string): Promise<void> {
-  await getNemoClawRuntimeBridge().sandboxConnect(sandboxName);
+export async function connectSandbox(
+  sandboxName: string,
+  options?: SandboxConnectOptions,
+): Promise<void> {
+  await getNemoClawRuntimeBridge().sandboxConnect(sandboxName, options);
 }
 
 export async function showSandboxStatus(sandboxName: string): Promise<void> {
