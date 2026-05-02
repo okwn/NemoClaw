@@ -247,6 +247,19 @@ function createDoctorTestSetup(prefix: string, openshellLines: string[], sandbox
   };
 }
 
+function createCloudflaredServiceDir(prefix: string): { sandboxName: string; serviceDir: string } {
+  const suffix = [
+    process.pid.toString(36),
+    Date.now().toString(36),
+    Math.random().toString(36).slice(2, 10),
+  ].join("-");
+  const sandboxName = `${prefix}${suffix}`;
+  const serviceDir = path.join("/tmp", `nemoclaw-services-${sandboxName}`);
+  fs.rmSync(serviceDir, { recursive: true, force: true });
+  fs.mkdirSync(serviceDir, { recursive: true });
+  return { sandboxName, serviceDir };
+}
+
 function createDebugCommandTestEnv(prefix: string): Record<string, string> {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const localBin = path.join(home, "bin");
@@ -954,7 +967,7 @@ describe("CLI dispatch", () => {
   });
 
   it("doctor treats a live non-cloudflared PID as stale", () => {
-    const sandboxName = `doctorpid-${process.pid}`;
+    const { sandboxName, serviceDir } = createCloudflaredServiceDir("doctorpid-");
     const setup = createDoctorTestSetup(
       "nemoclaw-cli-doctor-wrong-cloudflared-pid-",
       [
@@ -967,9 +980,6 @@ describe("CLI dispatch", () => {
       ],
       sandboxName,
     );
-    const serviceDir = path.join("/tmp", `nemoclaw-services-${sandboxName}`);
-    fs.rmSync(serviceDir, { recursive: true, force: true });
-    fs.mkdirSync(serviceDir, { recursive: true });
     const sleeper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
       stdio: "ignore",
     });
@@ -999,7 +1009,7 @@ describe("CLI dispatch", () => {
   });
 
   it("doctor accepts a live cloudflared PID", () => {
-    const sandboxName = `doctorcloudflared-${process.pid}`;
+    const { sandboxName, serviceDir } = createCloudflaredServiceDir("doctorcloudflared-");
     const setup = createDoctorTestSetup(
       "nemoclaw-cli-doctor-cloudflared-pid-",
       [
@@ -1012,11 +1022,8 @@ describe("CLI dispatch", () => {
       ],
       sandboxName,
     );
-    const serviceDir = path.join("/tmp", `nemoclaw-services-${sandboxName}`);
     const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cloudflared-shim-"));
     const cloudflaredBin = path.join(shimDir, "cloudflared");
-    fs.rmSync(serviceDir, { recursive: true, force: true });
-    fs.mkdirSync(serviceDir, { recursive: true });
     fs.symlinkSync(process.execPath, cloudflaredBin);
     const sleeper = spawn(cloudflaredBin, ["-e", "setTimeout(() => {}, 30000)"], {
       stdio: "ignore",
