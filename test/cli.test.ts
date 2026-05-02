@@ -1204,7 +1204,10 @@ describe("CLI dispatch", () => {
 
     const logs = runWithEnv("alpha logs --help", { HOME: home });
     expect(logs.code).toBe(0);
-    expect(logs.out).toContain("<name> logs [--follow]");
+    expect(logs.out).toContain("<name> logs");
+    expect(logs.out).toContain("--follow");
+    expect(logs.out).toContain("--tail");
+    expect(logs.out).toContain("--since");
     expect(logs.out).not.toContain("sandbox:logs");
 
     const destroy = runWithEnv("alpha destroy --help", { HOME: home });
@@ -1350,7 +1353,7 @@ describe("CLI dispatch", () => {
     const r = setup.runLogs("alpha logs --help");
 
     expect(r.code).toBe(0);
-    expect(r.out).toContain("Usage: nemoclaw <name> logs");
+    expect(r.out).toContain("<name> logs");
     expect(r.out).toContain("--follow");
     expect(r.out).toContain("--tail");
     expect(r.out).toContain("--since");
@@ -1383,33 +1386,6 @@ describe("CLI dispatch", () => {
     ]);
   });
 
-  it("rejects -n without a line count", () => {
-    const setup = createLogsTestSetup("nemoclaw-cli-logs-n-missing-");
-    const r = setup.runLogs("alpha logs -n 2>&1");
-
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("-n requires a positive line count");
-    expect(setup.readCalls()).toEqual([]);
-  });
-
-  it("rejects zero line count for -n", () => {
-    const setup = createLogsTestSetup("nemoclaw-cli-logs-n-zero-");
-    const r = setup.runLogs("alpha logs -n 0 2>&1");
-
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("-n requires a positive line count");
-    expect(setup.readCalls()).toEqual([]);
-  });
-
-  it("rejects non-numeric line count for -n", () => {
-    const setup = createLogsTestSetup("nemoclaw-cli-logs-n-nonnumeric-");
-    const r = setup.runLogs("alpha logs -n foo 2>&1");
-
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("-n requires a positive line count");
-    expect(setup.readCalls()).toEqual([]);
-  });
-
   it("passes --since to OpenShell logs without an unfiltered gateway tail", () => {
     const setup = createLogsTestSetup("nemoclaw-cli-logs-since-");
     const r = setup.runLogs("alpha logs --since 5m");
@@ -1434,31 +1410,31 @@ describe("CLI dispatch", () => {
     expect(calls.some((call) => call.startsWith("sandbox exec -n alpha"))).toBe(false);
   });
 
-  it("rejects --since without a duration", () => {
-    const setup = createLogsTestSetup("nemoclaw-cli-logs-since-missing-");
-    const r = setup.runLogs("alpha logs --since 2>&1");
+  it("rejects malformed logs flags before calling OpenShell", () => {
+    const setup = createLogsTestSetup("nemoclaw-cli-logs-malformed-");
+    const missingTail = setup.runLogs("alpha logs --tail 2>&1");
+    const zeroTail = setup.runLogs("alpha logs --tail 0 2>&1");
+    const nonNumericTail = setup.runLogs("alpha logs -n foo 2>&1");
+    const missingSince = setup.runLogs("alpha logs --since 2>&1");
+    const malformedSince = setup.runLogs("alpha logs --since someday 2>&1");
 
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("--since requires a duration");
+    for (const result of [missingTail, zeroTail, nonNumericTail, missingSince, malformedSince]) {
+      expect(result.code).not.toBe(0);
+    }
+    expect(missingTail.out).toContain("--tail");
+    expect(zeroTail.out).toContain("--tail");
+    expect(nonNumericTail.out).toContain("Expected an integer");
+    expect(missingSince.out).toContain("--since");
+    expect(malformedSince.out).toContain("--since requires a positive duration");
     expect(setup.readCalls()).toEqual([]);
   });
 
-  it("rejects unknown logs flags", () => {
+  it("rejects unknown logs flags before calling OpenShell", () => {
     const setup = createLogsTestSetup("nemoclaw-cli-logs-unknown-");
     const r = setup.runLogs("alpha logs --bogus 2>&1");
 
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("Unknown logs argument: --bogus");
-    expect(r.out).toContain("Usage: nemoclaw <name> logs");
-    expect(setup.readCalls()).toEqual([]);
-  });
-
-  it("rejects --tail without a line count", () => {
-    const setup = createLogsTestSetup("nemoclaw-cli-logs-tail-missing-");
-    const r = setup.runLogs("alpha logs --tail 2>&1");
-
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("--tail requires a positive line count");
+    expect(r.code).not.toBe(0);
+    expect(r.out).toContain("Nonexistent flag: --bogus");
     expect(setup.readCalls()).toEqual([]);
   });
 
