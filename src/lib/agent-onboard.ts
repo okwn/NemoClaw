@@ -9,9 +9,10 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-import { ROOT, run } from "./runner";
+import { ROOT, run, shellQuote } from "./runner";
 import { dockerBuild, dockerImageInspect } from "./docker";
 import { loadAgent, resolveAgentName, type AgentDefinition } from "./agent-defs";
+import { getAgentBranding } from "./branding";
 import { getProviderSelectionConfig } from "./inference-config";
 import * as onboardSession from "./onboard-session";
 import { sleepSeconds } from "./wait";
@@ -110,6 +111,88 @@ function sleep(seconds: number): void {
   sleepSeconds(seconds);
 }
 
+function agentCliName(agent: AgentDefinition): string {
+  return getAgentBranding(agent.name).cli;
+}
+
+function agentExecutableName(agent: AgentDefinition): string {
+  const configuredPath = typeof agent.binary_path === "string" ? agent.binary_path.trim() : "";
+  return path.basename(configuredPath || agent.name);
+}
+
+type AgentBinaryAvailability =
+  | { available: true }
+  | {
+      available: false;
+      reason: "not_found" | "not_executable";
+      binaryPath?: string;
+    };
+
+// Exported for unit coverage of the sandbox-side guard without running onboarding.
+export function verifyAgentBinaryAvailable(
+  sandboxName: string,
+  agent: AgentDefinition,
+  runCaptureOpenshell: OnboardContext["runCaptureOpenshell"],
+): AgentBinaryAvailability {
+  const executable = agentExecutableName(agent);
+  const binaryPath = typeof agent.binary_path === "string" ? agent.binary_path.trim() : "";
+  const script = binaryPath
+    ? [
+        `[ -e ${shellQuote(binaryPath)} ] || { echo not_found; exit 1; }`,
+        `[ -x ${shellQuote(binaryPath)} ] || { echo not_executable; exit 1; }`,
+        "echo ok",
+      ].join(" && ")
+    : `command -v ${shellQuote(executable)} >/dev/null 2>&1 && echo ok || echo not_found`;
+  const result = runCaptureOpenshell(
+    ["sandbox", "exec", "-n", sandboxName, "--", "sh", "-lc", script],
+    {
+      ignoreError: true,
+    },
+  );
+  const status = result?.trim() ?? "";
+  if (status === "ok") {
+    return { available: true };
+  }
+  if (binaryPath && result) {
+    if (result.includes("not_executable")) {
+      return { available: false, reason: "not_executable", binaryPath };
+    }
+  }
+  return { available: false, reason: "not_found", binaryPath: binaryPath || undefined };
+}
+
+function describeAgentBinaryFailure(
+  sandboxName: string,
+  agent: AgentDefinition,
+  result: Exclude<AgentBinaryAvailability, { available: true }>,
+): string {
+  const executable = agentExecutableName(agent);
+  if (result.reason === "not_executable") {
+    return `${agent.displayName} configured binary '${result.binaryPath}' is not executable inside sandbox '${sandboxName}'`;
+  }
+  return `${agent.displayName} binary '${executable}' is missing inside sandbox '${sandboxName}'`;
+}
+
+function failAgentSetup(sandboxName: string, agent: AgentDefinition, message: string): never {
+  onboardSession.markStepFailed("agent_setup", message);
+  console.error(`  \u2717 ${message}`);
+  console.error(`    Check: ${agentCliName(agent)} ${sandboxName} logs --follow`);
+  process.exit(1);
+}
+
+function isHealthProbeOk(result: string | null | undefined): boolean {
+  const body = (result ?? "").trim();
+  if (body === "ok") {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(body) as { status?: unknown };
+    return parsed.status === "ok";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Handle the full agent setup step (step 7) including resume detection.
  * For non-OpenClaw agents: writes config into the sandbox and verifies
@@ -140,10 +223,10 @@ export async function handleAgentSetup(
     const probe = agent.healthProbe;
     if (probe?.url) {
       const result = runCaptureOpenshell(
-        ["sandbox", "exec", sandboxName, "curl", "-sf", "--max-time", "3", probe.url],
+        ["sandbox", "exec", "-n", sandboxName, "--", "curl", "-sf", "--max-time", "3", probe.url],
         { ignoreError: true },
       );
-      if (result && result.includes("ok")) {
+      if (isHealthProbeOk(result)) {
         skippedStepMessage("agent_setup", sandboxName);
         onboardSession.markStepComplete("agent_setup", { sandboxName, provider, model });
         return;
@@ -153,6 +236,15 @@ export async function handleAgentSetup(
 
   startRecordedStep("agent_setup", { sandboxName, provider, model });
   step(7, 8, `Setting up ${agent.displayName} inside sandbox`);
+
+  const binaryAvailability = verifyAgentBinaryAvailable(sandboxName, agent, runCaptureOpenshell);
+  if (!binaryAvailability.available) {
+    failAgentSetup(
+      sandboxName,
+      agent,
+      describeAgentBinaryFailure(sandboxName, agent, binaryAvailability),
+    );
+  }
 
   const selectionConfig = getProviderSelectionConfig(provider, model);
   if (selectionConfig) {
@@ -183,10 +275,10 @@ export async function handleAgentSetup(
     let healthy = false;
     for (let i = 0; i < maxAttempts; i++) {
       const result = runCaptureOpenshell(
-        ["sandbox", "exec", sandboxName, "curl", "-sf", "--max-time", "3", probe.url],
+        ["sandbox", "exec", "-n", sandboxName, "--", "curl", "-sf", "--max-time", "3", probe.url],
         { ignoreError: true },
       );
-      if (result && result.includes("ok")) {
+      if (isHealthProbeOk(result)) {
         healthy = true;
         break;
       }
@@ -195,8 +287,11 @@ export async function handleAgentSetup(
     if (healthy) {
       console.log(`  \u2713 ${agent.displayName} gateway is healthy`);
     } else {
-      console.log(`  \u26a0 ${agent.displayName} gateway did not respond within ${timeoutSecs}s.`);
-      console.log(`    The gateway may still be starting. Check: nemoclaw ${sandboxName} logs`);
+      failAgentSetup(
+        sandboxName,
+        agent,
+        `${agent.displayName} gateway did not respond within ${timeoutSecs}s`,
+      );
     }
   } else {
     console.log(`  \u2713 ${agent.displayName} configured inside sandbox`);
