@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { StdioOptions } from "node:child_process";
+
 import { Args, Command, Flags } from "@oclif/core";
 
 import { CLI_DISPLAY_NAME, CLI_NAME } from "./branding";
 import { prompt as askPrompt } from "./credentials";
+import { OPENSHELL_OPERATION_TIMEOUT_MS } from "./openshell-timeouts";
 
 interface SpawnLikeResult {
   status: number | null;
@@ -12,12 +15,24 @@ interface SpawnLikeResult {
   stderr?: string | Buffer;
 }
 
+interface RuntimeRecovery {
+  recovered: boolean;
+  before?: unknown;
+  after?: unknown;
+  attempted?: boolean;
+  via?: string;
+}
+
+interface RuntimeBridgeRunOptions {
+  env?: Record<string, string | undefined>;
+  ignoreError?: boolean;
+  stdio?: StdioOptions;
+  timeout?: number;
+}
+
 interface RuntimeBridge {
-  recoverNamedGatewayRuntime: () => Promise<{ recovered: boolean }>;
-  runOpenshell: (
-    args: string[],
-    opts?: { ignoreError?: boolean; stdio?: import("node:child_process").StdioOptions },
-  ) => SpawnLikeResult;
+  recoverNamedGatewayRuntime: () => Promise<RuntimeRecovery>;
+  runOpenshell: (args: string[], opts?: RuntimeBridgeRunOptions) => SpawnLikeResult;
 }
 
 // Suffixes that mark per-sandbox messaging integrations in the gateway's
@@ -99,6 +114,7 @@ export class CredentialsListCommand extends Command {
     const result = runtime.runOpenshell(["provider", "list", "--names"], {
       ignoreError: true,
       stdio: ["ignore", "pipe", "pipe"],
+      timeout: OPENSHELL_OPERATION_TIMEOUT_MS,
     });
     if (result.status !== 0) {
       console.error("  Could not query OpenShell gateway. Is it running?");
@@ -183,6 +199,7 @@ export class CredentialsResetCommand extends Command {
     const result = runtime.runOpenshell(["provider", "delete", key], {
       ignoreError: true,
       stdio: ["ignore", "pipe", "pipe"],
+      timeout: OPENSHELL_OPERATION_TIMEOUT_MS,
     });
     if (result.status === 0) {
       this.log(`  Removed provider '${key}' from the OpenShell gateway.`);
