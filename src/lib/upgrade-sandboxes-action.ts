@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* v8 ignore start -- exercised through CLI subprocess upgrade tests. */
-
 import { CLI_NAME } from "./branding";
 import { prompt as askPrompt } from "./credentials";
 import {
@@ -19,13 +17,18 @@ import { B, D, G, R, YW } from "./terminal-style";
 // ── Upgrade sandboxes (#1904) ────────────────────────────────────
 // Detect sandboxes running stale agent versions and offer to rebuild them.
 
+export function shouldSkipUpgradeConfirmation(options: UpgradeSandboxesOptions): boolean {
+  return options.auto === true || options.yes === true;
+}
+
+/* v8 ignore next -- OpenShell rebuild orchestration is covered through CLI subprocess tests. */
 export async function upgradeSandboxes(
   options: string[] | UpgradeSandboxesOptions = {},
 ): Promise<void> {
   const normalized = normalizeUpgradeSandboxesOptions(options);
   const checkOnly = normalized.check === true;
   const auto = normalized.auto === true;
-  const skipConfirm = auto || normalized.yes === true;
+  const skipConfirm = shouldSkipUpgradeConfirmation(normalized);
 
   const sandboxes = registry.listSandboxes().sandboxes;
   if (sandboxes.length === 0) {

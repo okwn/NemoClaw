@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* v8 ignore start -- exercised through CLI subprocess maintenance tests. */
-
 import { prompt as askPrompt } from "./credentials";
 import {
   type GarbageCollectImagesOptions,
@@ -23,6 +21,31 @@ const R = useColor ? "\x1b[0m" : "";
 const RD = useColor ? "\x1b[1;31m" : "";
 const YW = useColor ? "\x1b[1;33m" : "";
 
+export type SandboxImageRow = { tag: string; size: string };
+
+export function parseSandboxImageRows(imagesOutput: string): SandboxImageRow[] {
+  return imagesOutput
+    .split("\n")
+    .map((line: string) => line.trim())
+    .filter(Boolean)
+    .map((line: string) => {
+      const [tag, size] = line.split("\t");
+      return { tag, size: size || "unknown" };
+    });
+}
+
+export function findOrphanedSandboxImages(
+  images: SandboxImageRow[],
+  sandboxes: Array<{ imageTag?: string | null }>,
+): SandboxImageRow[] {
+  const registeredTags = new Set<string>();
+  for (const sb of sandboxes) {
+    if (sb.imageTag) registeredTags.add(sb.imageTag);
+  }
+  return images.filter((img) => !registeredTags.has(img.tag));
+}
+
+/* v8 ignore next -- OpenShell backup orchestration is covered through CLI subprocess tests. */
 export function backupAll(): void {
   const { sandboxes } = registry.listSandboxes();
   if (sandboxes.length === 0) {
@@ -64,6 +87,7 @@ export function backupAll(): void {
   }
 }
 
+/* v8 ignore next -- Docker image deletion orchestration is covered through CLI subprocess tests. */
 export async function garbageCollectImages(
   options: string[] | GarbageCollectImagesOptions = {},
 ): Promise<void> {
@@ -82,29 +106,15 @@ export async function garbageCollectImages(
     process.exit(1);
   }
 
-  const allImages = imagesOutput
-    .split("\n")
-    .map((line: string) => line.trim())
-    .filter(Boolean)
-    .map((line: string) => {
-      const [tag, size] = line.split("\t");
-      return { tag, size: size || "unknown" };
-    });
+  const allImages = parseSandboxImageRows(imagesOutput);
 
   if (allImages.length === 0) {
     console.log("  No sandbox images found on the host.");
     return;
   }
 
-  const registeredTags = new Set();
   const { sandboxes } = registry.listSandboxes();
-  for (const sb of sandboxes) {
-    if (sb.imageTag) registeredTags.add(sb.imageTag);
-  }
-
-  const orphans = allImages.filter(
-    (img: { tag: string; size: string }) => !registeredTags.has(img.tag),
-  );
+  const orphans = findOrphanedSandboxImages(allImages, sandboxes);
 
   if (orphans.length === 0) {
     console.log(`  All ${allImages.length} sandbox image(s) are in use. Nothing to clean up.`);
