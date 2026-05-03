@@ -6101,12 +6101,14 @@ async function setupNim(
             const tmpDropIn = path.join(os.tmpdir(), `nemoclaw-ollama-${Date.now()}.conf`);
             fs.writeFileSync(tmpDropIn, dropInBody, { mode: 0o644 });
             runShell(
-              `sudo install -D -m 0644 ${tmpDropIn} /etc/systemd/system/ollama.service.d/override.conf && sudo systemctl daemon-reload && sudo systemctl restart ollama`,
+              `sudo install -D -m 0644 ${shellQuote(tmpDropIn)} ${shellQuote("/etc/systemd/system/ollama.service.d/override.conf")} && sudo systemctl daemon-reload && sudo systemctl restart ollama`,
               { ignoreError: true },
             );
             fs.unlinkSync(tmpDropIn);
             sleep(2);
-          } else if (!findReachableOllamaHost()) {
+          }
+          // Fall back to manual start if systemd path failed or isn't present.
+          if (!findReachableOllamaHost()) {
             console.log("  Starting Ollama...");
             const ollamaEnv = isWsl() ? "" : `OLLAMA_HOST=0.0.0.0:${OLLAMA_PORT} `;
             runShell(`${ollamaEnv}ollama serve > /dev/null 2>&1 &`, { ignoreError: true });
