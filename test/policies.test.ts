@@ -614,6 +614,28 @@ describe("policies", () => {
     });
   });
 
+  describe("mergePresetNamesIntoPolicy", () => {
+    it("merges built-in named presets into policy content", () => {
+      const current =
+        "version: 1\n\n" +
+        "network_policies:\n" +
+        "  existing:\n" +
+        "    name: existing\n" +
+        "    endpoints:\n" +
+        "      - host: api.example.com\n" +
+        "        port: 443\n" +
+        "        access: full\n";
+
+      const result = policies.mergePresetNamesIntoPolicy(current, ["slack"]);
+
+      expect(result.appliedPresets).toEqual(["slack"]);
+      expect(result.missingPresets).toEqual([]);
+      expect(result.policy).toContain("existing");
+      expect(result.policy).toContain("slack:");
+      expect(result.policy).toContain("wss-primary.slack.com");
+    });
+  });
+
   describe("preset YAML schema", () => {
     it("no preset has rules at NetworkPolicyRuleDef level", () => {
       // rules must be inside endpoints, not as sibling of endpoints/binaries

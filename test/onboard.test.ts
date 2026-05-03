@@ -21,6 +21,8 @@ type ShimFn<TReturn = void> = (...args: ShimValue[]) => TReturn;
 type CommandEntry = {
   command: string;
   env?: Record<string, string | undefined>;
+  policyContent?: string;
+  policyReadError?: string;
 };
 type DashboardAccess = { label: string; url: string };
 type ResumeConflict = { field: string; requested: string | null; recorded: string | null };
@@ -3599,6 +3601,7 @@ const preflight = require(${preflightPath});
 const credentials = require(${credentialsPath});
 const childProcess = require("node:child_process");
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
 
 const commands = [];
 runner.run = (command, opts = {}) => {
@@ -3626,7 +3629,17 @@ childProcess.spawn = (...args) => {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
-  commands.push({ command: _n(args[1][1]), env: args[2]?.env || null });
+  const command = _n(args[1][1]);
+  const entry = { command, env: args[2]?.env || null };
+  const policyMatch = command.match(/--policy ([^ ]+)/);
+  if (policyMatch) {
+    try {
+      entry.policyContent = fs.readFileSync(policyMatch[1], "utf-8");
+    } catch (error) {
+      entry.policyReadError = String(error);
+    }
+  }
+  commands.push(entry);
   process.nextTick(() => {
     child.stdout.emit("data", Buffer.from("Created sandbox: my-assistant\n"));
     child.emit("close", 0);
@@ -3704,6 +3717,11 @@ const { createSandbox } = require(${onboardPath});
       assert.match(createCommand.command, /--provider my-assistant-discord-bridge/);
       assert.match(createCommand.command, /--provider my-assistant-slack-bridge/);
       assert.match(createCommand.command, /--provider my-assistant-telegram-bridge/);
+      assert.match(createCommand.command, /--policy [^ ]*nemoclaw-initial-policy[^ ]*\.yaml/);
+      assert.equal(createCommand.policyReadError, undefined);
+      assert.match(createCommand.policyContent || "", /network_policies:/);
+      assert.match(createCommand.policyContent || "", /slack:/);
+      assert.match(createCommand.policyContent || "", /wss-primary\.slack\.com/);
 
       // Discord and Telegram tokens must NOT appear in the sandbox create command
       // (they flow exclusively through the openshell provider credential system).

@@ -1152,6 +1152,57 @@ type SelectionDrift = {
   unknown: boolean;
 };
 
+type InitialSandboxPolicy = {
+  policyPath: string;
+  appliedPresets: string[];
+  cleanup?: () => boolean;
+};
+
+const CREATE_TIME_POLICY_PRESETS_BY_CHANNEL: Record<string, string[]> = {
+  slack: ["slack"],
+};
+
+function prepareInitialSandboxCreatePolicy(
+  basePolicyPath: string,
+  activeMessagingChannels: string[],
+): InitialSandboxPolicy {
+  const createTimePresets = [
+    ...new Set(
+      activeMessagingChannels.flatMap(
+        (channel) => CREATE_TIME_POLICY_PRESETS_BY_CHANNEL[channel] || [],
+      ),
+    ),
+  ];
+
+  if (createTimePresets.length === 0) {
+    return { policyPath: basePolicyPath, appliedPresets: [] };
+  }
+
+  const basePolicy = fs.readFileSync(basePolicyPath, "utf-8");
+  const mergedPolicy = policies.mergePresetNamesIntoPolicy(basePolicy, createTimePresets);
+  if (mergedPolicy.missingPresets.length > 0) {
+    throw new Error(
+      `Cannot prepare sandbox create policy; missing policy preset(s): ${mergedPolicy.missingPresets.join(", ")}`,
+    );
+  }
+
+  const policyPath = secureTempFile("nemoclaw-initial-policy", ".yaml");
+  fs.writeFileSync(policyPath, mergedPolicy.policy, { encoding: "utf-8", mode: 0o600 });
+
+  return {
+    policyPath,
+    appliedPresets: mergedPolicy.appliedPresets,
+    cleanup: () => {
+      try {
+        cleanupTempDir(policyPath, "nemoclaw-initial-policy");
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}
+
 function upsertMessagingProviders(tokenDefs: MessagingTokenDef[]) {
   const upserted = onboardProviders.upsertMessagingProviders(tokenDefs, runOpenshell);
   // upsertMessagingProviders process.exits on failure, so reaching this
@@ -4406,26 +4457,6 @@ async function createSandbox(
     "openclaw-sandbox.yaml",
   );
   const basePolicyPath = (agent && agentOnboard.getAgentPolicyPath(agent)) || defaultPolicyPath;
-  const createArgs = [
-    "--from",
-    `${buildCtx}/Dockerfile`,
-    "--name",
-    sandboxName,
-    "--policy",
-    basePolicyPath,
-  ];
-  // --gpu is intentionally omitted. See comment in startGateway().
-
-  // Create OpenShell providers for messaging credentials so they flow through
-  // the provider/placeholder system instead of raw env vars. The L7 proxy
-  // rewrites Authorization headers (Bearer/Bot) and URL-path segments
-  // (/bot{TOKEN}/) with real secrets at egress (OpenShell ≥ 0.0.20).
-  const messagingProviders = upsertMessagingProviders(messagingTokenDefs);
-  for (const p of messagingProviders) {
-    createArgs.push("--provider", p);
-  }
-
-  console.log(`  Creating sandbox '${sandboxName}' (this takes a few minutes on first run)...`);
   if (webSearchConfig && !getCredential(webSearch.BRAVE_API_KEY_ENV)) {
     console.error("  Brave Search is enabled, but BRAVE_API_KEY is not available in this process.");
     console.error(
@@ -4450,8 +4481,40 @@ async function createSandbox(
           if (envKey === "TELEGRAM_BOT_TOKEN") return ["telegram"];
           return [];
         }),
-    ),
+      ),
   ];
+  const initialSandboxPolicy = prepareInitialSandboxCreatePolicy(
+    basePolicyPath,
+    activeMessagingChannels,
+  );
+  if (initialSandboxPolicy.cleanup) {
+    process.on("exit", initialSandboxPolicy.cleanup);
+  }
+  if (initialSandboxPolicy.appliedPresets.length > 0) {
+    console.log(
+      `  Including policy preset(s) at sandbox boot: ${initialSandboxPolicy.appliedPresets.join(", ")}`,
+    );
+  }
+  const createArgs = [
+    "--from",
+    `${buildCtx}/Dockerfile`,
+    "--name",
+    sandboxName,
+    "--policy",
+    initialSandboxPolicy.policyPath,
+  ];
+  // --gpu is intentionally omitted. See comment in startGateway().
+
+  // Create OpenShell providers for messaging credentials so they flow through
+  // the provider/placeholder system instead of raw env vars. The L7 proxy
+  // rewrites Authorization headers (Bearer/Bot) and URL-path segments
+  // (/bot{TOKEN}/) with real secrets at egress (OpenShell >= 0.0.20).
+  const messagingProviders = upsertMessagingProviders(messagingTokenDefs);
+  for (const p of messagingProviders) {
+    createArgs.push("--provider", p);
+  }
+
+  console.log(`  Creating sandbox '${sandboxName}' (this takes a few minutes on first run)...`);
   // Build allowed sender IDs map from env vars set during the messaging prompt.
   // Each channel with a userIdEnvKey in MESSAGING_CHANNELS may have a
   // comma-separated list of IDs (e.g. TELEGRAM_ALLOWED_IDS="123,456").
@@ -4649,6 +4712,10 @@ async function createSandbox(
       return isSandboxReady(list, sandboxName);
     },
   });
+
+  if (initialSandboxPolicy.cleanup && initialSandboxPolicy.cleanup()) {
+    process.removeListener("exit", initialSandboxPolicy.cleanup);
+  }
 
   // Clean up build context regardless of outcome.
   // Use fs.rmSync instead of run() to avoid spawning a shell process.
