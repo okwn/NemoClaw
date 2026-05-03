@@ -7991,6 +7991,10 @@ function buildAuthenticatedDashboardUrl(baseUrl: string, token: string | null = 
   return `${baseUrl}#token=${encodeURIComponent(token)}`;
 }
 
+function dashboardUrlForDisplay(url: string): string {
+  return redact(url.replace(/#token=[^\s'"]*$/i, ""));
+}
+
 function getWslHostAddress(
   options: {
     wslHostAddress?: string | null;
@@ -8145,7 +8149,7 @@ function printDashboard(
       console.log(`  ${line}`);
     }
     for (const entry of dashboardAccess) {
-      console.log(`  ${entry.label}: ${redact(entry.url)}`);
+      console.log(`  ${entry.label}: ${dashboardUrlForDisplay(entry.url)}`);
     }
     console.log(`  Token:       ${cliName()} ${sandboxName} gateway-token --quiet`);
     console.log(`               append  #token=<token> locally if the browser asks for auth.`);
@@ -8156,7 +8160,7 @@ function printDashboard(
       console.log(`  ${line}`);
     }
     for (const entry of dashboardAccess) {
-      console.log(`  ${entry.label}: ${redact(entry.url)}`);
+      console.log(`  ${entry.label}: ${dashboardUrlForDisplay(entry.url)}`);
     }
     console.log(
       `  Token:       ${cliName()} ${sandboxName} connect  →  jq -r '.gateway.auth.token' /sandbox/.openclaw/openclaw.json`,

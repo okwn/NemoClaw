@@ -179,13 +179,10 @@ describe("nemoclaw-start non-root fallback", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("Setting up NemoClaw");
-    expect(result.stderr).toContain(
-      "[gateway] Local UI: http://127.0.0.1:19000/#token=<redacted>",
-    );
-    expect(result.stderr).toContain(
-      "[gateway] Remote UI: https://remote.example.test/ui/#token=<redacted>",
-    );
+    expect(result.stderr).toContain("[gateway] Local UI: http://127.0.0.1:19000/");
+    expect(result.stderr).toContain("[gateway] Remote UI: https://remote.example.test/ui/");
     expect(result.stderr).toContain("Dashboard auth token redacted from startup logs.");
+    expect(result.stderr).not.toContain("#token=");
     expect(result.stderr).not.toContain(token);
   });
 
@@ -441,9 +438,10 @@ describe("nemoclaw-start gateway token export (#1114)", () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("TOKEN=tok'en");
-    expect(result.stderr).toContain("http://127.0.0.1:18789/#token=<redacted>");
-    expect(result.stderr).toContain("https://remote.example.test/ui/#token=<redacted>");
+    expect(result.stderr).toContain("http://127.0.0.1:18789/");
+    expect(result.stderr).toContain("https://remote.example.test/ui/");
     expect(result.stderr).toContain("Dashboard auth token redacted from startup logs.");
+    expect(result.stderr).not.toContain("#token=");
     expect(result.stderr).not.toContain("tok'en");
     expect(envFile).toContain("export OPENCLAW_GATEWAY_TOKEN='tok'\\''en'");
     expect(envFile).toContain("nemoclaw-configure-guard begin");

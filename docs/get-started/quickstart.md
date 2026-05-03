@@ -285,13 +285,13 @@ You can chat with the agent from the terminal or the browser.
 The onboard wizard starts a background port forward to the sandbox dashboard, then prints the dashboard URL in the install summary.
 The default host port is `18789`.
 If that port is already taken, NemoClaw uses the next free dashboard port, such as `18790`, and prints that port in the final URL.
-The gateway token is redacted from logs; retrieve it explicitly when the browser asks for authentication.
+The gateway token is redacted from displayed output; retrieve it explicitly when the browser asks for authentication.
 
 ```text
 ──────────────────────────────────────────────────
 OpenClaw UI (auth token redacted from displayed URLs)
 Port 18790 must be forwarded before opening these URLs.
-Dashboard: http://127.0.0.1:18790/#token=<redacted>
+Dashboard: http://127.0.0.1:18790/
 Token:       nemoclaw my-gpt-claw gateway-token --quiet
              append  #token=<token> locally if the browser asks for auth.
 ──────────────────────────────────────────────────

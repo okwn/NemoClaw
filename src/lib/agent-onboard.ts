@@ -338,6 +338,10 @@ export function getAgentDashboardInfo(agent: AgentDefinition): {
   };
 }
 
+function dashboardUrlForDisplay(url: string): string {
+  return redact(url.replace(/#token=[^\s'"]*$/i, ""));
+}
+
 /**
  * Print the dashboard UI section for a non-OpenClaw agent.
  *
@@ -368,7 +372,7 @@ export function printDashboardUi(
       const url = path && path !== "/" ? `${withoutHash}${path}` : `${withoutHash}/`;
       if (seen.has(url)) continue;
       seen.add(url);
-      console.log(`  ${redact(url)}`);
+      console.log(`  ${dashboardUrlForDisplay(url)}`);
     }
     return;
   }
@@ -379,7 +383,7 @@ export function printDashboardUi(
     );
     console.log(`  Port ${info.port} must be forwarded before opening this URL.`);
     for (const url of deps.buildControlUiUrls(token, info.port)) {
-      console.log(`  ${redact(url)}`);
+      console.log(`  ${dashboardUrlForDisplay(url)}`);
     }
     console.log(`  Token: ${cliName} ${sandboxName} gateway-token --quiet`);
     console.log(`         append  #token=<token> locally if the browser asks for auth.`);
@@ -388,7 +392,7 @@ export function printDashboardUi(
     console.log(`  ${info.displayName} ${label}`);
     console.log(`  Port ${info.port} must be forwarded before opening this URL.`);
     for (const url of deps.buildControlUiUrls(null, info.port)) {
-      console.log(`  ${redact(url)}`);
+      console.log(`  ${dashboardUrlForDisplay(url)}`);
     }
   }
 }

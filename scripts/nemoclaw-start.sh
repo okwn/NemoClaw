@@ -1153,7 +1153,7 @@ harden_auth_profiles() {
 
 # configure_messaging_channels is provided by sandbox-init.sh (shared).
 
-# Print the local and remote dashboard URLs with any auth token redacted.
+# Print the local and remote dashboard URLs without the auth token fragment.
 print_dashboard_urls() {
   local token chat_ui_base local_url remote_url
 
@@ -1162,10 +1162,6 @@ print_dashboard_urls() {
   chat_ui_base="${CHAT_UI_URL%/}"
   local_url="http://127.0.0.1:${PUBLIC_PORT}/"
   remote_url="${chat_ui_base}/"
-  if [ -n "$token" ]; then
-    local_url="${local_url}#token=<redacted>"
-    remote_url="${remote_url}#token=<redacted>"
-  fi
 
   echo "[gateway] Local UI: ${local_url}" >&2
   echo "[gateway] Remote UI: ${remote_url}" >&2
