@@ -73,7 +73,11 @@ function collectImportRefs(absPath: string): ImportRef[] {
   function visit(node: ts.Node): void {
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       add(node.moduleSpecifier.text, node.moduleSpecifier);
-    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+    } else if (
+      ts.isExportDeclaration(node) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
       add(node.moduleSpecifier.text, node.moduleSpecifier);
     } else if (
       ts.isCallExpression(node) &&
@@ -94,12 +98,7 @@ function collectImportRefs(absPath: string): ImportRef[] {
 function resolveInternalImport(fromAbsPath: string, specifier: string): string | null {
   if (!specifier.startsWith(".")) return null;
   const base = path.resolve(path.dirname(fromAbsPath), specifier);
-  const candidates = [
-    base,
-    `${base}.ts`,
-    `${base}.tsx`,
-    path.join(base, "index.ts"),
-  ];
+  const candidates = [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")];
   const found = candidates.find((candidate) => existsSync(candidate));
   return found ? toRepoPath(found) : toRepoPath(`${base}.ts`);
 }
@@ -153,16 +152,31 @@ function checkDomainFile(absPath: string, repoPath: string, violations: Violatio
   const imports = collectImportRefs(absPath);
   for (const ref of imports) {
     if (ref.specifier === "@oclif/core") {
-      addViolation(violations, repoPath, ref.line, ref.column, "domain-purity", "domain must not import @oclif/core");
+      addViolation(
+        violations,
+        repoPath,
+        ref.line,
+        ref.column,
+        "domain-purity",
+        "domain must not import @oclif/core",
+      );
     }
     if (ref.specifier === "node:child_process" || ref.specifier === "child_process") {
-      addViolation(violations, repoPath, ref.line, ref.column, "domain-purity", "domain must not spawn child processes");
+      addViolation(
+        violations,
+        repoPath,
+        ref.line,
+        ref.column,
+        "domain-purity",
+        "domain must not spawn child processes",
+      );
     }
-    const target = importTargetsForbiddenLayer(absPath, ref, [
-      "src/lib/adapters/",
-      "src/lib/commands/",
-      "src/lib/cli/",
-    ], true);
+    const target = importTargetsForbiddenLayer(
+      absPath,
+      ref,
+      ["src/lib/adapters/", "src/lib/commands/", "src/lib/cli/"],
+      true,
+    );
     if (target) {
       addViolation(
         violations,
@@ -184,7 +198,14 @@ function checkDomainFile(absPath: string, repoPath: string, violations: Violatio
       node.name.text === "exit"
     ) {
       const pos = position(sourceFile, node);
-      addViolation(violations, repoPath, pos.line, pos.column, "domain-purity", "domain must not call process.exit");
+      addViolation(
+        violations,
+        repoPath,
+        pos.line,
+        pos.column,
+        "domain-purity",
+        "domain must not call process.exit",
+      );
     }
     ts.forEachChild(node, visit);
   }
@@ -194,7 +215,14 @@ function checkDomainFile(absPath: string, repoPath: string, violations: Violatio
 function checkActionFile(absPath: string, repoPath: string, violations: Violation[]): void {
   for (const ref of collectImportRefs(absPath)) {
     if (ref.specifier === "@oclif/core") {
-      addViolation(violations, repoPath, ref.line, ref.column, "actions-no-oclif", "actions must not import @oclif/core");
+      addViolation(
+        violations,
+        repoPath,
+        ref.line,
+        ref.column,
+        "actions-no-oclif",
+        "actions must not import @oclif/core",
+      );
     }
   }
 }
@@ -264,8 +292,9 @@ function main(): void {
   const violations = findLayerImportBoundaryViolations();
   if (violations.length > 0) {
     const formatted = violations
-      .map((violation) =>
-        `${violation.file}:${String(violation.line)}:${String(violation.column)} ${violation.rule}: ${violation.detail}`,
+      .map(
+        (violation) =>
+          `${violation.file}:${String(violation.line)}:${String(violation.column)} ${violation.rule}: ${violation.detail}`,
       )
       .join("\n");
     console.error(`Layer import boundary violations:\n${formatted}`);
