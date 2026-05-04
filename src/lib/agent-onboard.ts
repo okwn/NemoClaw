@@ -10,7 +10,7 @@ import os from "os";
 import path from "path";
 
 import { ROOT, run, shellQuote } from "./runner";
-import { dockerBuild, dockerImageInspect } from "./docker";
+import { dockerBuild, dockerImageInspect } from "./adapters/docker";
 import { loadAgent, resolveAgentName, type AgentDefinition } from "./agent-defs";
 import { getAgentBranding } from "./branding";
 import { getProviderSelectionConfig } from "./inference-config";

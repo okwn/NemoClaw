@@ -3,7 +3,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
-import { dockerExecFileSync } from "./docker/exec";
+import { dockerExecFileSync } from "./adapters/docker/exec";
 import { platform, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 

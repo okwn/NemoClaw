@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { ROOT } from "../runner";
+import { ROOT } from "../../runner";
 import { dockerCapture, dockerRun, type DockerCaptureOptions, type DockerRunOptions } from "./run";
 
 export function dockerBuild(

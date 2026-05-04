@@ -8,7 +8,7 @@ import {
   type GarbageCollectImagesOptions,
   normalizeGarbageCollectImagesOptions,
 } from "../domain/lifecycle/options";
-import { dockerListImagesFormat, dockerRmi } from "../docker";
+import { dockerListImagesFormat, dockerRmi } from "../adapters/docker";
 import { findOrphanedSandboxImages, parseSandboxImageRows } from "../domain/maintenance/images";
 import { captureOpenshell } from "../adapters/openshell/runtime";
 import * as registry from "../state/registry";

@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const runMock = vi.fn();
 const runCaptureMock = vi.fn();
 
-vi.mock("../runner", () => ({
+vi.mock("../../runner", () => ({
   ROOT: "/repo/root",
   run: (...args: unknown[]) => runMock(...args),
   runCapture: (...args: unknown[]) => runCaptureMock(...args),

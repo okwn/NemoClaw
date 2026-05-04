@@ -13,7 +13,7 @@ const {
   dockerRm,
   dockerRunDetached,
   dockerStop,
-} = require("./docker");
+} = require("./adapters/docker");
 const { sleepSeconds } = require("./wait");
 const nimImages = require("../../bin/lib/nim-images.json");
 
