@@ -175,6 +175,8 @@ $ nemoclaw <sandbox-name> rebuild
 ```
 
 Rebuild preserves the mounted workspace and registered policies while recreating the container.
+If some state paths cannot be archived, NemoClaw reports a partial backup and restores only the verified backup entries after the new sandbox starts.
+If no requested state can be backed up, NemoClaw stops before deleting the original sandbox.
 Refer to [`nemoclaw <name> rebuild`](../reference/commands.md#nemoclaw-name-rebuild) for flag details.
 
 ### Add a Network Preset After Onboarding
@@ -235,7 +237,8 @@ NemoClaw protects your data through the same backup-and-restore flow as [`nemocl
 - NemoClaw does not preserve runtime changes outside the workspace state directories. This includes packages installed inside the running container with `apt` or `pip`, files in non-workspace paths, and in-memory or process state. If you have customized the running container at runtime, capture that as `Dockerfile` changes for `nemoclaw onboard --from` or a manual `openshell sandbox download` before the rebuild starts.
 
 Aborts before the destroy step are non-destructive.
-The flow refuses to proceed past preflight if a credential is missing or past backup if the snapshot fails with `"Aborting rebuild to prevent data loss"`, so a failed run leaves the original sandbox intact and ready to retry.
+The flow refuses to proceed past preflight if a credential is missing or past backup if no manifest-defined state can be copied, so a failed run leaves the original sandbox intact and ready to retry.
+When only some paths fail, for example unreadable or root-owned files, NemoClaw logs the partial backup details, continues, and restores only verified backup entries.
 
 See [Backup and Restore](backup-restore.md) for the full list of state-preservation guarantees, snapshot retention, and instructions for manual backups when the auto-flow is not enough.
 

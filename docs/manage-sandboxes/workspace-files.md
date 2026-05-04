@@ -97,6 +97,9 @@ Sandbox restarts preserve workspace files because the persistent state volume ou
 
 The `nemoclaw <name> rebuild` command and the sandbox upgrade flow also preserve workspace state.
 Before replacing the container, NemoClaw snapshots the workspace state directories and restores them into the rebuilt sandbox.
+If some files are unreadable, NemoClaw can continue with a partial backup when at least one requested state directory or file was saved.
+It reports the skipped paths and restores only verified backup entries.
+If no state can be backed up, it stops before replacing the sandbox.
 
 ### Deleted During Sandbox Destroy
 
