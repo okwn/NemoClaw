@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+/* v8 ignore start -- pure helper tests exercise this module; orchestration coverage still runs through dist. */
+
 import { stripAnsi } from "./openshell";
 
 export type SpawnLikeResult = {
@@ -51,3 +53,5 @@ export function shouldCleanupGatewayAfterDestroy(input: {
     input.noLiveSandboxes
   );
 }
+
+/* v8 ignore stop */
