@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const require = createRequire(import.meta.url);
 const REPO_ROOT = path.join(import.meta.dirname, "..");
 const COMMAND_PATHS = {
+  common: path.join(REPO_ROOT, "dist", "lib", "commands", "credentials", "common.js"),
   credentials: path.join(REPO_ROOT, "dist", "lib", "commands", "credentials.js"),
   list: path.join(REPO_ROOT, "dist", "lib", "commands", "credentials", "list.js"),
   reset: path.join(REPO_ROOT, "dist", "lib", "commands", "credentials", "reset.js"),
