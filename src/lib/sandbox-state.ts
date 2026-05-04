@@ -601,8 +601,12 @@ function isBackedUpDirArray(value: unknown, stateDirs: string[]): value is strin
 function existingBackupDirs(backupPath: string, dirNames: string[]): string[] {
   const existing: string[] = [];
   for (const dirName of dirNames) {
-    if (existsSync(path.join(backupPath, dirName))) {
-      existing.push(dirName);
+    try {
+      if (lstatSync(path.join(backupPath, dirName)).isDirectory()) {
+        existing.push(dirName);
+      }
+    } catch {
+      /* missing, broken, or inaccessible backup entry */
     }
   }
   return existing;

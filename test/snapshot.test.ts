@@ -247,6 +247,27 @@ describe("listBackups computes virtual versions", () => {
 
     expect(sandboxState.listBackups("test-sandbox")).toEqual([]);
   });
+
+  it("does not restore backed-up directory entries that are plain files", () => {
+    const manifest = writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", {
+      stateDirs: ["workspace"],
+      backedUpDirs: ["workspace"],
+    });
+    fs.writeFileSync(path.join(String(manifest.backupPath), "workspace"), "not a directory");
+
+    const restore = sandboxState.restoreSandboxState(
+      "test-sandbox",
+      String(manifest.backupPath),
+    );
+
+    expect(restore).toEqual({
+      success: true,
+      restoredDirs: [],
+      failedDirs: [],
+      restoredFiles: [],
+      failedFiles: [],
+    });
+  });
 });
 
 describe("findBackup", () => {
