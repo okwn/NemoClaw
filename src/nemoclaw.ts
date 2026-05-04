@@ -88,6 +88,7 @@ const { parseSandboxPhase } = require("./lib/gateway-state");
 const {
   getActiveSandboxSessions,
   createSystemDeps: createSessionDeps,
+  parseForwardList,
 } = require("./lib/sandbox-session-state");
 
 const {
@@ -802,16 +803,25 @@ async function sandboxDoctor(sandboxName: string, args: string[] = []): Promise<
 // eslint-disable-next-line complexity
 async function sandboxStatus(sandboxName: string) {
   const sb = registry.getSandbox(sandboxName);
-  const liveResult = await captureOpenshellForStatus(["inference", "get"], {
-    ignoreError: true,
+  const lookup = await getReconciledSandboxGatewayState(sandboxName, {
+    getState: getSandboxGatewayStateForStatus,
   });
-  const live = parseGatewayInference(
-    isCommandTimeout(liveResult) ? "" : liveResult.output,
-  );
+  const liveResult =
+    lookup.state === "present"
+      ? await captureOpenshellForStatus(["inference", "get"], {
+          ignoreError: true,
+        })
+      : null;
+  const live =
+    liveResult && !isCommandTimeout(liveResult)
+      ? parseGatewayInference(liveResult.output)
+      : null;
   const currentModel = (live && live.model) || (sb && sb.model) || "unknown";
   const currentProvider = (live && live.provider) || (sb && sb.provider) || "unknown";
   const inferenceHealth =
-    typeof currentProvider === "string" ? probeProviderHealth(currentProvider) : null;
+    lookup.state === "present" && typeof currentProvider === "string"
+      ? probeProviderHealth(currentProvider)
+      : null;
   if (sb) {
     console.log("");
     console.log(`  Sandbox: ${sb.name}`);
@@ -826,6 +836,9 @@ async function sandboxStatus(sandboxName: string) {
         console.log(`    Inference: ${_RD}unreachable${R} (${inferenceHealth.endpoint})`);
         console.log(`      ${inferenceHealth.detail}`);
       }
+    }
+    if (lookup.state !== "present") {
+      console.log("    Inference: not verified (gateway/sandbox state not verified)");
     }
     console.log(`    GPU:      ${sb.gpuEnabled ? "yes" : "no"}`);
     console.log(`    Policies: ${(sb.policies || []).join(", ") || "none"}`);
@@ -870,9 +883,6 @@ async function sandboxStatus(sandboxName: string) {
     }
   }
 
-  const lookup = await getReconciledSandboxGatewayState(sandboxName, {
-    getState: getSandboxGatewayStateForStatus,
-  });
   if (lookup.state === "present") {
     console.log("");
     if ("recoveredGateway" in lookup && lookup.recoveredGateway) {
@@ -901,6 +911,7 @@ async function sandboxStatus(sandboxName: string) {
         : undefined;
     console.log("");
     printWrongGatewayActiveGuidance(sandboxName, activeGateway, console.log);
+    process.exit(1);
   } else if (lookup.state === "missing") {
     // Belt-and-suspenders: only destroy registry state if the nemoclaw gateway
     // is demonstrably the healthy active gateway. Guards against regressions
@@ -926,6 +937,7 @@ async function sandboxStatus(sandboxName: string) {
       console.log(`  Sandbox '${sandboxName}' is not present in the live OpenShell gateway.`);
       console.log("  Removed stale local registry entry.");
     }
+    process.exit(1);
   } else if (lookup.state === "identity_drift") {
     console.log("");
     console.log(
@@ -940,6 +952,7 @@ async function sandboxStatus(sandboxName: string) {
     console.log(
       `  Recreate this sandbox with \`${CLI_NAME} onboard\` once the gateway runtime is stable.`,
     );
+    process.exit(1);
   } else if (lookup.state === "gateway_unreachable_after_restart") {
     console.log("");
     console.log(
@@ -954,6 +967,7 @@ async function sandboxStatus(sandboxName: string) {
     console.log(
       "  If the gateway never becomes healthy, rebuild the gateway and then recreate the affected sandbox.",
     );
+    process.exit(1);
   } else if (lookup.state === "gateway_missing_after_restart") {
     console.log("");
     console.log(
@@ -968,6 +982,7 @@ async function sandboxStatus(sandboxName: string) {
     console.log(
       "  If the gateway had to be rebuilt from scratch, recreate the affected sandbox afterward.",
     );
+    process.exit(1);
   } else {
     console.log("");
     console.log(`  Could not verify sandbox '${sandboxName}' against the live OpenShell gateway.`);
@@ -975,6 +990,7 @@ async function sandboxStatus(sandboxName: string) {
       console.log(lookup.output);
     }
     printGatewayLifecycleHint(lookup.output, sandboxName, console.log);
+    process.exit(1);
   }
 
   // OpenClaw process health inside the sandbox
@@ -1228,6 +1244,7 @@ async function sandboxRebuild(
   }
   console.log("");
 
+  let rebuildConfirmed = false;
   if (!skipConfirm) {
     if (rebuildActiveSessionCount > 0) {
       const plural = rebuildActiveSessionCount > 1 ? "sessions" : "session";
@@ -1249,6 +1266,7 @@ async function sandboxRebuild(
       console.log("  Cancelled.");
       return;
     }
+    rebuildConfirmed = true;
   }
 
   // Step 0: Preflight — verify recreate preconditions BEFORE destroying
@@ -1342,7 +1360,7 @@ async function sandboxRebuild(
   log(`Agent type: ${sb.agent || "openclaw"}, stateDirs from manifest`);
   const backup = sandboxState.backupSandboxState(sandboxName);
   log(
-    `Backup result: success=${backup.success}, backed=${backup.backedUpDirs.join(",")}, failed=${backup.failedDirs.join(",")}`,
+    `Backup result: success=${backup.success}, backed=${backup.backedUpDirs.join(",")}; files=${backup.backedUpFiles.join(",")}, failed=${backup.failedDirs.join(",")}; failedFiles=${backup.failedFiles.join(",")}`,
   );
   if (!backup.success) {
     console.error("  Failed to back up sandbox state.");
@@ -1352,11 +1370,16 @@ async function sandboxRebuild(
     if (backup.failedDirs.length > 0) {
       console.error(`  Failed: ${backup.failedDirs.join(", ")}`);
     }
+    if (backup.failedFiles.length > 0) {
+      console.error(`  Failed files: ${backup.failedFiles.join(", ")}`);
+    }
     console.error("  Aborting rebuild to prevent data loss.");
     bail("Failed to back up sandbox state.");
     return;
   }
-  console.log(`  ${G}\u2713${R} State backed up (${backup.backedUpDirs.length} directories)`);
+  console.log(
+    `  ${G}\u2713${R} State backed up (${backup.backedUpDirs.length} directories, ${backup.backedUpFiles.length} files)`,
+  );
   console.log(`    Backup: ${backup.manifest.backupPath}`);
 
   // Step 3: Delete sandbox without tearing down gateway or session.
@@ -1481,6 +1504,12 @@ async function sandboxRebuild(
       recreateSandbox: true,
       agent: rebuildAgent,
       fromDockerfile: storedFromDockerfile,
+      // Reaching here means the user already consented to the destructive
+      // rebuild (either via --yes/--force or by answering "y" at the prompt).
+      // Propagate that consent so the size-confirm gate inside the
+      // non-interactive onboard does not abort after the old sandbox has
+      // been deleted (#2639 follow-up).
+      autoYes: skipConfirm || rebuildConfirmed,
     });
     log("onboard() returned successfully");
   } catch (err) {
@@ -1540,14 +1569,19 @@ async function sandboxRebuild(
   log(`Restoring from: ${backup.manifest.backupPath} into sandbox: ${sandboxName}`);
   const restore = sandboxState.restoreSandboxState(sandboxName, backup.manifest.backupPath);
   log(
-    `Restore result: success=${restore.success}, restored=${restore.restoredDirs.join(",")}, failed=${restore.failedDirs.join(",")}`,
+    `Restore result: success=${restore.success}, restored=${restore.restoredDirs.join(",")}; files=${restore.restoredFiles.join(",")}, failed=${restore.failedDirs.join(",")}; failedFiles=${restore.failedFiles.join(",")}`,
   );
   if (!restore.success) {
     console.error(`  Partial restore: ${restore.restoredDirs.join(", ") || "none"}`);
     console.error(`  Failed: ${restore.failedDirs.join(", ")}`);
+    if (restore.failedFiles.length > 0) {
+      console.error(`  Failed files: ${restore.failedFiles.join(", ")}`);
+    }
     console.error(`  Manual restore available from: ${backup.manifest.backupPath}`);
   } else {
-    console.log(`  ${G}\u2713${R} State restored (${restore.restoredDirs.length} directories)`);
+    console.log(
+      `  ${G}\u2713${R} State restored (${restore.restoredDirs.length} directories, ${restore.restoredFiles.length} files)`,
+    );
   }
 
   // Step 5.5: Restore policy presets (#1952)
@@ -1799,7 +1833,7 @@ function printConnectOrderHint(candidate: string | null): void {
 }
 
 const VALID_SANDBOX_ACTIONS =
-  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, skill, snapshot, share, rebuild, shields, config, channels, gateway-token, destroy";
+  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
 
 function printDispatchUsageError(
   result: Extract<DispatchResult, { kind: "usageError" }>,
