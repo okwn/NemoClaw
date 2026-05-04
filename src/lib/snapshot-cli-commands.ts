@@ -34,6 +34,9 @@ export class SnapshotCommand extends Command {
 
   public async run(): Promise<void> {
     const [sandboxName, ...actionArgs] = this.argv;
+    if (!sandboxName || sandboxName.trim() === "") {
+      this.error("Missing required sandboxName for snapshot.", { exit: 2 });
+    }
     await getRuntimeBridge().sandboxSnapshot(sandboxName, actionArgs);
   }
 }

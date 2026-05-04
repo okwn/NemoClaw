@@ -83,6 +83,9 @@ export class PolicyAddRawCommand extends Command {
 
   public async run(): Promise<void> {
     const [sandboxName, ...actionArgs] = this.argv;
+    if (!sandboxName || sandboxName.trim() === "") {
+      this.error("Missing required sandboxName for policy-add.", { exit: 2 });
+    }
     await getRuntimeBridge().sandboxPolicyAdd(sandboxName, actionArgs);
   }
 }
