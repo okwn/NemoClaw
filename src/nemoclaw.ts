@@ -32,20 +32,20 @@ const {
   parseSandboxConnectArgs,
   printSandboxConnectHelp,
 } = require("./lib/sandbox-connect-action");
-const { runRegisteredOclifCommand } = require("./lib/oclif-runner");
+const { runRegisteredOclifCommand } = require("./lib/cli/oclif-runner");
 const {
   canonicalUsageList,
   globalCommandTokens,
   sandboxActionTokens,
 } = require("./lib/command-registry");
-import { normalizeArgv, suggestCommand } from "./lib/cli-argv-normalizer";
+import { normalizeArgv, suggestCommand } from "./lib/cli/argv-normalizer";
 import { OPENSHELL_PROBE_TIMEOUT_MS } from "./lib/openshell-timeouts";
-import { renderPublicOclifHelp } from "./lib/public-oclif-help";
+import { renderPublicOclifHelp } from "./lib/cli/public-oclif-help";
 import {
   resolveGlobalOclifDispatch,
   resolveSandboxOclifDispatch,
   type DispatchResult,
-} from "./lib/oclif-dispatch";
+} from "./lib/cli/oclif-dispatch";
 
 // ── Global commands (derived from command registry) ──────────────
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getStatusReport, showStatusCommand } from "./inventory-commands";
-import { NemoClawCommand } from "./nemoclaw-oclif-command";
+import { NemoClawCommand } from "./cli/nemoclaw-oclif-command";
 import { buildStatusCommandDeps } from "./status-command-deps";
 
 export default class StatusCommand extends NemoClawCommand {

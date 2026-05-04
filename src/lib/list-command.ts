@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getSandboxInventory, renderSandboxInventoryText } from "./inventory-commands";
-import { NemoClawCommand } from "./nemoclaw-oclif-command";
+import { NemoClawCommand } from "./cli/nemoclaw-oclif-command";
 import { buildListCommandDeps } from "./list-command-deps";
 
 export default class ListCommand extends NemoClawCommand {

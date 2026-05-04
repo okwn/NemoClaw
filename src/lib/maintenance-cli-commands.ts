@@ -8,7 +8,7 @@ import {
   runGarbageCollectImagesAction,
   runUpgradeSandboxesAction,
 } from "./global-cli-actions";
-import { NemoClawCommand } from "./nemoclaw-oclif-command";
+import { NemoClawCommand } from "./cli/nemoclaw-oclif-command";
 
 export class BackupAllCommand extends NemoClawCommand {
   static id = "backup-all";

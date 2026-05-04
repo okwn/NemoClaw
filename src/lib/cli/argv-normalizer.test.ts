@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { normalizeArgv, suggestCommand } from "./cli-argv-normalizer";
+import { normalizeArgv, suggestCommand } from "./argv-normalizer";
 
 const globalCommands = new Set(["list", "status", "onboard", "--version"]);
 const isConnectFlag = (arg: string | undefined) => arg === "--probe-only" || arg === "--help";
