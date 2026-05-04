@@ -4,6 +4,7 @@
 /* v8 ignore start -- transitional action facade until implementations leave src/nemoclaw.ts. */
 
 import type { SandboxConnectOptions } from "./nemoclaw-runtime-bridge";
+import type { SandboxLogsOptions } from "./sandbox-logs-options";
 import { getNemoClawRuntimeBridge } from "./nemoclaw-runtime-bridge";
 
 export async function connectSandbox(
@@ -17,8 +18,11 @@ export async function showSandboxStatus(sandboxName: string): Promise<void> {
   await getNemoClawRuntimeBridge().sandboxStatus(sandboxName);
 }
 
-export function showSandboxLogs(sandboxName: string, follow: boolean): void {
-  getNemoClawRuntimeBridge().sandboxLogs(sandboxName, follow);
+export function showSandboxLogs(sandboxName: string, options: SandboxLogsOptions): void {
+  const { showSandboxLogs: showSandboxLogsAction } = require("./sandbox-logs-action") as {
+    showSandboxLogs: (sandboxName: string, options: SandboxLogsOptions) => void;
+  };
+  showSandboxLogsAction(sandboxName, options);
 }
 
 export async function destroySandbox(sandboxName: string, args: string[] = []): Promise<void> {
@@ -37,5 +41,8 @@ export async function installSandboxSkill(
 }
 
 export async function runSandboxSnapshot(sandboxName: string, args: string[]): Promise<void> {
-  await getNemoClawRuntimeBridge().sandboxSnapshot(sandboxName, args);
+  const { runSandboxSnapshot: runExtractedSandboxSnapshot } = require("./snapshot-action") as {
+    runSandboxSnapshot: (sandboxName: string, args: string[]) => Promise<void>;
+  };
+  await runExtractedSandboxSnapshot(sandboxName, args);
 }

@@ -3,26 +3,39 @@
 
 /* v8 ignore start -- transitional action facade until implementations leave src/nemoclaw.ts. */
 
+import { runDeployAction as executeDeployAction } from "./deploy-action";
+import {
+  backupAll as executeBackupAllAction,
+  garbageCollectImages as executeGarbageCollectImagesAction,
+} from "./maintenance-actions";
+import {
+  runOnboardAction as executeOnboardAction,
+  runSetupAction as executeSetupAction,
+  runSetupSparkAction as executeSetupSparkAction,
+} from "./onboard-action";
+import { recoverNamedGatewayRuntime as recoverNamedGatewayRuntimeAction } from "./gateway-runtime-action";
 import { getNemoClawRuntimeBridge } from "./nemoclaw-runtime-bridge";
+import { runOpenshell } from "./openshell-runtime";
+import { help, version } from "./root-help-action";
 
 export async function runOnboardAction(args: string[] = []): Promise<void> {
-  await getNemoClawRuntimeBridge().onboard(args);
+  await executeOnboardAction(args);
 }
 
 export async function runSetupAction(args: string[] = []): Promise<void> {
-  await getNemoClawRuntimeBridge().setup(args);
+  await executeSetupAction(args);
 }
 
 export async function runSetupSparkAction(args: string[] = []): Promise<void> {
-  await getNemoClawRuntimeBridge().setupSpark(args);
+  await executeSetupSparkAction(args);
 }
 
 export async function runDeployAction(instanceName?: string): Promise<void> {
-  await getNemoClawRuntimeBridge().deploy(instanceName);
+  await executeDeployAction(instanceName);
 }
 
 export function runBackupAllAction(): void {
-  getNemoClawRuntimeBridge().backupAll();
+  executeBackupAllAction();
 }
 
 export async function runUpgradeSandboxesAction(args: string[] = []): Promise<void> {
@@ -30,19 +43,25 @@ export async function runUpgradeSandboxesAction(args: string[] = []): Promise<vo
 }
 
 export async function runGarbageCollectImagesAction(args: string[] = []): Promise<void> {
-  await getNemoClawRuntimeBridge().garbageCollectImages(args);
+  await executeGarbageCollectImagesAction(args);
 }
 
 export function showRootHelp(): void {
-  getNemoClawRuntimeBridge().help();
+  help();
 }
 
 export function showVersion(): void {
-  getNemoClawRuntimeBridge().version();
+  version();
 }
 
 export async function recoverNamedGatewayRuntime(): Promise<{ recovered: boolean }> {
-  return getNemoClawRuntimeBridge().recoverNamedGatewayRuntime();
+  const runtime = getNemoClawRuntimeBridge() as {
+    recoverNamedGatewayRuntime?: () => Promise<{ recovered: boolean }>;
+  };
+  if (typeof runtime.recoverNamedGatewayRuntime === "function") {
+    return runtime.recoverNamedGatewayRuntime();
+  }
+  return recoverNamedGatewayRuntimeAction();
 }
 
 export function runOpenshellProviderCommand(
@@ -54,5 +73,11 @@ export function runOpenshellProviderCommand(
     timeout?: number;
   },
 ) {
-  return getNemoClawRuntimeBridge().runOpenshell(args, opts);
+  const runtime = getNemoClawRuntimeBridge() as {
+    runOpenshell?: typeof runOpenshell;
+  };
+  if (typeof runtime.runOpenshell === "function") {
+    return runtime.runOpenshell(args, opts);
+  }
+  return runOpenshell(args, opts);
 }

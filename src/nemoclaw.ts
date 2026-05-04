@@ -27,48 +27,46 @@ const { ROOT, run, runInteractive, shellQuote, validateName } = require("./lib/r
 // Agent branding — derived from NEMOCLAW_AGENT when an alias launcher sets it;
 // otherwise the branding module falls back to the OpenClaw defaults.
 // ---------------------------------------------------------------------------
-const { CLI_NAME, CLI_DISPLAY_NAME, AGENT_PRODUCT_NAME } = require("./lib/branding");
+const { CLI_NAME, CLI_DISPLAY_NAME } = require("./lib/branding");
 
 const {
   dockerCapture,
   dockerInspect,
-  dockerListImagesFormat,
   dockerRemoveVolumesByPrefix,
   dockerRmi,
 } = require("./lib/docker");
 const { resolveOpenshell } = require("./lib/resolve-openshell");
-const {
-  startGatewayForRecovery,
-  pruneKnownHostsEntries,
-  hydrateCredentialEnv,
-  isNonInteractive,
-} = require("./lib/onboard");
+const { pruneKnownHostsEntries, hydrateCredentialEnv, isNonInteractive } = require("./lib/onboard");
 const { ensureOllamaAuthProxy } = require("./lib/onboard-ollama-proxy");
-const { getCredential, prompt: askPrompt } = require("./lib/credentials");
+const { prompt: askPrompt } = require("./lib/credentials");
 const registry = require("./lib/registry");
 import type { SandboxEntry } from "./lib/registry";
 const nim = require("./lib/nim");
-const policies = require("./lib/policies");
 const shields = require("./lib/shields");
 const { parseGatewayInference } = require("./lib/inference-config");
+const policies = require("./lib/policies");
 const { probeProviderHealth } = require("./lib/inference-health");
 const { buildStatusCommandDeps } = require("./lib/status-command-deps");
-const { getVersion } = require("./lib/version");
+const { help, version } = require("./lib/root-help-action");
 const onboardSession = require("./lib/onboard-session");
 import type { Session } from "./lib/onboard-session";
 const { parseLiveSandboxNames } = require("./lib/runtime-recovery");
-const { NOTICE_ACCEPT_ENV, NOTICE_ACCEPT_FLAG } = require("./lib/usage-notice");
-const { runDeprecatedOnboardAliasCommand, runOnboardCommand } = require("./lib/onboard-command");
+const { stripAnsi } = require("./lib/openshell");
 const {
-  captureOpenshellCommandAsync,
-  captureOpenshellCommand,
-  getInstalledOpenshellVersion,
-  runOpenshellCommand,
-  stripAnsi,
-  versionGte,
-} = require("./lib/openshell");
+  captureOpenshell,
+  captureOpenshellForStatus,
+  getInstalledOpenshellVersionOrNull,
+  getOpenshellBinary,
+  getStatusProbeTimeoutMs,
+  isCommandTimeout,
+  runOpenshell,
+} = require("./lib/openshell-runtime");
+const {
+  getNamedGatewayLifecycleState,
+  recoverNamedGatewayRuntime,
+} = require("./lib/gateway-runtime-action");
+const { recoverRegistryEntries } = require("./lib/registry-recovery-action");
 const { runRegisteredOclifCommand } = require("./lib/oclif-runner");
-const { executeDeploy } = require("./lib/deploy");
 const { isErrnoException }: typeof import("./lib/errno") = require("./lib/errno");
 const agentRuntime = require("../bin/lib/agent-runtime");
 const sandboxVersion = require("./lib/sandbox-version");
@@ -83,19 +81,10 @@ const {
 } = require("./lib/sandbox-session-state");
 
 const {
-  commandsByGroup: registryCommandsByGroup,
   canonicalUsageList,
   globalCommandTokens,
   sandboxActionTokens,
 } = require("./lib/command-registry");
-import {
-  KNOWN_CHANNELS,
-  clearChannelTokens,
-  getChannelDef,
-  getChannelTokenKeys,
-  knownChannelNames,
-  persistChannelTokens,
-} from "./lib/sandbox-channels";
 import {
   OPENSHELL_OPERATION_TIMEOUT_MS,
   OPENSHELL_PROBE_TIMEOUT_MS,
@@ -105,19 +94,10 @@ import {
   resolveSandboxOclifDispatch,
   type DispatchResult,
 } from "./lib/legacy-oclif-dispatch";
-const onboardProviders = require("./lib/onboard-providers");
 
 // ── Global commands (derived from command registry) ──────────────
 
 const GLOBAL_COMMANDS = globalCommandTokens();
-
-type CommandArgs = string[];
-type RunnerOptions = {
-  env?: NodeJS.ProcessEnv;
-  stdio?: import("node:child_process").StdioOptions;
-  ignoreError?: boolean;
-  timeout?: number;
-};
 
 type SpawnLikeResult = {
   status: number | null;
@@ -142,7 +122,6 @@ type RecoveredSandboxMetadata = Partial<
   policyPresets?: string[] | null;
 };
 
-let OPENSHELL_BIN: string | null = null;
 const NEMOCLAW_GATEWAY_NAME = "nemoclaw";
 const DASHBOARD_FORWARD_PORT = String(DASHBOARD_PORT);
 const DEFAULT_LOGS_PROBE_TIMEOUT_MS = 5000;
@@ -164,60 +143,6 @@ type CommandCapture = {
   stderr: string;
   error?: Error;
 };
-
-function getOpenshellBinary(): string {
-  if (!OPENSHELL_BIN) {
-    OPENSHELL_BIN = resolveOpenshell();
-  }
-  if (!OPENSHELL_BIN) {
-    console.error("openshell CLI not found. Install OpenShell before using sandbox commands.");
-    process.exit(1);
-  }
-  return OPENSHELL_BIN;
-}
-
-function runOpenshell(args: CommandArgs, opts: RunnerOptions = {}) {
-  return runOpenshellCommand(getOpenshellBinary(), args, {
-    cwd: ROOT,
-    env: opts.env,
-    stdio: opts.stdio,
-    ignoreError: opts.ignoreError,
-    timeout: opts.timeout,
-    errorLine: console.error,
-    exit: (code: number) => process.exit(code),
-  });
-}
-
-function captureOpenshell(args: CommandArgs, opts: RunnerOptions = {}) {
-  return captureOpenshellCommand(getOpenshellBinary(), args, {
-    cwd: ROOT,
-    env: opts.env,
-    ignoreError: opts.ignoreError,
-    timeout: opts.timeout,
-    errorLine: console.error,
-    exit: (code: number) => process.exit(code),
-  });
-}
-
-function getStatusProbeTimeoutMs(): number {
-  const raw = process.env.NEMOCLAW_STATUS_PROBE_TIMEOUT_MS;
-  const parsed = raw ? Number(raw) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : OPENSHELL_PROBE_TIMEOUT_MS;
-}
-
-function captureOpenshellForStatus(args: CommandArgs, opts: RunnerOptions = {}) {
-  return captureOpenshellCommandAsync(getOpenshellBinary(), args, {
-    cwd: ROOT,
-    env: opts.env,
-    ignoreError: opts.ignoreError,
-    timeout: opts.timeout ?? getStatusProbeTimeoutMs(),
-    killGraceMs: 1000,
-  });
-}
-
-function isCommandTimeout(result: { error?: Error }) {
-  return (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT";
-}
 
 function cleanupGatewayAfterLastSandbox() {
   runOpenshell(["forward", "stop", DASHBOARD_FORWARD_PORT], {
@@ -253,12 +178,6 @@ function getSandboxDeleteOutcome(deleteResult: SpawnLikeResult) {
     output,
     alreadyGone: deleteResult.status !== 0 && isMissingSandboxDeleteResult(output),
   };
-}
-
-function getInstalledOpenshellVersionOrNull() {
-  return getInstalledOpenshellVersion(getOpenshellBinary(), {
-    cwd: ROOT,
-  });
 }
 
 // ── Sandbox process health (OpenClaw gateway inside the sandbox) ─────────
@@ -531,310 +450,17 @@ function checkAndRecoverSandboxProcesses(
   return { checked: true, wasRunning: false, recovered };
 }
 
-function buildRecoveredSandboxEntry(
-  name: string,
-  metadata: RecoveredSandboxMetadata = {},
-): SandboxEntry {
-  return {
-    name,
-    model: metadata.model || null,
-    provider: metadata.provider || null,
-    gpuEnabled: metadata.gpuEnabled === true,
-    policies: Array.isArray(metadata.policies)
-      ? metadata.policies
-      : Array.isArray(metadata.policyPresets)
-        ? metadata.policyPresets
-        : [],
-    nimContainer: metadata.nimContainer || null,
-    agent: metadata.agent || null,
-  };
-}
-
-function upsertRecoveredSandbox(name: string, metadata: RecoveredSandboxMetadata = {}) {
-  let validName;
-  try {
-    validName = validateName(name, "sandbox name");
-  } catch {
-    return false;
-  }
-
-  const entry = buildRecoveredSandboxEntry(validName, metadata);
-  if (registry.getSandbox(validName)) {
-    registry.updateSandbox(validName, entry);
-    return false;
-  }
-  registry.registerSandbox(entry);
-  return true;
-}
-
-function shouldRecoverRegistryEntries(
-  current: { sandboxes: Array<{ name: string }>; defaultSandbox?: string | null },
-  session: Session | null,
-  requestedSandboxName: string | null,
-) {
-  const sessionSandboxName = session?.sandboxName ?? null;
-  const hasSessionSandbox = Boolean(sessionSandboxName);
-  const missingSessionSandbox =
-    hasSessionSandbox && !current.sandboxes.some((sandbox) => sandbox.name === sessionSandboxName);
-  const missingRequestedSandbox =
-    Boolean(requestedSandboxName) &&
-    !current.sandboxes.some((sandbox) => sandbox.name === requestedSandboxName);
-  const hasRecoverySeed =
-    current.sandboxes.length > 0 || hasSessionSandbox || Boolean(requestedSandboxName);
-  return {
-    missingRequestedSandbox,
-    shouldRecover:
-      hasRecoverySeed &&
-      (current.sandboxes.length === 0 || missingRequestedSandbox || missingSessionSandbox),
-  };
-}
-
-function seedRecoveryMetadata(
-  current: { sandboxes: SandboxEntry[] },
-  session: Session | null,
-  requestedSandboxName: string | null,
-) {
-  const metadataByName = new Map<string, RecoveredSandboxMetadata>(
-    current.sandboxes.map((sandbox: SandboxEntry) => [sandbox.name, sandbox]),
-  );
-  let recoveredFromSession = false;
-
-  if (!session?.sandboxName) {
-    return { metadataByName, recoveredFromSession };
-  }
-
-  metadataByName.set(
-    session.sandboxName,
-    buildRecoveredSandboxEntry(session.sandboxName, {
-      model: session.model || null,
-      provider: session.provider || null,
-      nimContainer: session.nimContainer || null,
-      policyPresets: session.policyPresets || null,
-    }),
-  );
-  const sessionSandboxMissing = !current.sandboxes.some(
-    (sandbox: { name: string }) => sandbox.name === session.sandboxName,
-  );
-  const shouldRecoverSessionSandbox =
-    current.sandboxes.length === 0 ||
-    sessionSandboxMissing ||
-    requestedSandboxName === session.sandboxName;
-  if (shouldRecoverSessionSandbox) {
-    recoveredFromSession = upsertRecoveredSandbox(
-      session.sandboxName,
-      metadataByName.get(session.sandboxName),
-    );
-  }
-  return { metadataByName, recoveredFromSession };
-}
-
-async function recoverRegistryFromLiveGateway(
-  metadataByName: Map<string, RecoveredSandboxMetadata>,
-) {
-  if (!resolveOpenshell()) {
-    return 0;
-  }
-  const recovery = await recoverNamedGatewayRuntime();
-  const canInspectLiveGateway =
-    recovery.recovered ||
-    recovery.before?.state === "healthy_named" ||
-    recovery.after?.state === "healthy_named";
-  if (!canInspectLiveGateway) {
-    return 0;
-  }
-
-  let recoveredFromGateway = 0;
-  const liveList = captureOpenshell(["sandbox", "list"], {
-    ignoreError: true,
-    timeout: OPENSHELL_PROBE_TIMEOUT_MS,
-  });
-  const liveNames = Array.from<string>(parseLiveSandboxNames(liveList.output));
-  for (const name of liveNames) {
-    const metadata = metadataByName.get(name) || undefined;
-    if (upsertRecoveredSandbox(name, metadata)) {
-      recoveredFromGateway += 1;
-    }
-  }
-  return recoveredFromGateway;
-}
-
-function applyRecoveredDefault(
-  currentDefaultSandbox: string | null,
-  requestedSandboxName: string | null,
-  session: Session | null,
-) {
-  const recovered = registry.listSandboxes();
-  const preferredDefault =
-    requestedSandboxName || (!currentDefaultSandbox ? session?.sandboxName || null : null);
-  if (
-    preferredDefault &&
-    recovered.sandboxes.some((sandbox: { name: string }) => sandbox.name === preferredDefault)
-  ) {
-    registry.setDefault(preferredDefault);
-  }
-  return registry.listSandboxes();
-}
-
-async function recoverRegistryEntries({
-  requestedSandboxName = null,
-}: { requestedSandboxName?: string | null } = {}) {
-  const current = registry.listSandboxes();
-  const session = onboardSession.loadSession();
-  const recoveryCheck = shouldRecoverRegistryEntries(current, session, requestedSandboxName);
-  if (!recoveryCheck.shouldRecover) {
-    return { ...current, recoveredFromSession: false, recoveredFromGateway: 0 };
-  }
-
-  const seeded = seedRecoveryMetadata(current, session, requestedSandboxName);
-  const shouldProbeLiveGateway =
-    current.sandboxes.length > 0 || Boolean(session?.sandboxName) || Boolean(requestedSandboxName);
-  const recoveredFromGateway = shouldProbeLiveGateway
-    ? await recoverRegistryFromLiveGateway(seeded.metadataByName)
-    : 0;
-  const recovered = applyRecoveredDefault(current.defaultSandbox, requestedSandboxName, session);
-  return {
-    ...recovered,
-    recoveredFromSession: seeded.recoveredFromSession,
-    recoveredFromGateway,
-  };
-}
-
 exports.runtimeBridge = {
-  captureOpenshell,
-  backupAll,
-  deploy,
-  garbageCollectImages,
-  help,
-  onboard,
-  recoverNamedGatewayRuntime,
-  recoverRegistryEntries,
-  runOpenshell,
   sandboxConnect,
   sandboxDestroy,
-  sandboxChannelsAdd,
-  sandboxChannelsList,
-  sandboxChannelsRemove,
-  sandboxChannelsStart,
-  sandboxChannelsStop,
-  sandboxLogs,
-  sandboxPolicyAdd,
-  sandboxPolicyList,
-  sandboxPolicyRemove,
   sandboxRebuild,
   sandboxSkillInstall,
-  sandboxSnapshot,
   sandboxStatus,
-  setup,
-  setupSpark,
   upgradeSandboxes,
-  version,
 };
 exports.ensureLiveSandboxOrExit = ensureLiveSandboxOrExit;
 exports.G = G;
 exports.R = R;
-
-function hasNamedGateway(output = ""): boolean {
-  return stripAnsi(output).includes("Gateway: nemoclaw");
-}
-
-function getActiveGatewayName(output = ""): string | null {
-  const match = stripAnsi(output).match(/^\s*Gateway:\s+(.+?)\s*$/m);
-  return match ? match[1].trim() : null;
-}
-
-function getNamedGatewayLifecycleState() {
-  const status = captureOpenshell(["status"], { timeout: OPENSHELL_PROBE_TIMEOUT_MS });
-  const gatewayInfo = captureOpenshell(["gateway", "info", "-g", "nemoclaw"], {
-    timeout: OPENSHELL_PROBE_TIMEOUT_MS,
-  });
-  const cleanStatus = stripAnsi(status.output);
-  const activeGateway = getActiveGatewayName(status.output);
-  const connected = /^\s*Status:\s*Connected\b/im.test(cleanStatus);
-  const named = hasNamedGateway(gatewayInfo.output);
-  const refusing = /Connection refused|client error \(Connect\)|tcp connect error/i.test(
-    cleanStatus,
-  );
-  if (connected && activeGateway === "nemoclaw" && named) {
-    return {
-      state: "healthy_named",
-      status: status.output,
-      gatewayInfo: gatewayInfo.output,
-      activeGateway,
-    };
-  }
-  if (activeGateway === "nemoclaw" && named && refusing) {
-    return {
-      state: "named_unreachable",
-      status: status.output,
-      gatewayInfo: gatewayInfo.output,
-      activeGateway,
-    };
-  }
-  if (activeGateway === "nemoclaw" && named) {
-    return {
-      state: "named_unhealthy",
-      status: status.output,
-      gatewayInfo: gatewayInfo.output,
-      activeGateway,
-    };
-  }
-  if (connected) {
-    return {
-      state: "connected_other",
-      status: status.output,
-      gatewayInfo: gatewayInfo.output,
-      activeGateway,
-    };
-  }
-  return {
-    state: "missing_named",
-    status: status.output,
-    gatewayInfo: gatewayInfo.output,
-    activeGateway,
-  };
-}
-
-/** Attempt to recover the named NemoClaw gateway after a restart or connectivity loss. */
-async function recoverNamedGatewayRuntime() {
-  const before = getNamedGatewayLifecycleState();
-  if (before.state === "healthy_named") {
-    return { recovered: true, before, after: before, attempted: false };
-  }
-
-  runOpenshell(["gateway", "select", "nemoclaw"], {
-    ignoreError: true,
-    timeout: OPENSHELL_OPERATION_TIMEOUT_MS,
-  });
-  let after = getNamedGatewayLifecycleState();
-  if (after.state === "healthy_named") {
-    process.env.OPENSHELL_GATEWAY = "nemoclaw";
-    return { recovered: true, before, after, attempted: true, via: "select" };
-  }
-
-  const shouldStartGateway = [before.state, after.state].some((state) =>
-    ["missing_named", "named_unhealthy", "named_unreachable", "connected_other"].includes(state),
-  );
-
-  if (shouldStartGateway) {
-    try {
-      await startGatewayForRecovery();
-    } catch {
-      // Fall through to the lifecycle re-check below so we preserve the
-      // existing recovery result shape and emit the correct classification.
-    }
-    runOpenshell(["gateway", "select", "nemoclaw"], {
-      ignoreError: true,
-      timeout: OPENSHELL_OPERATION_TIMEOUT_MS,
-    });
-    after = getNamedGatewayLifecycleState();
-    if (after.state === "healthy_named") {
-      process.env.OPENSHELL_GATEWAY = "nemoclaw";
-      return { recovered: true, before, after, attempted: true, via: "start" };
-    }
-  }
-
-  return { recovered: false, before, after, attempted: true };
-}
 
 function mergeLivePolicyIntoSandboxOutput(output: string, livePolicyOutput: string): string {
   const rawLines = String(output).split("\n");
@@ -1276,66 +902,6 @@ function exitWithSpawnResult(result: SpawnLikeResult & { signal?: NodeJS.Signals
 }
 
 // ── Commands ─────────────────────────────────────────────────────
-
-function buildOnboardCommandDeps(args: string[]) {
-  const { onboard: runOnboard } = require("./lib/onboard");
-  const { listAgents } = require("./lib/agent-defs");
-  return {
-    args,
-    noticeAcceptFlag: NOTICE_ACCEPT_FLAG,
-    noticeAcceptEnv: NOTICE_ACCEPT_ENV,
-    env: process.env,
-    runOnboard,
-    listAgents,
-    log: console.log,
-    error: console.error,
-    exit: (code: number) => process.exit(code),
-  };
-}
-
-async function onboard(args: string[]): Promise<void> {
-  await runOnboardCommand(buildOnboardCommandDeps(args));
-}
-
-async function setup(args: string[] = []): Promise<void> {
-  await runDeprecatedOnboardAliasCommand({
-    ...buildOnboardCommandDeps(args),
-    kind: "setup",
-  });
-}
-
-async function setupSpark(args: string[] = []): Promise<void> {
-  await runDeprecatedOnboardAliasCommand({
-    ...buildOnboardCommandDeps(args),
-    kind: "setup-spark",
-  });
-}
-
-async function deploy(instanceName: string): Promise<void> {
-  await executeDeploy({
-    instanceName,
-    env: process.env,
-    rootDir: ROOT,
-    getCredential,
-    validateName,
-    shellQuote,
-    run,
-    runInteractive,
-    execFileSync: (
-      file: string,
-      args: string[],
-      opts: Omit<
-        import("node:child_process").ExecFileSyncOptionsWithStringEncoding,
-        "encoding"
-      > = {},
-    ) => String(execFileSync(file, args, { encoding: "utf-8", ...opts })),
-    spawnSync,
-    log: console.log,
-    error: console.error,
-    stdoutWrite: (message: string) => process.stdout.write(message),
-    exit: (code: number) => process.exit(code),
-  });
-}
 
 async function runOclif(commandId: string, args: string[] = []): Promise<void> {
   await runRegisteredOclifCommand(commandId, args, {
@@ -2204,16 +1770,25 @@ async function sandboxDoctor(sandboxName: string, args: string[] = []): Promise<
 // eslint-disable-next-line complexity
 async function sandboxStatus(sandboxName: string) {
   const sb = registry.getSandbox(sandboxName);
-  const liveResult = await captureOpenshellForStatus(["inference", "get"], {
-    ignoreError: true,
+  const lookup = await getReconciledSandboxGatewayState(sandboxName, {
+    getState: getSandboxGatewayStateForStatus,
   });
-  const live = parseGatewayInference(
-    isCommandTimeout(liveResult) ? "" : liveResult.output,
-  );
+  const liveResult =
+    lookup.state === "present"
+      ? await captureOpenshellForStatus(["inference", "get"], {
+          ignoreError: true,
+        })
+      : null;
+  const live =
+    liveResult && !isCommandTimeout(liveResult)
+      ? parseGatewayInference(liveResult.output)
+      : null;
   const currentModel = (live && live.model) || (sb && sb.model) || "unknown";
   const currentProvider = (live && live.provider) || (sb && sb.provider) || "unknown";
   const inferenceHealth =
-    typeof currentProvider === "string" ? probeProviderHealth(currentProvider) : null;
+    lookup.state === "present" && typeof currentProvider === "string"
+      ? probeProviderHealth(currentProvider)
+      : null;
   if (sb) {
     console.log("");
     console.log(`  Sandbox: ${sb.name}`);
@@ -2228,6 +1803,9 @@ async function sandboxStatus(sandboxName: string) {
         console.log(`    Inference: ${_RD}unreachable${R} (${inferenceHealth.endpoint})`);
         console.log(`      ${inferenceHealth.detail}`);
       }
+    }
+    if (lookup.state !== "present") {
+      console.log("    Inference: not verified (gateway/sandbox state not verified)");
     }
     console.log(`    GPU:      ${sb.gpuEnabled ? "yes" : "no"}`);
     console.log(`    Policies: ${(sb.policies || []).join(", ") || "none"}`);
@@ -2272,9 +1850,6 @@ async function sandboxStatus(sandboxName: string) {
     }
   }
 
-  const lookup = await getReconciledSandboxGatewayState(sandboxName, {
-    getState: getSandboxGatewayStateForStatus,
-  });
   if (lookup.state === "present") {
     console.log("");
     if ("recoveredGateway" in lookup && lookup.recoveredGateway) {
@@ -2303,6 +1878,7 @@ async function sandboxStatus(sandboxName: string) {
         : undefined;
     console.log("");
     printWrongGatewayActiveGuidance(sandboxName, activeGateway, console.log);
+    process.exit(1);
   } else if (lookup.state === "missing") {
     // Belt-and-suspenders: only destroy registry state if the nemoclaw gateway
     // is demonstrably the healthy active gateway. Guards against regressions
@@ -2328,6 +1904,7 @@ async function sandboxStatus(sandboxName: string) {
       console.log(`  Sandbox '${sandboxName}' is not present in the live OpenShell gateway.`);
       console.log("  Removed stale local registry entry.");
     }
+    process.exit(1);
   } else if (lookup.state === "identity_drift") {
     console.log("");
     console.log(
@@ -2342,6 +1919,7 @@ async function sandboxStatus(sandboxName: string) {
     console.log(
       `  Recreate this sandbox with \`${CLI_NAME} onboard\` once the gateway runtime is stable.`,
     );
+    process.exit(1);
   } else if (lookup.state === "gateway_unreachable_after_restart") {
     console.log("");
     console.log(
@@ -2356,6 +1934,7 @@ async function sandboxStatus(sandboxName: string) {
     console.log(
       "  If the gateway never becomes healthy, rebuild the gateway and then recreate the affected sandbox.",
     );
+    process.exit(1);
   } else if (lookup.state === "gateway_missing_after_restart") {
     console.log("");
     console.log(
@@ -2370,6 +1949,7 @@ async function sandboxStatus(sandboxName: string) {
     console.log(
       "  If the gateway had to be rebuilt from scratch, recreate the affected sandbox afterward.",
     );
+    process.exit(1);
   } else {
     console.log("");
     console.log(`  Could not verify sandbox '${sandboxName}' against the live OpenShell gateway.`);
@@ -2377,6 +1957,7 @@ async function sandboxStatus(sandboxName: string) {
       console.log(lookup.output);
     }
     printGatewayLifecycleHint(lookup.output, sandboxName, console.log);
+    process.exit(1);
   }
 
   // OpenClaw process health inside the sandbox
@@ -2412,719 +1993,6 @@ async function sandboxStatus(sandboxName: string) {
     }
   }
   console.log("");
-}
-
-function sandboxLogs(sandboxName: string, follow: boolean) {
-  if (follow) {
-    streamSandboxFollowLogs(sandboxName);
-    return;
-  }
-
-  enableSandboxAuditLogs(sandboxName);
-  runOpenclawGatewayLogs(sandboxName, false);
-  const args = buildSandboxLogsArgs(sandboxName, false);
-  const result = runOpenshell(args, {
-    stdio: "inherit",
-    ignoreError: true,
-  });
-  if (result.status !== 0) {
-    console.error(`  Command failed (exit ${result.status}): openshell ${args.join(" ")}`);
-  }
-  exitWithSpawnResult(result);
-}
-
-function getLogsProbeTimeoutMs(): number {
-  const rawValue = process.env[LOGS_PROBE_TIMEOUT_ENV];
-  if (!rawValue) {
-    return DEFAULT_LOGS_PROBE_TIMEOUT_MS;
-  }
-  const parsed = Number(rawValue);
-  const timeoutMs = Number.isFinite(parsed) ? Math.floor(parsed) : Number.NaN;
-  return timeoutMs > 0 ? timeoutMs : DEFAULT_LOGS_PROBE_TIMEOUT_MS;
-}
-
-function describeLogProbeResult(result: SpawnLikeResult): string {
-  if (result.error) {
-    return result.error.message;
-  }
-  if (result.signal) {
-    return `signal ${result.signal}`;
-  }
-  return `exit ${result.status ?? "unknown"}`;
-}
-
-function runOpenclawGatewayLogs(sandboxName: string, follow: boolean): SpawnLikeResult {
-  const args = buildSandboxOpenclawGatewayLogsArgs(sandboxName, follow);
-  const result = runOpenshell(args, {
-    stdio: "inherit",
-    ignoreError: true,
-    timeout: getLogsProbeTimeoutMs(),
-  });
-  if (result.status !== 0) {
-    console.error(
-      `  OpenClaw log source unavailable (${describeLogProbeResult(result)}): ` +
-        `openshell ${args.join(" ")}`,
-    );
-  }
-  return result;
-}
-
-function streamSandboxFollowLogs(sandboxName: string): void {
-  const openclawArgs = buildSandboxOpenclawGatewayLogsArgs(sandboxName, true);
-  const openshellArgs = buildSandboxLogsArgs(sandboxName, true);
-  const spawnOptions = {
-    cwd: ROOT,
-    env: process.env,
-    stdio: "inherit" as const,
-  };
-  const sources: Array<{
-    label: string;
-    args: string[];
-    child: import("node:child_process").ChildProcess;
-    done: boolean;
-  }> = [];
-  let exiting = false;
-  let completedSources = 0;
-  let finalStatus = 0;
-  let requestedExitCode: number | null = null;
-  let forcedExitTimer: NodeJS.Timeout | null = null;
-  // Guard against early exit: a source spawned before enableSandboxAuditLogs
-  // can fire its exit event during the blocking spawnSync call, before the
-  // second source is registered. Without this flag, maybeExit would see
-  // completedSources === sources.length === 1 and exit prematurely.
-  let setupComplete = false;
-
-  const stopChildren = (signal: NodeJS.Signals) => {
-    for (const { child } of sources) {
-      if (!child.killed && child.exitCode === null && child.signalCode === null) {
-        child.kill(signal);
-      }
-    }
-  };
-  const maybeExit = () => {
-    if (!setupComplete || completedSources !== sources.length) {
-      return;
-    }
-    if (forcedExitTimer) {
-      clearTimeout(forcedExitTimer);
-      forcedExitTimer = null;
-    }
-    process.exit(requestedExitCode ?? finalStatus);
-  };
-  const exitFromSignal = (signal: NodeJS.Signals | null): number => {
-    if (!signal) return 1;
-    const signalNumber = os.constants.signals[signal];
-    return signalNumber ? 128 + signalNumber : 1;
-  };
-  const markSourceDone = (
-    source: (typeof sources)[number],
-    status: number,
-    detail: string | null = null,
-  ) => {
-    if (source.done) return;
-    source.done = true;
-    completedSources += 1;
-    if (status !== 0 && finalStatus === 0) {
-      finalStatus = status;
-    }
-    if (completedSources < sources.length && !exiting) {
-      const suffix = detail || `exit ${status}`;
-      console.error(`  ${source.label} stopped (${suffix}); continuing with remaining log source.`);
-    }
-    maybeExit();
-  };
-  const requestExitAfterSignal = (signal: NodeJS.Signals, exitCode: number) => {
-    if (requestedExitCode !== null) return;
-    exiting = true;
-    requestedExitCode = exitCode;
-    stopChildren(signal);
-    forcedExitTimer = setTimeout(() => process.exit(exitCode), 2000);
-    forcedExitTimer.unref?.();
-    maybeExit();
-  };
-
-  process.once("SIGINT", () => {
-    requestExitAfterSignal("SIGINT", 130);
-  });
-  process.once("SIGTERM", () => {
-    requestExitAfterSignal("SIGTERM", 143);
-  });
-
-  const addSource = (label: string, args: string[]) => {
-    const source = {
-      label,
-      args,
-      child: spawn(getOpenshellBinary(), args, spawnOptions),
-      done: false,
-    };
-    sources.push(source);
-    source.child.on("error", (error: Error) => {
-      markSourceDone(source, 1, error.message);
-    });
-    source.child.on("exit", (code: number | null, signal: NodeJS.Signals | null) => {
-      markSourceDone(source, code ?? exitFromSignal(signal), signal ? `signal ${signal}` : null);
-    });
-  };
-
-  addSource("OpenClaw log source", openclawArgs);
-  enableSandboxAuditLogs(sandboxName);
-  addSource("OpenShell log source", openshellArgs);
-  setupComplete = true;
-  maybeExit();
-}
-
-function enableSandboxAuditLogs(sandboxName: string) {
-  const args = buildEnableSandboxAuditLogsArgs(sandboxName);
-  const result = runOpenshell(args, {
-    stdio: ["ignore", "ignore", "pipe"],
-    ignoreError: true,
-    timeout: getLogsProbeTimeoutMs(),
-  });
-  if (result.status !== 0) {
-    warnSandboxAuditLogsUnavailable(sandboxName, args, result);
-  }
-}
-
-function warnSandboxAuditLogsUnavailable(
-  sandboxName: string,
-  args: string[],
-  result: SpawnLikeResult,
-): void {
-  const stderr = String(result.stderr || "").trim();
-  console.error(
-    `  Warning: failed to enable OpenShell audit logs for sandbox '${sandboxName}' ` +
-      `(${describeLogProbeResult(result)}): openshell ${args.join(" ")}`,
-  );
-  if (stderr) {
-    console.error(`  ${stderr}`);
-  }
-  console.error("  Policy denial events may be missing from OpenShell logs.");
-}
-
-function buildEnableSandboxAuditLogsArgs(sandboxName: string): string[] {
-  return ["settings", "set", sandboxName, "--key", "ocsf_json_enabled", "--value", "true"];
-}
-
-function buildSandboxOpenclawGatewayLogsArgs(sandboxName: string, follow: boolean): string[] {
-  const args = ["sandbox", "exec", "-n", sandboxName, "--", "tail", "-n", "200"];
-  if (follow) {
-    args.push("-f");
-  }
-  args.push("/tmp/gateway.log");
-  return args;
-}
-
-function buildSandboxLogsArgs(sandboxName: string, follow: boolean): string[] {
-  const args = ["logs", sandboxName, "-n", "200", "--source", "all"];
-  if (follow) {
-    args.push("--tail");
-  }
-  return args;
-}
-
-/**
- * Handle `nemoclaw <sandbox> policy-add [flags]`. Supports three mutually
- * exclusive modes: interactive preset picker (default), `--from-file <path>`
- * for a single custom preset YAML, and `--from-dir <path>` for every
- * `.yaml`/`.yml` file in a directory. `--dry-run` previews without applying,
- * `--yes`/`-y`/`--force` (or `NEMOCLAW_NON_INTERACTIVE=1`) skips the
- * confirmation prompt. `--from-dir` applies non-hidden files in lexicographic
- * order and aborts at the first failure (already-applied presets are not
- * rolled back).
- */
-async function sandboxPolicyAdd(sandboxName: string, args: string[] = []): Promise<void> {
-  const dryRun = args.includes("--dry-run");
-  const skipConfirm =
-    args.includes("--yes") ||
-    args.includes("-y") ||
-    args.includes("--force") ||
-    process.env.NEMOCLAW_NON_INTERACTIVE === "1";
-
-  const fromFileIdx = args.indexOf("--from-file");
-  const fromDirIdx = args.indexOf("--from-dir");
-
-  if (fromFileIdx >= 0 && fromDirIdx >= 0) {
-    console.error("  --from-file and --from-dir are mutually exclusive.");
-    process.exit(1);
-  }
-
-  if (fromFileIdx >= 0) {
-    const filePath = args[fromFileIdx + 1];
-    if (!filePath || filePath.startsWith("--")) {
-      console.error("  --from-file requires a path argument.");
-      process.exit(1);
-    }
-    const ok = await applyExternalPreset(sandboxName, filePath, { dryRun, yes: skipConfirm });
-    if (!ok) process.exit(1);
-    return;
-  }
-
-  if (fromDirIdx >= 0) {
-    const dirPath = args[fromDirIdx + 1];
-    if (!dirPath || dirPath.startsWith("--")) {
-      console.error("  --from-dir requires a directory path.");
-      process.exit(1);
-    }
-    const absDir = path.resolve(dirPath);
-    if (!fs.existsSync(absDir) || !fs.statSync(absDir).isDirectory()) {
-      console.error(`  Directory not found: ${dirPath}`);
-      process.exit(1);
-    }
-    const files = fs
-      .readdirSync(absDir, { withFileTypes: true })
-      .filter(
-        (ent: { name: string; isFile(): boolean }) =>
-          ent.isFile() && !ent.name.startsWith(".") && /\.ya?ml$/i.test(ent.name),
-      )
-      .map((ent: { name: string }) => path.join(absDir, ent.name))
-      .sort();
-    if (files.length === 0) {
-      console.error(`  No .yaml/.yml preset files in ${dirPath}`);
-      process.exit(1);
-    }
-    for (const f of files) {
-      const ok = await applyExternalPreset(sandboxName, f, { dryRun, yes: skipConfirm });
-      if (!ok) {
-        console.error(`  Aborting --from-dir: ${f} failed. Remaining presets not applied.`);
-        process.exit(1);
-      }
-    }
-    return;
-  }
-
-  const allPresets = policies.listPresets();
-  const applied = policies.getAppliedPresets(sandboxName);
-
-  const presetArg = args.find((arg) => !arg.startsWith("-"));
-  let answer = null;
-  if (presetArg) {
-    const normalized = presetArg.trim().toLowerCase();
-    const preset = allPresets.find((item: { name: string }) => item.name === normalized);
-    if (!preset) {
-      console.error(`  Unknown preset '${presetArg}'.`);
-      console.error(
-        `  Valid presets: ${allPresets.map((item: { name: string }) => item.name).join(", ")}`,
-      );
-      process.exit(1);
-    }
-    if (applied.includes(preset.name)) {
-      console.error(`  Preset '${preset.name}' is already applied.`);
-      process.exit(1);
-    }
-    answer = preset.name;
-  } else {
-    if (process.env.NEMOCLAW_NON_INTERACTIVE === "1") {
-      console.error("  Non-interactive mode requires a preset name.");
-      console.error(`  Usage: ${CLI_NAME} <sandbox> policy-add <preset> [--yes] [--dry-run]`);
-      process.exit(1);
-    }
-    answer = await policies.selectFromList(allPresets, { applied });
-  }
-  if (!answer) return;
-
-  const presetContent = policies.loadPreset(answer);
-  if (!presetContent) return;
-
-  const endpoints = policies.getPresetEndpoints(presetContent);
-  if (endpoints.length > 0) {
-    console.log(`  Endpoints that would be opened: ${endpoints.join(", ")}`);
-  }
-
-  if (dryRun) {
-    console.log("  --dry-run: no changes applied.");
-    return;
-  }
-
-  if (!skipConfirm) {
-    const confirm = await askPrompt(`  Apply '${answer}' to sandbox '${sandboxName}'? [Y/n]: `);
-    if (confirm.trim().toLowerCase().startsWith("n")) return;
-  }
-
-  policies.applyPreset(sandboxName, answer);
-}
-
-/**
- * Apply one custom preset file (`--from-file`, or one entry of `--from-dir`)
- * to a sandbox. Loads and validates the file via `policies.loadPresetFromFile`,
- * prints the egress endpoints with a warning that custom targets are not
- * vetted, honors `dryRun` and `yes`, and delegates to
- * `policies.applyPresetContent`. Returns `true` on success, `false` on any
- * load/apply failure so the caller can decide whether to abort.
- */
-async function applyExternalPreset(
-  sandboxName: string,
-  filePath: string,
-  { dryRun, yes }: { dryRun: boolean; yes: boolean },
-): Promise<boolean> {
-  let loaded;
-  try {
-    loaded = policies.loadPresetFromFile(filePath);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`  Failed to load preset ${filePath}: ${message}`);
-    return false;
-  }
-  if (!loaded) return false;
-
-  const endpoints = policies.getPresetEndpoints(loaded.content);
-  if (endpoints.length > 0) {
-    console.log(`  [${loaded.presetName}] Endpoints that would be opened: ${endpoints.join(", ")}`);
-    console.log(
-      `  ${YW}Warning: custom preset targets are not vetted. Review hosts before applying.${R}`,
-    );
-  }
-
-  if (dryRun) {
-    console.log(`  --dry-run: '${loaded.presetName}' not applied.`);
-    return true;
-  }
-
-  if (!yes) {
-    const confirm = await askPrompt(
-      `  Apply '${loaded.presetName}' from ${filePath} to sandbox '${sandboxName}'? [Y/n]: `,
-    );
-    if (confirm.trim().toLowerCase().startsWith("n")) return true; // user-cancel counts as success (no abort)
-  }
-
-  try {
-    const result = policies.applyPresetContent(sandboxName, loaded.presetName, loaded.content, {
-      custom: { sourcePath: path.resolve(filePath) },
-    });
-    return result !== false;
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`  Failed to apply preset '${loaded.presetName}': ${message}`);
-    return false;
-  }
-}
-
-function sandboxPolicyList(sandboxName: string) {
-  const builtin = policies.listPresets();
-  const custom = policies.listCustomPresets(sandboxName);
-  const allPresets = [...builtin, ...custom];
-  const registryPresets = policies.getAppliedPresets(sandboxName);
-
-  // getGatewayPresets returns null when gateway is unreachable, or an
-  // array of matched preset names when reachable (possibly empty).
-  const gatewayPresets = policies.getGatewayPresets(sandboxName);
-
-  console.log("");
-  console.log(`  Policy presets for sandbox '${sandboxName}':`);
-  allPresets.forEach((p: { name: string; description: string }) => {
-    const inRegistry = registryPresets.includes(p.name);
-    const inGateway = gatewayPresets ? gatewayPresets.includes(p.name) : null;
-
-    let marker;
-    let suffix = "";
-    if (inGateway === null) {
-      // Gateway unreachable — fall back to registry-only display
-      marker = inRegistry ? "●" : "○";
-    } else if (inRegistry && inGateway) {
-      marker = "●";
-    } else if (!inRegistry && !inGateway) {
-      marker = "○";
-    } else if (inGateway && !inRegistry) {
-      marker = "●";
-      suffix = " (active on gateway, missing from local state)";
-    } else {
-      // inRegistry && !inGateway
-      marker = "○";
-      suffix = " (recorded locally, not active on gateway)";
-    }
-    console.log(`    ${marker} ${p.name} — ${p.description}${suffix}`);
-  });
-
-  if (gatewayPresets === null) {
-    console.log("");
-    console.log("  ⚠ Could not query gateway — showing local state only.");
-  }
-  console.log("");
-}
-
-// ── Messaging channels ───────────────────────────────────────────
-
-function sandboxChannelsList(sandboxName: string) {
-  console.log("");
-  console.log(`  Known messaging channels for sandbox '${sandboxName}':`);
-  for (const [name, channel] of Object.entries(KNOWN_CHANNELS)) {
-    console.log(`    ${name} — ${channel.description}`);
-  }
-  console.log("");
-}
-
-// Map a channel + token-env-key to the OpenShell provider name onboarding
-// uses for it. Mirrors the names in src/lib/onboard.ts:3201-3221 so a
-// channels-add upsert collides with (i.e. updates) the same provider that
-// a later rebuild would have created from scratch.
-function bridgeProviderName(sandboxName: string, channelName: string, envKey: string): string {
-  if (channelName === "slack" && envKey === "SLACK_APP_TOKEN") {
-    return `${sandboxName}-slack-app`;
-  }
-  return `${sandboxName}-${channelName}-bridge`;
-}
-
-// Push channel tokens to the OpenShell gateway and add the channel to the
-// sandbox registry's messagingChannels list. Done eagerly at `channels
-// add` time (not deferred to rebuild) because the host-side credential
-// helpers are env-only after the fix — without an immediate gateway
-// upsert plus registry update, a "rebuild later" answer would drop the
-// queued change since process.env disappears when the CLI exits.
-async function applyChannelAddToGatewayAndRegistry(
-  sandboxName: string,
-  channelName: string,
-  acquired: Record<string, string>,
-): Promise<void> {
-  const recovery = await recoverNamedGatewayRuntime();
-  if (!recovery.recovered) {
-    console.error(
-      `  Could not reach the ${CLI_DISPLAY_NAME} OpenShell gateway. Tokens were staged`,
-    );
-    console.error("  in env for this run only — re-run after starting the gateway, or run");
-    console.error("  'openshell gateway start --name nemoclaw' manually.");
-    process.exit(1);
-  }
-  const tokenDefs = Object.entries(acquired).map(([envKey, token]) => ({
-    name: bridgeProviderName(sandboxName, channelName, envKey),
-    envKey,
-    token,
-  }));
-  // upsertMessagingProviders handles create-or-update and process.exits on
-  // failure, so reaching the next line means every entry is registered.
-  onboardProviders.upsertMessagingProviders(tokenDefs, runOpenshell);
-
-  // Persist the enabled-channels list in the registry so a deferred
-  // `nemoclaw <sandbox> rebuild` knows the channel set without needing
-  // tokens on disk.
-  const entry = registry.getSandbox(sandboxName);
-  if (entry) {
-    const enabled = new Set(entry.messagingChannels || []);
-    enabled.add(channelName);
-    const disabled = (entry.disabledChannels || []).filter((c: string) => c !== channelName);
-    registry.updateSandbox(sandboxName, {
-      messagingChannels: Array.from(enabled).sort(),
-      disabledChannels: disabled,
-    });
-  }
-}
-
-// Remove a channel's bridge providers from the gateway and drop it from the
-// registry's messagingChannels list. Mirrors applyChannelAddToGatewayAndRegistry.
-async function applyChannelRemoveToGatewayAndRegistry(
-  sandboxName: string,
-  channelName: string,
-  channelTokenKeys: string[],
-): Promise<void> {
-  const recovery = await recoverNamedGatewayRuntime();
-  if (!recovery.recovered) {
-    console.error(
-      `  Could not reach the ${CLI_DISPLAY_NAME} OpenShell gateway to delete the bridge.`,
-    );
-    console.error(
-      "  Re-run after starting the gateway, or run 'openshell gateway start --name nemoclaw'.",
-    );
-    process.exit(1);
-  }
-  // Capture each delete's outcome. If any non-NotFound failure surfaces
-  // we must NOT update the registry — otherwise NemoClaw would record
-  // the channel as removed locally while the bridge is still live in
-  // the gateway, which produces a half-configured sandbox the user
-  // can't easily recover.
-  const failed: string[] = [];
-  for (const envKey of channelTokenKeys) {
-    const name = bridgeProviderName(sandboxName, channelName, envKey);
-    const result = runOpenshell(["provider", "delete", name], {
-      ignoreError: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status !== 0) {
-      const output = `${result.stdout || ""}${result.stderr || ""}`;
-      // Treat "not found" as success-equivalent — a previous run may
-      // have already deleted the provider.
-      if (!/\bNotFound\b|not found/i.test(output)) {
-        failed.push(name);
-      }
-    }
-  }
-  if (failed.length > 0) {
-    console.error(
-      `  Failed to delete bridge provider(s) from the OpenShell gateway: ${failed.join(", ")}.`,
-    );
-    console.error("  Registry not updated; re-run after resolving the gateway error.");
-    process.exit(1);
-  }
-
-  const entry = registry.getSandbox(sandboxName);
-  if (entry) {
-    const enabled = (entry.messagingChannels || []).filter((c: string) => c !== channelName);
-    registry.updateSandbox(sandboxName, { messagingChannels: enabled });
-  }
-}
-
-async function promptAndRebuild(sandboxName: string, actionDesc: string): Promise<void> {
-  if (isNonInteractive()) {
-    console.log("");
-    console.log(
-      `  Change queued. Run '${CLI_NAME} ${sandboxName} rebuild' to apply (${actionDesc}).`,
-    );
-    return;
-  }
-  const answer = (await askPrompt(`  Rebuild '${sandboxName}' now to apply? [Y/n]: `))
-    .trim()
-    .toLowerCase();
-  if (answer === "n" || answer === "no") {
-    console.log(
-      `  Run '${CLI_NAME} ${sandboxName} rebuild' when you are ready to apply (${actionDesc}).`,
-    );
-    return;
-  }
-  await sandboxRebuild(sandboxName, ["--yes"]);
-}
-
-async function sandboxChannelsAdd(sandboxName: string, args: string[] = []): Promise<void> {
-  const dryRun = args.includes("--dry-run");
-  const channelArg = args.find((arg) => !arg.startsWith("-"));
-  if (!channelArg) {
-    console.error(`  Usage: ${CLI_NAME} <sandbox> channels add <channel> [--dry-run]`);
-    console.error(`  Valid channels: ${knownChannelNames().join(", ")}`);
-    process.exit(1);
-  }
-
-  const channel = getChannelDef(channelArg);
-  if (!channel) {
-    console.error(`  Unknown channel '${channelArg}'.`);
-    console.error(`  Valid channels: ${knownChannelNames().join(", ")}`);
-    process.exit(1);
-  }
-
-  if (dryRun) {
-    console.log(`  --dry-run: would enable channel '${channelArg}' for '${sandboxName}'.`);
-    return;
-  }
-
-  const tokenKeys = getChannelTokenKeys(channel);
-  const acquired: Record<string, string> = {};
-  for (const envKey of tokenKeys) {
-    const isPrimary = envKey === channel.envKey;
-    const help = isPrimary ? channel.help : channel.appTokenHelp;
-    const label = isPrimary ? channel.label : channel.appTokenLabel;
-    const existing = getCredential(envKey);
-    if (existing) {
-      acquired[envKey] = existing;
-      continue;
-    }
-    if (isNonInteractive()) {
-      console.error(`  Missing ${envKey} for channel '${channelArg}'.`);
-      console.error(
-        `  Set ${envKey} in the environment or via '${CLI_NAME} credentials' before running in non-interactive mode.`,
-      );
-      process.exit(1);
-    }
-    console.log("");
-    console.log(`  ${help}`);
-    const token = (await askPrompt(`  ${label}: `, { secret: true })).trim();
-    if (!token) {
-      console.error(`  Aborted — no value entered for ${envKey}.`);
-      process.exit(1);
-    }
-    acquired[envKey] = token;
-  }
-
-  persistChannelTokens(acquired);
-  // Push to the gateway and update the registry NOW so that answering
-  // "rebuild later" (or running non-interactively) does not silently
-  // discard the change. Pre-fix this was safe because saveCredential()
-  // wrote credentials.json; with env-only persistence, exiting before
-  // the rebuild used to drop the queued token.
-  await applyChannelAddToGatewayAndRegistry(sandboxName, channelArg, acquired);
-  console.log(`  ${G}✓${R} Registered ${channelArg} bridge with the OpenShell gateway.`);
-  await promptAndRebuild(sandboxName, `add '${channelArg}'`);
-}
-
-async function sandboxChannelsRemove(sandboxName: string, args: string[] = []): Promise<void> {
-  const dryRun = args.includes("--dry-run");
-  const channelArg = args.find((arg) => !arg.startsWith("-"));
-  if (!channelArg) {
-    console.error(`  Usage: ${CLI_NAME} <sandbox> channels remove <channel> [--dry-run]`);
-    console.error(`  Valid channels: ${knownChannelNames().join(", ")}`);
-    process.exit(1);
-  }
-
-  const channel = getChannelDef(channelArg);
-  if (!channel) {
-    console.error(`  Unknown channel '${channelArg}'.`);
-    console.error(`  Valid channels: ${knownChannelNames().join(", ")}`);
-    process.exit(1);
-  }
-
-  if (dryRun) {
-    console.log(`  --dry-run: would remove channel '${channelArg}' for '${sandboxName}'.`);
-    return;
-  }
-
-  clearChannelTokens(channel);
-  // Same rationale as channels-add: tear down the gateway providers and
-  // drop the channel from the registry NOW so a deferred rebuild does
-  // not leave a stale bridge running against a token NemoClaw has
-  // already "removed" from the user's perspective.
-  await applyChannelRemoveToGatewayAndRegistry(
-    sandboxName,
-    channelArg,
-    getChannelTokenKeys(channel),
-  );
-  console.log(`  ${G}✓${R} Removed ${channelArg} bridge from the OpenShell gateway.`);
-  await promptAndRebuild(sandboxName, `remove '${channelArg}'`);
-}
-
-async function sandboxChannelsSetEnabled(
-  sandboxName: string,
-  args: string[],
-  disabled: boolean,
-): Promise<void> {
-  const verb = disabled ? "stop" : "start";
-  const dryRun = args.includes("--dry-run");
-  const channelArg = args.find((arg) => !arg.startsWith("-"));
-  if (!channelArg) {
-    console.error(`  Usage: ${CLI_NAME} <sandbox> channels ${verb} <channel> [--dry-run]`);
-    console.error(`  Valid channels: ${knownChannelNames().join(", ")}`);
-    process.exit(1);
-  }
-
-  const channel = getChannelDef(channelArg);
-  if (!channel) {
-    console.error(`  Unknown channel '${channelArg}'.`);
-    console.error(`  Valid channels: ${knownChannelNames().join(", ")}`);
-    process.exit(1);
-  }
-
-  const normalized = channelArg.trim().toLowerCase();
-  const alreadyDisabled = registry.getDisabledChannels(sandboxName).includes(normalized);
-  if (alreadyDisabled === disabled) {
-    console.log(
-      `  Channel '${normalized}' is already ${disabled ? "disabled" : "enabled"} for '${sandboxName}'. Nothing to do.`,
-    );
-    return;
-  }
-
-  if (dryRun) {
-    console.log(`  --dry-run: would ${verb} channel '${normalized}' for '${sandboxName}'.`);
-    return;
-  }
-
-  if (!registry.setChannelDisabled(sandboxName, normalized, disabled)) {
-    console.error(`  Sandbox '${sandboxName}' not found in the registry.`);
-    process.exit(1);
-  }
-  const state = disabled ? "disabled" : "enabled";
-  console.log(`  ${G}✓${R} Marked ${normalized} ${state} for '${sandboxName}'.`);
-  await promptAndRebuild(sandboxName, `${verb} '${normalized}'`);
-}
-
-async function sandboxChannelsStop(sandboxName: string, args: string[] = []): Promise<void> {
-  await sandboxChannelsSetEnabled(sandboxName, args, true);
-}
-
-async function sandboxChannelsStart(sandboxName: string, args: string[] = []): Promise<void> {
-  await sandboxChannelsSetEnabled(sandboxName, args, false);
 }
 
 function printSkillInstallUsage(): void {
@@ -3329,83 +2197,6 @@ async function sandboxSkillInstall(sandboxName: string, args: string[] = []): Pr
     } catch {
       /* ignore */
     }
-  }
-}
-
-async function sandboxPolicyRemove(sandboxName: string, args: string[] = []): Promise<void> {
-  const dryRun = args.includes("--dry-run");
-  const skipConfirm =
-    args.includes("--yes") ||
-    args.includes("-y") ||
-    args.includes("--force") ||
-    process.env.NEMOCLAW_NON_INTERACTIVE === "1";
-
-  // Remove-able presets = built-in presets + custom presets applied via
-  // --from-file / --from-dir (tracked in registry.customPolicies).
-  const builtinPresets = policies.listPresets();
-  const customPresets = policies.listCustomPresets(sandboxName);
-  const allPresets = [...builtinPresets, ...customPresets];
-  const applied = policies.getAppliedPresets(sandboxName);
-
-  const presetArg = args.find((arg) => !arg.startsWith("-"));
-  let answer = null;
-  if (presetArg) {
-    const normalized = presetArg.trim().toLowerCase();
-    const preset = allPresets.find((item: { name: string }) => item.name === normalized);
-    if (!preset) {
-      console.error(`  Unknown preset '${presetArg}'.`);
-      console.error(
-        `  Valid presets: ${allPresets.map((item: { name: string }) => item.name).join(", ") || "(none)"}`,
-      );
-      process.exit(1);
-    }
-    if (!applied.includes(preset.name)) {
-      console.error(`  Preset '${preset.name}' is not applied.`);
-      process.exit(1);
-    }
-    answer = preset.name;
-  } else {
-    if (process.env.NEMOCLAW_NON_INTERACTIVE === "1") {
-      console.error("  Non-interactive mode requires a preset name.");
-      console.error(`  Usage: ${CLI_NAME} <sandbox> policy-remove <preset> [--yes] [--dry-run]`);
-      process.exit(1);
-    }
-    answer = await policies.selectForRemoval(allPresets, { applied });
-  }
-  if (!answer) return;
-
-  // Resolve preset content: built-in first, then custom (persisted in
-  // registry). Needed only for the endpoint preview below — removePreset()
-  // itself re-resolves on the library side.
-  let presetContent: string | null = policies.loadPreset(answer);
-  if (!presetContent) {
-    const entry = customPresets.find((p: { name: string }) => p.name === answer);
-    if (entry) {
-      const persisted = registry
-        .getCustomPolicies(sandboxName)
-        .find((p: { name: string }) => p.name === answer);
-      presetContent = persisted ? persisted.content : null;
-    }
-  }
-  if (!presetContent) return;
-
-  const endpoints = policies.getPresetEndpoints(presetContent);
-  if (endpoints.length > 0) {
-    console.log(`  Endpoints that would be removed: ${endpoints.join(", ")}`);
-  }
-
-  if (dryRun) {
-    console.log("  --dry-run: no changes applied.");
-    return;
-  }
-
-  if (!skipConfirm) {
-    const confirm = await askPrompt(`  Remove '${answer}' from sandbox '${sandboxName}'? [Y/n]: `);
-    if (confirm.trim().toLowerCase().startsWith("n")) return;
-  }
-
-  if (!policies.removePreset(sandboxName, answer)) {
-    process.exit(1);
   }
 }
 
@@ -3625,6 +2416,7 @@ async function sandboxRebuild(
   }
   console.log("");
 
+  let rebuildConfirmed = false;
   if (!skipConfirm) {
     if (rebuildActiveSessionCount > 0) {
       const plural = rebuildActiveSessionCount > 1 ? "sessions" : "session";
@@ -3646,6 +2438,7 @@ async function sandboxRebuild(
       console.log("  Cancelled.");
       return;
     }
+    rebuildConfirmed = true;
   }
 
   // Step 0: Preflight — verify recreate preconditions BEFORE destroying
@@ -3739,7 +2532,7 @@ async function sandboxRebuild(
   log(`Agent type: ${sb.agent || "openclaw"}, stateDirs from manifest`);
   const backup = sandboxState.backupSandboxState(sandboxName);
   log(
-    `Backup result: success=${backup.success}, backed=${backup.backedUpDirs.join(",")}, failed=${backup.failedDirs.join(",")}`,
+    `Backup result: success=${backup.success}, backed=${backup.backedUpDirs.join(",")}; files=${backup.backedUpFiles.join(",")}, failed=${backup.failedDirs.join(",")}; failedFiles=${backup.failedFiles.join(",")}`,
   );
   if (!backup.success) {
     console.error("  Failed to back up sandbox state.");
@@ -3749,11 +2542,16 @@ async function sandboxRebuild(
     if (backup.failedDirs.length > 0) {
       console.error(`  Failed: ${backup.failedDirs.join(", ")}`);
     }
+    if (backup.failedFiles.length > 0) {
+      console.error(`  Failed files: ${backup.failedFiles.join(", ")}`);
+    }
     console.error("  Aborting rebuild to prevent data loss.");
     bail("Failed to back up sandbox state.");
     return;
   }
-  console.log(`  ${G}\u2713${R} State backed up (${backup.backedUpDirs.length} directories)`);
+  console.log(
+    `  ${G}\u2713${R} State backed up (${backup.backedUpDirs.length} directories, ${backup.backedUpFiles.length} files)`,
+  );
   console.log(`    Backup: ${backup.manifest.backupPath}`);
 
   // Step 3: Delete sandbox without tearing down gateway or session.
@@ -3878,6 +2676,12 @@ async function sandboxRebuild(
       recreateSandbox: true,
       agent: rebuildAgent,
       fromDockerfile: storedFromDockerfile,
+      // Reaching here means the user already consented to the destructive
+      // rebuild (either via --yes/--force or by answering "y" at the prompt).
+      // Propagate that consent so the size-confirm gate inside the
+      // non-interactive onboard does not abort after the old sandbox has
+      // been deleted (#2639 follow-up).
+      autoYes: skipConfirm || rebuildConfirmed,
     });
     log("onboard() returned successfully");
   } catch (err) {
@@ -3937,14 +2741,19 @@ async function sandboxRebuild(
   log(`Restoring from: ${backup.manifest.backupPath} into sandbox: ${sandboxName}`);
   const restore = sandboxState.restoreSandboxState(sandboxName, backup.manifest.backupPath);
   log(
-    `Restore result: success=${restore.success}, restored=${restore.restoredDirs.join(",")}, failed=${restore.failedDirs.join(",")}`,
+    `Restore result: success=${restore.success}, restored=${restore.restoredDirs.join(",")}; files=${restore.restoredFiles.join(",")}, failed=${restore.failedDirs.join(",")}; failedFiles=${restore.failedFiles.join(",")}`,
   );
   if (!restore.success) {
     console.error(`  Partial restore: ${restore.restoredDirs.join(", ") || "none"}`);
     console.error(`  Failed: ${restore.failedDirs.join(", ")}`);
+    if (restore.failedFiles.length > 0) {
+      console.error(`  Failed files: ${restore.failedFiles.join(", ")}`);
+    }
     console.error(`  Manual restore available from: ${backup.manifest.backupPath}`);
   } else {
-    console.log(`  ${G}\u2713${R} State restored (${restore.restoredDirs.length} directories)`);
+    console.log(
+      `  ${G}\u2713${R} State restored (${restore.restoredDirs.length} directories, ${restore.restoredFiles.length} files)`,
+    );
   }
 
   // Step 5.5: Restore policy presets (#1952)
@@ -4145,618 +2954,7 @@ async function upgradeSandboxes(args: string[] = []): Promise<void> {
 
 // ── Snapshot ─────────────────────────────────────────────────────
 
-function parseSnapshotCreateFlags(flags: string[]) {
-  const opts: { name: string | null } = { name: null };
-  for (let i = 0; i < flags.length; i++) {
-    const flag = flags[i];
-    if (flag === "--name") {
-      if (i + 1 >= flags.length || flags[i + 1].startsWith("--")) {
-        console.error("  --name requires a value");
-        process.exit(1);
-      }
-      opts.name = flags[++i];
-    } else {
-      console.error(`  Unknown flag: ${flag}`);
-      process.exit(1);
-    }
-  }
-  return opts;
-}
-
-function formatSnapshotVersion(b: { snapshotVersion: number }) {
-  return `v${b.snapshotVersion}`;
-}
-
-function renderSnapshotTable(
-  backups: Array<{
-    snapshotVersion: number;
-    name?: string | null;
-    timestamp: string;
-    backupPath: string;
-  }>,
-) {
-  const rows = backups.map((b) => ({
-    version: formatSnapshotVersion(b),
-    name: b.name || "",
-    timestamp: b.timestamp,
-    backupPath: b.backupPath,
-  }));
-  const widths = {
-    version: Math.max(7, ...rows.map((r) => r.version.length)),
-    name: Math.max(4, ...rows.map((r) => r.name.length)),
-    timestamp: Math.max(9, ...rows.map((r) => r.timestamp.length)),
-    backupPath: Math.max(4, ...rows.map((r) => r.backupPath.length)),
-  };
-  const pad = (s: string, n: number) => s + " ".repeat(Math.max(0, n - s.length));
-  console.log(
-    `    ${B}${pad("Version", widths.version)}  ${pad("Name", widths.name)}  ${pad("Timestamp", widths.timestamp)}  ${pad("Path", widths.backupPath)}${R}`,
-  );
-  for (const r of rows) {
-    console.log(
-      `    ${pad(r.version, widths.version)}  ${pad(r.name, widths.name)}  ${pad(r.timestamp, widths.timestamp)}  ${D}${pad(r.backupPath, widths.backupPath)}${R}`,
-    );
-  }
-}
-
-// Query the running src pod's image reference via `kubectl` inside the
-// gateway container. Returns null on any failure.
-function resolveSrcPodImage(srcName: string): string | null {
-  const gatewayContainer = `openshell-cluster-${NEMOCLAW_GATEWAY_NAME}`;
-  try {
-    const output = dockerCapture(
-      [
-        "exec",
-        gatewayContainer,
-        "kubectl",
-        "get",
-        "pod",
-        srcName,
-        "-n",
-        "openshell",
-        "-o",
-        'jsonpath={.spec.containers[?(@.name=="agent")].image}',
-      ],
-      { ignoreError: true, timeout: 10000 },
-    );
-    const img = output.trim().split(/\s+/)[0];
-    return img || null;
-  } catch {
-    return null;
-  }
-}
-
-// Auto-create a sandbox that clones the image of an existing one.
-// Used by `snapshot restore --to <dst>` when dst does not exist yet: reuses
-// the source's baked image so the user does not have to re-run onboarding.
-// Returns true on success; on failure, logs and calls process.exit(1).
-async function autoCreateSandboxFromSource(
-  srcName: string,
-  dstName: string,
-  srcEntry: SandboxEntry | { name: string },
-): Promise<void> {
-  const sandboxCreateStream = require("./lib/sandbox-create-stream");
-  const { isSandboxReady } = require("./lib/gateway-state");
-  const basePolicy = path.join(ROOT, "nemoclaw-blueprint", "policies", "openclaw-sandbox.yaml");
-  const openshellBin = getOpenshellBinary();
-
-  const fromImage = resolveSrcPodImage(srcName);
-  if (!fromImage) {
-    console.error(`  Cannot auto-create '${dstName}': could not resolve '${srcName}' pod image.`);
-    console.error(`  Create '${dstName}' manually with '${CLI_NAME} onboard'.`);
-    process.exit(1);
-  }
-
-  const cmdParts = [
-    openshellBin,
-    "sandbox",
-    "create",
-    "--name",
-    dstName,
-    "--from",
-    fromImage,
-    "--policy",
-    basePolicy,
-    "--auto-providers",
-    "--",
-    "nemoclaw-start",
-  ].map((p) => shellQuote(p));
-  const command = `${cmdParts.join(" ")} 2>&1`;
-
-  console.log(`  '${dstName}' does not exist. Creating from '${srcName}' image (${fromImage})...`);
-
-  const createResult = await sandboxCreateStream.streamSandboxCreate(command, process.env, {
-    // Use a pre-built image, so skip build+push and jump to pod creation.
-    initialPhase: "create",
-    // Wait until the sandbox actually reaches Ready state, not just appears in the list.
-    readyCheck: () => {
-      const list = captureOpenshell(["sandbox", "list"], { ignoreError: true });
-      if (list.status !== 0) return false;
-      return isSandboxReady(list.output || "", dstName);
-    },
-  });
-
-  if (createResult.status !== 0 && !createResult.forcedReady) {
-    console.error(`  Failed to create sandbox '${dstName}' (exit ${createResult.status}).`);
-    const tail = (createResult.output || "").slice(-600);
-    if (tail) console.error(tail);
-    process.exit(1);
-  }
-
-  // Double-check Ready after stream exit.
-  const verify = captureOpenshell(["sandbox", "list"], { ignoreError: true });
-  if (verify.status !== 0 || !isSandboxReady(verify.output || "", dstName)) {
-    console.error(`  Sandbox '${dstName}' did not reach Ready state after create.`);
-    process.exit(1);
-  }
-
-  // Set up DNS proxy in the new pod (same step onboard runs after sandbox create).
-  const dnsScript = path.join(ROOT, "scripts", "setup-dns-proxy.sh");
-  if (fs.existsSync(dnsScript)) {
-    run(["bash", dnsScript, NEMOCLAW_GATEWAY_NAME, dstName], { ignoreError: true });
-  }
-
-  // Register dst in the NemoClaw registry, cloning most fields from src.
-  // Policies are cleared here — the caller replays them from the snapshot
-  // manifest after the restore succeeds and writes them back into this entry.
-  registry.registerSandbox({
-    ...srcEntry,
-    name: dstName,
-    createdAt: new Date().toISOString(),
-    policies: [],
-    // dst has its own lifecycle; don't inherit src's local NIM container
-    // reference, or destroying dst would stop src's NIM.
-    nimContainer: null,
-  });
-
-  console.log(`  ${G}\u2713${R} Sandbox '${dstName}' created`);
-}
-
-// Returns true only when the gateway Docker container is confirmed running.
-// `openshell sandbox list` reads a local registry and exits 0 even when the
-// gateway is stopped (#2673), so we probe the container directly instead.
-function probeGatewayRunning(): boolean {
-  const container = `openshell-cluster-${NEMOCLAW_GATEWAY_NAME}`;
-  const result = dockerInspect(
-    ["--type", "container", "--format", "{{.State.Running}}", container],
-    { ignoreError: true, suppressOutput: true },
-  );
-  return result.status === 0 && String(result.stdout || "").trim() === "true";
-}
-
-async function sandboxSnapshot(sandboxName: string, subArgs: string[]) {
-  const subcommand = subArgs[0] || "help";
-  switch (subcommand) {
-    case "create": {
-      const opts = parseSnapshotCreateFlags(subArgs.slice(1));
-      if (!probeGatewayRunning()) {
-        console.error("  Failed to query live sandbox state from OpenShell.");
-        process.exit(1);
-      }
-      const isLive = captureOpenshell(["sandbox", "list"], { ignoreError: true });
-      const liveNames = parseLiveSandboxNames(isLive.output || "");
-      if (!liveNames.has(sandboxName)) {
-        console.error(`  Sandbox '${sandboxName}' is not running. Cannot create snapshot.`);
-        process.exit(1);
-      }
-      const label = opts.name ? ` (--name ${opts.name})` : "";
-      console.log(`  Creating snapshot of '${sandboxName}'${label}...`);
-      const result = sandboxState.backupSandboxState(sandboxName, { name: opts.name });
-      if (result.success) {
-        // Virtual snapshotVersion is only assigned by listBackups, so re-resolve
-        // the just-created snapshot by its timestamp to get a valid v<N>.
-        const entry =
-          sandboxState.findBackup(sandboxName, result.manifest.timestamp).match ?? result.manifest;
-        const v = formatSnapshotVersion(entry);
-        const nameSuffix = entry.name ? ` name=${entry.name}` : "";
-        console.log(
-          `  ${G}\u2713${R} Snapshot ${v}${nameSuffix} created (${result.backedUpDirs.length} directories)`,
-        );
-        console.log(`    ${result.manifest.backupPath}`);
-      } else {
-        if (result.error) {
-          console.error(`  ${result.error}`);
-        } else {
-          console.error("  Snapshot failed.");
-          if (result.failedDirs.length > 0) {
-            console.error(`  Failed directories: ${result.failedDirs.join(", ")}`);
-          }
-        }
-        process.exit(1);
-      }
-      break;
-    }
-    case "list": {
-      const backups = sandboxState.listBackups(sandboxName);
-      if (backups.length === 0) {
-        console.log(`  No snapshots found for '${sandboxName}'.`);
-        return;
-      }
-      console.log(`  Snapshots for '${sandboxName}':`);
-      console.log("");
-      renderSnapshotTable(backups);
-      console.log("");
-      console.log(`  ${backups.length} snapshot(s). Restore with:`);
-      console.log(`    ${CLI_NAME} ${sandboxName} snapshot restore [version|name|timestamp]`);
-      break;
-    }
-    case "restore": {
-      // `--to <dst>` restores the snapshot from sandboxName into a different
-      // sandbox. If `dst` is not yet live, it is auto-created by cloning the
-      // source sandbox's baked image. Without `--to`, restore targets
-      // sandboxName itself
-      const parsed = parseRestoreArgs(sandboxName, subArgs);
-      if (!parsed.ok) {
-        console.error(`  ${parsed.error}`);
-        process.exit(1);
-      }
-      const targetSandbox =
-        parsed.targetSandbox === sandboxName
-          ? sandboxName
-          : validateName(parsed.targetSandbox, "target sandbox name");
-      if (!probeGatewayRunning()) {
-        console.error("  Failed to query live sandbox state from OpenShell.");
-        process.exit(1);
-      }
-      const isLive = captureOpenshell(["sandbox", "list"], { ignoreError: true });
-      const liveNames = parseLiveSandboxNames(isLive.output || "");
-      if (!liveNames.has(targetSandbox)) {
-        // Self-restore: cannot auto-create, there is no source to clone from.
-        if (targetSandbox === sandboxName) {
-          console.error(`  Sandbox '${targetSandbox}' is not running. Cannot restore snapshot.`);
-          process.exit(1);
-        }
-        // Cross-sandbox restore into a sandbox that doesn't exist yet:
-        // auto-create it by cloning the source's running pod image. The
-        // source must exist so we can probe its image via kubectl; the
-        // registry entry is used to seed dst's agent/model/provider fields.
-        if (!liveNames.has(sandboxName)) {
-          console.error(
-            `  Cannot auto-create '${targetSandbox}': source '${sandboxName}' not found.`,
-          );
-          console.error(`  Create '${targetSandbox}' manually with '${CLI_NAME} onboard'.`);
-          process.exit(1);
-        }
-        const srcEntry = registry.getSandbox(sandboxName) || { name: sandboxName };
-        await autoCreateSandboxFromSource(sandboxName, targetSandbox, srcEntry);
-      }
-      const selector = parsed.selector;
-      let backupPath;
-      let resolvedSnapshot = null;
-      if (selector) {
-        const { match } = sandboxState.findBackup(sandboxName, selector);
-        if (!match) {
-          console.error(`  No snapshot matching '${selector}' found for '${sandboxName}'.`);
-          console.error("  Selector must be an exact version (v<N>), name, or timestamp.");
-          console.error(`  Run: ${CLI_NAME} ${sandboxName} snapshot list`);
-          process.exit(1);
-        }
-        backupPath = match.backupPath;
-        resolvedSnapshot = match;
-        const v = formatSnapshotVersion(match);
-        const nameSuffix = match.name ? ` name=${match.name}` : "";
-        console.log(`  Using snapshot ${v}${nameSuffix} (${match.timestamp})`);
-      } else {
-        const latest = sandboxState.getLatestBackup(sandboxName);
-        if (!latest) {
-          console.error(`  No snapshots found for '${sandboxName}'.`);
-          process.exit(1);
-        }
-        backupPath = latest.backupPath;
-        resolvedSnapshot = latest;
-        const v = formatSnapshotVersion(latest);
-        const nameSuffix = latest.name ? ` name=${latest.name}` : "";
-        console.log(`  Using latest snapshot ${v}${nameSuffix} (${latest.timestamp})`);
-      }
-      if (targetSandbox !== sandboxName) {
-        console.log(`  Restoring snapshot from '${sandboxName}' into '${targetSandbox}'...`);
-      } else {
-        console.log(`  Restoring snapshot into '${sandboxName}'...`);
-      }
-      const result = sandboxState.restoreSandboxState(targetSandbox, backupPath);
-      if (result.success) {
-        console.log(`  ${G}\u2713${R} Restored ${result.restoredDirs.length} directories`);
-      } else {
-        console.error(`  Restore failed.`);
-        if (result.restoredDirs.length > 0) {
-          console.error(`  Partial: ${result.restoredDirs.join(", ")}`);
-        }
-        if (result.failedDirs.length > 0) {
-          console.error(`  Failed: ${result.failedDirs.join(", ")}`);
-        }
-        process.exit(1);
-      }
-      // Reconcile the target's policy presets to match the snapshot manifest
-      // exactly — add anything the snapshot recorded but the target is
-      // missing, and remove anything the target has that the snapshot did
-      // not. This mirrors how stateDirs are restored (full replacement, not
-      // additive) so the command's semantics are consistent.
-      //
-      // When the snapshot predates the `policyPresets` field (undefined),
-      // skip the reconcile entirely — we have no recorded state to match.
-      if (resolvedSnapshot && Array.isArray(resolvedSnapshot.policyPresets)) {
-        const snapshotPresets = resolvedSnapshot.policyPresets;
-        const currentPresets = policies.getAppliedPresets(targetSandbox);
-        const toRemove = currentPresets.filter((p: string) => !snapshotPresets.includes(p));
-        const toAdd = snapshotPresets.filter((p: string) => !currentPresets.includes(p));
-
-        if (toRemove.length > 0 || toAdd.length > 0) {
-          const summary: string[] = [];
-          if (toAdd.length > 0) summary.push(`add ${toAdd.join(", ")}`);
-          if (toRemove.length > 0) summary.push(`remove ${toRemove.join(", ")}`);
-          console.log(`  Reconciling policy presets on '${targetSandbox}': ${summary.join("; ")}`);
-
-          const failed: string[] = [];
-          for (const preset of toRemove) {
-            try {
-              if (!policies.removePreset(targetSandbox, preset)) {
-                failed.push(`${preset} (remove failed)`);
-              }
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              failed.push(`${preset} (remove: ${message})`);
-            }
-          }
-          for (const preset of toAdd) {
-            try {
-              if (!policies.applyPreset(targetSandbox, preset)) {
-                failed.push(`${preset} (apply failed)`);
-              }
-            } catch (err) {
-              const message = err instanceof Error ? err.message : String(err);
-              failed.push(`${preset} (apply: ${message})`);
-            }
-          }
-          if (failed.length > 0) {
-            console.warn(`  Warning: could not reconcile preset(s): ${failed.join("; ")}`);
-          }
-        }
-      }
-      break;
-    }
-    default:
-      console.log(`  Usage:`);
-      console.log(`    ${CLI_NAME} ${sandboxName} snapshot create [--name <name>]`);
-      console.log(
-        `                                             Create a snapshot (auto-versioned v1, v2, ...)`,
-      );
-      console.log(
-        `    ${CLI_NAME} ${sandboxName} snapshot list            List available snapshots`,
-      );
-      console.log(`    ${CLI_NAME} ${sandboxName} snapshot restore [selector] [--to <dst>]`);
-      console.log(
-        `                                             Restore by version (v1), name, or timestamp.`,
-      );
-      console.log(
-        `                                             Omit selector to restore the most recent.`,
-      );
-      console.log(
-        `                                             Use --to to restore into another sandbox; <dst> is auto-created if missing.`,
-      );
-      break;
-  }
-}
-
-/**
- * Back up all registered sandboxes. Called by install.sh before upgrading
- * NemoClaw or OpenShell so sandbox state is recoverable if the upgrade
- * destroys sandbox contents.
- */
-function backupAll() {
-  const { sandboxes } = registry.listSandboxes();
-  if (sandboxes.length === 0) {
-    console.log("  No sandboxes registered. Nothing to back up.");
-    return;
-  }
-
-  // Check which sandboxes are actually live
-  const liveList = captureOpenshell(["sandbox", "list"], { ignoreError: true });
-  const liveNames = parseLiveSandboxNames(liveList.output || "");
-
-  let backed = 0;
-  let failed = 0;
-  let skipped = 0;
-  for (const sb of sandboxes) {
-    if (!liveNames.has(sb.name)) {
-      console.log(`  ${D}Skipping '${sb.name}' (not running)${R}`);
-      skipped++;
-      continue;
-    }
-    console.log(`  Backing up '${sb.name}'...`);
-    const result = sandboxState.backupSandboxState(sb.name);
-    if (result.success) {
-      console.log(
-        `  ${G}\u2713${R} ${sb.name}: ${result.backedUpDirs.length} dirs → ${result.manifest.backupPath}`,
-      );
-      backed++;
-    } else {
-      console.error(`  ${_RD}✗${R} ${sb.name}: backup failed (${result.failedDirs.join(", ")})`);
-      failed++;
-    }
-  }
-  console.log("");
-  console.log(`  Pre-upgrade backup: ${backed} backed up, ${failed} failed, ${skipped} skipped`);
-  if (backed > 0) {
-    console.log(`  Backups stored in: ~/.nemoclaw/rebuild-backups/`);
-  }
-  // Exit non-zero if any live sandbox failed to back up — the upgrade hook
-  // in install.sh treats this as non-fatal but logs a warning.
-  if (failed > 0) {
-    process.exit(1);
-  }
-}
-
-// ── Garbage collection ──────────────────────────────────────────
-
-async function garbageCollectImages(args: string[] = []): Promise<void> {
-  const dryRun = args.includes("--dry-run");
-  const skipConfirm = args.includes("--yes") || args.includes("--force");
-
-  // 1. List all openshell/sandbox-from images on the host
-  let imagesOutput = "";
-  try {
-    imagesOutput = dockerListImagesFormat(
-      "openshell/sandbox-from",
-      "{{.Repository}}:{{.Tag}}\t{{.Size}}",
-    );
-  } catch {
-    console.error("  Failed to query Docker images. Is Docker running?");
-    process.exit(1);
-  }
-
-  const allImages = imagesOutput
-    .split("\n")
-    .map((line: string) => line.trim())
-    .filter(Boolean)
-    .map((line: string) => {
-      const [tag, size] = line.split("\t");
-      return { tag, size: size || "unknown" };
-    });
-
-  if (allImages.length === 0) {
-    console.log("  No sandbox images found on the host.");
-    return;
-  }
-
-  // 2. Determine which images are in use by live or registered sandboxes
-  const registeredTags = new Set();
-  const { sandboxes } = registry.listSandboxes();
-  for (const sb of sandboxes) {
-    if (sb.imageTag) registeredTags.add(sb.imageTag);
-  }
-
-  // 3. Cross-reference to find orphans
-  const orphans = allImages.filter(
-    (img: { tag: string; size: string }) => !registeredTags.has(img.tag),
-  );
-
-  if (orphans.length === 0) {
-    console.log(`  All ${allImages.length} sandbox image(s) are in use. Nothing to clean up.`);
-    return;
-  }
-
-  // 4. Display what will be removed
-  console.log(`  Found ${orphans.length} orphaned sandbox image(s):\n`);
-  for (const img of orphans) {
-    console.log(`    ${img.tag}  ${D}(${img.size})${R}`);
-  }
-  console.log("");
-
-  if (dryRun) {
-    console.log(`  --dry-run: would remove ${orphans.length} image(s).`);
-    return;
-  }
-
-  // 5. Confirm
-  if (!skipConfirm) {
-    const answer = await askPrompt(`  Remove ${orphans.length} orphaned image(s)? [y/N]: `);
-    if (answer.trim().toLowerCase() !== "y" && answer.trim().toLowerCase() !== "yes") {
-      console.log("  Cancelled.");
-      return;
-    }
-  }
-
-  // 6. Remove orphans
-  let removed = 0;
-  let failed = 0;
-  for (const img of orphans) {
-    const rmiResult = dockerRmi(img.tag, {
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "pipe"],
-      ignoreError: true,
-      suppressOutput: true,
-    });
-    if (rmiResult.status === 0) {
-      console.log(`  ${G}✓${R} Removed ${img.tag}`);
-      removed++;
-    } else {
-      const details = `${rmiResult.stderr || rmiResult.stdout || ""}`.trim();
-      console.error(`  ${YW}⚠${R} Failed to remove ${img.tag}${details ? `: ${details}` : ""}`);
-      failed++;
-    }
-  }
-
-  console.log("");
-  if (removed > 0) console.log(`  ${G}✓${R} Removed ${removed} orphaned image(s).`);
-  if (failed > 0) console.log(`  ${YW}⚠${R} Failed to remove ${failed} image(s).`);
-  if (failed > 0) process.exit(1);
-}
-
-// ── Help ─────────────────────────────────────────────────────────
-
-function version(): void {
-  console.log(`${CLI_NAME} v${getVersion()}`);
-}
-
-/** Print CLI usage with all commands, flags, and reconfiguration guidance. */
-function help() {
-  const PAD = 38; // column width for usage strings before description
-  const grouped = registryCommandsByGroup();
-  const lines = [];
-
-  lines.push("");
-  lines.push(`  ${B}${G}${CLI_DISPLAY_NAME}${R}  ${D}v${getVersion()}${R}`);
-  lines.push(`  ${D}Deploy more secure, always-on AI assistants with a single command.${R}`);
-
-  for (const [group, cmds] of grouped) {
-    lines.push("");
-    lines.push(`  ${G}${group}:${R}`);
-
-    let isFirstInGroup = true;
-    for (const cmd of cmds) {
-      const usage = cmd.usage;
-      const desc = cmd.description;
-      const flags = cmd.flags ? ` ${D}${cmd.flags}${R}` : "";
-
-      // Bold the first command in each group
-      const prefix = isFirstInGroup ? B : "";
-      const suffix = isFirstInGroup ? R : "";
-
-      // Deprecated commands get dim styling
-      const dPrefix = cmd.deprecated ? D : "";
-      const dSuffix = cmd.deprecated ? R : "";
-
-      const displayUsage = `${dPrefix}${prefix}${usage}${suffix}${dSuffix}`;
-      const displayDesc = cmd.deprecated ? `${D}${desc}${R}` : desc;
-
-      // Calculate plain-text length for padding (strip ANSI)
-      const padding = Math.max(1, PAD - usage.length);
-      lines.push(`    ${displayUsage}${" ".repeat(padding)}${displayDesc}${flags}`);
-
-      isFirstInGroup = false;
-    }
-  }
-
-  // ── Uninstall flags (static, not in registry) ──
-  lines.push("");
-  lines.push(`  ${G}Uninstall flags:${R}`);
-  lines.push(`    --yes${" ".repeat(29)}Skip the confirmation prompt`);
-  lines.push(`    --keep-openshell${" ".repeat(18)}Leave the openshell binary installed`);
-  lines.push(`    --delete-models${" ".repeat(19)}Remove ${CLI_DISPLAY_NAME}-pulled Ollama models`);
-
-  // ── Reconfiguration (no nemoclaw-prefixed lines to avoid parser phantoms) ──
-  lines.push("");
-  lines.push(`  ${G}Reconfiguration (after onboard):${R}`);
-  lines.push(
-    `    ${D}• Change inference model:  openshell inference set -g nemoclaw --model <model> --provider <provider>${R}`,
-  );
-  lines.push(`    ${D}• Add network presets:     use the policy-add command on your sandbox${R}`);
-  lines.push(
-    `    ${D}• Change credentials:      credentials reset <PROVIDER>, then re-run onboard${R}`,
-  );
-  lines.push(`    ${D}• Agent config is read-only inside the sandbox (Landlock enforced).${R}`);
-  lines.push(
-    `    ${D}  To change ${AGENT_PRODUCT_NAME} settings, re-run onboard to rebuild the sandbox.${R}`,
-  );
-
-  // ── Footer ──
-  lines.push("");
-  lines.push(`  ${D}Powered by NVIDIA OpenShell · Nemotron · Agent Toolkit`);
-  lines.push(`  Credentials registered with the OpenShell gateway${R}`);
-  lines.push(`  ${D}https://www.nvidia.com/nemoclaw${R}`);
-  lines.push("");
-
-  console.log(lines.join("\n"));
-}
+// ── Dispatch helpers ─────────────────────────────────────────────
 
 function editDistance(left: string, right: string): number {
   const rows = left.length + 1;
@@ -4869,15 +3067,23 @@ async function runDispatchResult(
         case "doctor":
           await sandboxDoctor(sandboxName, actionArgs);
           return;
-        case "policy-add":
-          await sandboxPolicyAdd(sandboxName, actionArgs);
+        case "policy-add": {
+          const { addSandboxPolicy } = require("./lib/policy-channel-actions") as {
+            addSandboxPolicy: (sandboxName: string, args?: string[]) => Promise<void>;
+          };
+          await addSandboxPolicy(sandboxName, actionArgs);
           return;
+        }
         case "skill":
           await sandboxSkillInstall(sandboxName, actionArgs);
           return;
-        case "snapshot":
-          await sandboxSnapshot(sandboxName, actionArgs);
+        case "snapshot": {
+          const { runSandboxSnapshot } = require("./lib/snapshot-action") as {
+            runSandboxSnapshot: (sandboxName: string, args: string[]) => Promise<void>;
+          };
+          await runSandboxSnapshot(sandboxName, actionArgs);
           return;
+        }
         default:
           throw new Error(`Unhandled legacy dispatch target ${result.target}`);
       }
