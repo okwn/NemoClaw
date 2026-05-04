@@ -247,7 +247,7 @@ const {
 const { sleepSeconds } = require("./wait");
 const platformUtils: typeof import("./platform") = require("./platform");
 const { inferContainerRuntime, isWsl, shouldPatchCoredns } = platformUtils;
-const { resolveOpenshell } = require("./resolve-openshell");
+const { resolveOpenshell } = require("./adapters/openshell/resolve");
 const credentials: typeof import("./credentials") = require("./credentials");
 const {
   prompt,

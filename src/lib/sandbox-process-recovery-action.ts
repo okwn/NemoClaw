@@ -16,8 +16,8 @@ import {
   getOpenshellBinary,
   isCommandTimeout,
   runOpenshell,
-} from "./openshell-runtime";
-import { OPENSHELL_PROBE_TIMEOUT_MS } from "./openshell-timeouts";
+} from "./adapters/openshell/runtime";
+import { OPENSHELL_PROBE_TIMEOUT_MS } from "./adapters/openshell/timeouts";
 import { G, R } from "./terminal-style";
 import { sleepSeconds } from "./wait";
 

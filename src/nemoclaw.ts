@@ -39,7 +39,7 @@ const {
   sandboxActionTokens,
 } = require("./lib/command-registry");
 import { normalizeArgv, suggestCommand } from "./lib/cli/argv-normalizer";
-import { OPENSHELL_PROBE_TIMEOUT_MS } from "./lib/openshell-timeouts";
+import { OPENSHELL_PROBE_TIMEOUT_MS } from "./lib/adapters/openshell/timeouts";
 import { renderPublicOclifHelp } from "./lib/cli/public-oclif-help";
 import {
   resolveGlobalOclifDispatch,

@@ -16,7 +16,7 @@ const { stripCredentials, isConfigObject } = credentialFilter;
 
 type ConfigObject = import("./credential-filter").ConfigObject;
 type ConfigValue = import("./credential-filter").ConfigValue;
-const { captureOpenshellCommand } = require("./openshell");
+const { captureOpenshellCommand } = require("./adapters/openshell/client");
 
 // ---------------------------------------------------------------------------
 // Agent-aware config resolution

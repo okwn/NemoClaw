@@ -14,7 +14,7 @@ import type { Session } from "./onboard-session";
 import {
   captureOpenshellForStatus,
   isCommandTimeout,
-} from "./openshell-runtime";
+} from "./adapters/openshell/runtime";
 import * as registry from "./registry";
 import {
   getReconciledSandboxGatewayState,
@@ -29,7 +29,7 @@ import {
 } from "./sandbox-session-state";
 import * as sandboxVersion from "./sandbox-version";
 import * as shields from "./shields";
-import { resolveOpenshell } from "./resolve-openshell";
+import { resolveOpenshell } from "./adapters/openshell/resolve";
 import { D, G, R, RD, YW } from "./terminal-style";
 
 const agentRuntime = require("../../bin/lib/agent-runtime");

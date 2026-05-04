@@ -15,10 +15,10 @@ const { hydrateCredentialEnv } = require("./onboard") as {
 import * as nim from "./nim";
 import * as onboardSession from "./onboard-session";
 import type { Session } from "./onboard-session";
-import { captureOpenshell, runOpenshell } from "./openshell-runtime";
+import { captureOpenshell, runOpenshell } from "./adapters/openshell/runtime";
 import * as policies from "./policies";
 import * as registry from "./registry";
-import { resolveOpenshell } from "./resolve-openshell";
+import { resolveOpenshell } from "./adapters/openshell/resolve";
 import { parseLiveSandboxNames } from "./runtime-recovery";
 import { getSandboxDeleteOutcome } from "./domain/sandbox/destroy";
 import { removeSandboxRegistryEntry } from "./sandbox-destroy-action";
