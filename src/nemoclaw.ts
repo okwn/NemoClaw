@@ -55,15 +55,18 @@ const {
   getInstalledOpenshellVersionOrNull,
   runOpenshell,
 } = require("./lib/openshell-runtime");
-const { recoverNamedGatewayRuntime } = require("./lib/gateway-runtime-action");
+const {
+  recoverNamedGatewayRuntime,
+} = require("./lib/gateway-runtime-action");
 const { recoverRegistryEntries } = require("./lib/registry-recovery-action");
-const { ensureLiveSandboxOrExit } = require("./lib/sandbox-gateway-state-action");
 const {
   isSandboxConnectFlag,
   parseSandboxConnectArgs,
   printSandboxConnectHelp,
 } = require("./lib/sandbox-connect-action");
-const { executeSandboxCommand } = require("./lib/sandbox-process-recovery-action");
+const {
+  executeSandboxCommand,
+} = require("./lib/sandbox-process-recovery-action");
 const { runRegisteredOclifCommand } = require("./lib/oclif-runner");
 const { isErrnoException }: typeof import("./lib/errno") = require("./lib/errno");
 const agentRuntime = require("../bin/lib/agent-runtime");
@@ -73,6 +76,7 @@ const { parseRestoreArgs } = sandboxState;
 const {
   getActiveSandboxSessions,
   createSystemDeps: createSessionDeps,
+  parseForwardList,
 } = require("./lib/sandbox-session-state");
 
 const {
@@ -999,6 +1003,7 @@ async function sandboxRebuild(
   }
   console.log("");
 
+  let rebuildConfirmed = false;
   if (!skipConfirm) {
     if (rebuildActiveSessionCount > 0) {
       const plural = rebuildActiveSessionCount > 1 ? "sessions" : "session";
@@ -1020,6 +1025,7 @@ async function sandboxRebuild(
       console.log("  Cancelled.");
       return;
     }
+    rebuildConfirmed = true;
   }
 
   // Step 0: Preflight — verify recreate preconditions BEFORE destroying
@@ -1113,7 +1119,7 @@ async function sandboxRebuild(
   log(`Agent type: ${sb.agent || "openclaw"}, stateDirs from manifest`);
   const backup = sandboxState.backupSandboxState(sandboxName);
   log(
-    `Backup result: success=${backup.success}, backed=${backup.backedUpDirs.join(",")}, failed=${backup.failedDirs.join(",")}`,
+    `Backup result: success=${backup.success}, backed=${backup.backedUpDirs.join(",")}; files=${backup.backedUpFiles.join(",")}, failed=${backup.failedDirs.join(",")}; failedFiles=${backup.failedFiles.join(",")}`,
   );
   if (!backup.success) {
     console.error("  Failed to back up sandbox state.");
@@ -1123,11 +1129,16 @@ async function sandboxRebuild(
     if (backup.failedDirs.length > 0) {
       console.error(`  Failed: ${backup.failedDirs.join(", ")}`);
     }
+    if (backup.failedFiles.length > 0) {
+      console.error(`  Failed files: ${backup.failedFiles.join(", ")}`);
+    }
     console.error("  Aborting rebuild to prevent data loss.");
     bail("Failed to back up sandbox state.");
     return;
   }
-  console.log(`  ${G}\u2713${R} State backed up (${backup.backedUpDirs.length} directories)`);
+  console.log(
+    `  ${G}\u2713${R} State backed up (${backup.backedUpDirs.length} directories, ${backup.backedUpFiles.length} files)`,
+  );
   console.log(`    Backup: ${backup.manifest.backupPath}`);
 
   // Step 3: Delete sandbox without tearing down gateway or session.
@@ -1252,6 +1263,12 @@ async function sandboxRebuild(
       recreateSandbox: true,
       agent: rebuildAgent,
       fromDockerfile: storedFromDockerfile,
+      // Reaching here means the user already consented to the destructive
+      // rebuild (either via --yes/--force or by answering "y" at the prompt).
+      // Propagate that consent so the size-confirm gate inside the
+      // non-interactive onboard does not abort after the old sandbox has
+      // been deleted (#2639 follow-up).
+      autoYes: skipConfirm || rebuildConfirmed,
     });
     log("onboard() returned successfully");
   } catch (err) {
@@ -1311,14 +1328,19 @@ async function sandboxRebuild(
   log(`Restoring from: ${backup.manifest.backupPath} into sandbox: ${sandboxName}`);
   const restore = sandboxState.restoreSandboxState(sandboxName, backup.manifest.backupPath);
   log(
-    `Restore result: success=${restore.success}, restored=${restore.restoredDirs.join(",")}, failed=${restore.failedDirs.join(",")}`,
+    `Restore result: success=${restore.success}, restored=${restore.restoredDirs.join(",")}; files=${restore.restoredFiles.join(",")}, failed=${restore.failedDirs.join(",")}; failedFiles=${restore.failedFiles.join(",")}`,
   );
   if (!restore.success) {
     console.error(`  Partial restore: ${restore.restoredDirs.join(", ") || "none"}`);
     console.error(`  Failed: ${restore.failedDirs.join(", ")}`);
+    if (restore.failedFiles.length > 0) {
+      console.error(`  Failed files: ${restore.failedFiles.join(", ")}`);
+    }
     console.error(`  Manual restore available from: ${backup.manifest.backupPath}`);
   } else {
-    console.log(`  ${G}\u2713${R} State restored (${restore.restoredDirs.length} directories)`);
+    console.log(
+      `  ${G}\u2713${R} State restored (${restore.restoredDirs.length} directories, ${restore.restoredFiles.length} files)`,
+    );
   }
 
   // Step 5.5: Restore policy presets (#1952)
@@ -1570,7 +1592,7 @@ function printConnectOrderHint(candidate: string | null): void {
 }
 
 const VALID_SANDBOX_ACTIONS =
-  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, skill, snapshot, share, rebuild, shields, config, channels, gateway-token, destroy";
+  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
 
 function printDispatchUsageError(
   result: Extract<DispatchResult, { kind: "usageError" }>,
