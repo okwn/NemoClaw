@@ -5,6 +5,7 @@
 
 import { CLI_NAME } from "./branding";
 import { prompt as askPrompt } from "./credentials";
+
 const { hydrateCredentialEnv } = require("./onboard") as {
   hydrateCredentialEnv: (name: string) => string | null;
 };
@@ -12,9 +13,12 @@ const { LOCAL_INFERENCE_PROVIDERS, REMOTE_PROVIDER_CONFIG } = require("./onboard
   LOCAL_INFERENCE_PROVIDERS: string[];
   REMOTE_PROVIDER_CONFIG: Record<string, { providerName: string; credentialEnv: string | null }>;
 };
+
+import { loadAgent } from "./agent-defs";
+import { ensureAgentBaseImage } from "./agent-onboard";
 import * as nim from "./nim";
-import * as onboardSession from "./onboard-session";
 import type { Session } from "./onboard-session";
+import * as onboardSession from "./onboard-session";
 import { captureOpenshell, runOpenshell } from "./openshell-runtime";
 import * as policies from "./policies";
 import * as registry from "./registry";
@@ -28,7 +32,7 @@ import {
 } from "./sandbox-session-state";
 import * as sandboxState from "./sandbox-state";
 import * as sandboxVersion from "./sandbox-version";
-import { B, D, G, R, RD as _RD, YW } from "./terminal-style";
+import { RD as _RD, B, D, G, R, YW } from "./terminal-style";
 
 const agentRuntime = require("../../bin/lib/agent-runtime");
 
@@ -95,6 +99,7 @@ export async function rebuildSandbox(
     return;
   }
 
+  const rebuildAgent = sb.agent || null;
   const agent = agentRuntime.getSessionAgent(sandboxName);
   const agentName = agentRuntime.getAgentDisplayName(agent);
 
@@ -222,6 +227,13 @@ export async function rebuildSandbox(
     return;
   }
 
+  // Build agent base layers before backup/delete so Dockerfile.base errors leave
+  // the existing sandbox intact. This is what applies local Hermes version edits.
+  if (rebuildAgent) {
+    const agentDef = loadAgent(rebuildAgent);
+    ensureAgentBaseImage(agentDef, { forceBaseImageRebuild: true });
+  }
+
   // Step 2: Backup
   console.log("  Backing up sandbox state...");
   log(`Agent type: ${sb.agent || "openclaw"}, stateDirs from manifest`);
@@ -324,7 +336,6 @@ export async function rebuildSandbox(
   // rebuilds the correct sandbox type.  Without this, a stale session.agent
   // from a previous onboard of a *different* agent type would be picked up
   // by resolveAgentName() and the wrong Dockerfile would be used.  (#2201)
-  const rebuildAgent = sb.agent || null;
   onboardSession.updateSession((s: Session) => {
     s.sandboxName = sandboxName;
     s.resumable = true;

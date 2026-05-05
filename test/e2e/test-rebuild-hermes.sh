@@ -9,7 +9,7 @@
 #   3. Build a minimal Hermes sandbox image (no current-Dockerfile patches)
 #   4. Create sandbox via openshell directly
 #   5. Write marker files into Hermes state dirs
-#   6. Restore the current Hermes base image
+#   6. Leave the cached Hermes base image stale
 #   7. Run `nemoclaw <name> rebuild --yes`
 #   8. Verify marker files survived + version upgraded
 #
@@ -146,6 +146,8 @@ docker build \
   || fail "Failed to build old Hermes base image"
 
 pass "Old Hermes base image built (${OLD_HERMES_VERSION})"
+docker tag "${OLD_BASE_TAG}" "ghcr.io/nvidia/nemoclaw/hermes-sandbox-base:latest"
+pass "Cached Hermes base tag now points at old version"
 
 # ── Phase 3: Create old sandbox via openshell ───────────────────────
 info "Phase 3: Creating sandbox with old Hermes via openshell..."
@@ -221,16 +223,9 @@ print('Registry and session updated')
 
 pass "Markers written, sandbox registered"
 
-# ── Phase 5: Restore current Hermes base image ─────────────────────
-info "Phase 5: Building current Hermes base image..."
-
-docker build \
-  -f "${REPO_ROOT}/agents/hermes/Dockerfile.base" \
-  -t "ghcr.io/nvidia/nemoclaw/hermes-sandbox-base:latest" \
-  "${REPO_ROOT}" \
-  || fail "Failed to build current Hermes base image"
-
-pass "Current Hermes base image built"
+# ── Phase 5: Leave cached base stale ───────────────────────────────
+info "Phase 5: Leaving cached Hermes base image stale..."
+diag "Cached ghcr.io/nvidia/nemoclaw/hermes-sandbox-base:latest intentionally points at ${OLD_HERMES_VERSION}; rebuild must refresh it from agents/hermes/Dockerfile.base."
 
 # ── Phase 6: Rebuild ────────────────────────────────────────────────
 info "Phase 6: Running nemoclaw rebuild..."

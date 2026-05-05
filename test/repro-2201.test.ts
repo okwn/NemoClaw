@@ -166,6 +166,21 @@ process.exit(0);
     { mode: 0o755 },
   );
 
+  // ── Fake docker ─────────────────────────────────────────────────
+  // Hermes rebuilds refresh the local agent base image before deleting the
+  // sandbox, then onboard checks whether that image exists while recreating.
+  fs.writeFileSync(
+    path.join(tmpDir, "docker"),
+    `#!/usr/bin/env node
+const a = process.argv.slice(2);
+if (a[0]==="build") { process.exit(0); }
+if (a[0]==="image" && a[1]==="inspect") { process.exit(0); }
+if (a[0]==="inspect") { process.stdout.write("true\\n"); process.exit(0); }
+process.exit(0);
+`,
+    { mode: 0o755 },
+  );
+
   // ── Fake ssh ──────────────────────────────────────────────────
   // backupSandboxState makes two ssh calls:
   //   1. dir-existence check (command has "[ -d") → print "workspace"
