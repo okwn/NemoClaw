@@ -3072,7 +3072,110 @@ exit 0`,
     return { result, phases, tmp };
   }
 
-  it("#2671: curl|bash with no flags exits 1 BEFORE phase 1 (atomic — no Node/CLI install)", () => {
+  function runInstallerWithPipedStdinAndTty(answer: string) {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-tty-pipe-"));
+    const fakeBin = path.join(tmp, "bin");
+    const phaseLog = path.join(tmp, "phases.log");
+    fs.mkdirSync(fakeBin);
+
+    writeExecutable(
+      path.join(fakeBin, "node"),
+      `#!/usr/bin/env bash
+echo "node $*" >> ${JSON.stringify(phaseLog)}
+if [ "$1" = "-v" ] || [ "$1" = "--version" ]; then echo "v22.16.0"; exit 0; fi
+if [ -n "\${1:-}" ] && [ -f "$1" ]; then exit 0; fi
+exit 0`,
+    );
+    writeExecutable(
+      path.join(fakeBin, "npm"),
+      `#!/usr/bin/env bash
+echo "npm $*" >> ${JSON.stringify(phaseLog)}
+if [ "$1" = "--version" ]; then echo "10.9.2"; exit 0; fi
+if [ "$1" = "config" ] && [ "$2" = "get" ] && [ "$3" = "prefix" ]; then echo "${path.join(tmp, "prefix")}"; exit 0; fi
+exit 0`,
+    );
+    writeExecutable(
+      path.join(fakeBin, "docker"),
+      `#!/usr/bin/env bash
+echo "docker $*" >> ${JSON.stringify(phaseLog)}
+exit 0`,
+    );
+
+    const python =
+      spawnSync("bash", ["-lc", "command -v python3"], { encoding: "utf-8" }).stdout.trim() ||
+      "python3";
+    const ptyRunner = `
+import os
+import pty
+import select
+import signal
+import sys
+import time
+
+installer = sys.argv[1]
+answer = sys.argv[2].encode()
+pid, fd = pty.fork()
+if pid == 0:
+    devnull = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(devnull, 0)
+    os.close(devnull)
+    os.execvpe("bash", ["bash", installer], os.environ)
+
+output = bytearray()
+deadline = time.time() + 20
+sent = False
+exit_code = 124
+while True:
+    if not sent:
+        os.write(fd, answer)
+        sent = True
+    ready, _, _ = select.select([fd], [], [], 0.1)
+    if ready:
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            chunk = b""
+        if chunk:
+            output.extend(chunk)
+    waited = os.waitpid(pid, os.WNOHANG)
+    if waited[0] == pid:
+        status = waited[1]
+        exit_code = os.waitstatus_to_exitcode(status)
+        break
+    if time.time() > deadline:
+        os.kill(pid, signal.SIGTERM)
+        break
+
+try:
+    while True:
+        ready, _, _ = select.select([fd], [], [], 0)
+        if not ready:
+            break
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        output.extend(chunk)
+except OSError:
+    pass
+
+sys.stdout.buffer.write(output)
+sys.exit(exit_code)
+`;
+    const result = spawnSync(python, ["-c", ptyRunner, INSTALLER_PAYLOAD, answer], {
+      cwd: tmp,
+      encoding: "utf-8",
+      env: {
+        HOME: tmp,
+        PATH: `${fakeBin}:${TEST_SYSTEM_PATH}`,
+      },
+    });
+    const phases = fs.existsSync(phaseLog) ? fs.readFileSync(phaseLog, "utf-8") : "";
+    const stateFile = path.join(tmp, ".nemoclaw", "usage-notice.json");
+    const state = fs.existsSync(stateFile) ? fs.readFileSync(stateFile, "utf-8") : "";
+    return { result, phases, state };
+  }
+
+  it("#2671: headless curl|bash with no flags exits 1 BEFORE phase 1 (atomic — no Node/CLI install)", () => {
     const { result, phases } = runInstaller({});
     expect(result.status).not.toBe(0);
     const output = `${result.stdout}${result.stderr}`;
@@ -3085,6 +3188,31 @@ exit 0`,
     // Stub binaries record every invocation; if phase 1 or 2 ran, node and/or
     // npm would have been called. The fail-fast check runs before either.
     expect(phases).toBe("");
+  });
+
+  it("piped installs with a controlling TTY prompt before phase 1 and continue after acceptance", () => {
+    const { result, phases, state } = runInstallerWithPipedStdinAndTty("yes\n");
+    const output = `${result.stdout}${result.stderr}`;
+    expect(output).toMatch(/prompting for the third-party software notice on \/dev\/tty/);
+    expect(output).toMatch(/Third-Party Software Notice - NemoClaw Installer/);
+    expect(output).not.toMatch(/Interactive third-party software acceptance requires a TTY/);
+    expect(output.indexOf("Third-Party Software Notice - NemoClaw Installer")).toBeGreaterThanOrEqual(0);
+    expect(output.indexOf("Node.js")).toBeGreaterThan(
+      output.indexOf("Third-Party Software Notice - NemoClaw Installer"),
+    );
+    expect(phases).not.toBe("");
+    expect(state).toMatch(/"acceptedVersion": "2026-04-01b"/);
+  });
+
+  it("piped installs with a controlling TTY still stop before phase 1 when acceptance is declined", () => {
+    const { result, phases, state } = runInstallerWithPipedStdinAndTty("\n");
+    const output = `${result.stdout}${result.stderr}`;
+    expect(result.status).not.toBe(0);
+    expect(output).toMatch(/Third-Party Software Notice - NemoClaw Installer/);
+    expect(output).toMatch(/Installation cancelled/);
+    expect(output).not.toMatch(/\[1\/3\] Node\.js/);
+    expect(phases).toBe("");
+    expect(state).toBe("");
   });
 
   it("--yes-i-accept-third-party-software alone is sufficient to clear the fail-fast gate", () => {
