@@ -87,39 +87,47 @@ The regex is intentionally **release-line agnostic**. Today NemoClaw ships `v0.0
 
 Sources, in order of trust:
 
-1. A label that exactly matches a real released version (e.g. `v0.0.32`). Reject labels that match a version newer than `$LATEST` — those are roadmap/release-target labels, not "reported on".
-2. The body. Two-pass regex:
-   - **Primary:** `\bv\d+\.\d+\.\d+\b` — require the `v` prefix and word boundaries. Matches any `vMAJOR.MINOR.PATCH`.
-   - **Fallback:** `\b\d+\.\d+\.\d+\b` **only on lines containing `nemoclaw` or `version` (case-insensitive)**. Without that line filter, the fallback alone matches IPs and bind addresses (`0.0.0.0:11434`, `127.0.0.1`) and other unrelated semver-ish strings, producing phantom candidates.
-3. Comments by the original reporter (same two-pass regex as the body).
+1. **Labels.** Any label that exactly matches `^v\d+\.\d+\.\d+$` AND appears in the repo's tag list. Labels matching the regex but absent from tags (e.g. `v0.0.35` as a *release-target* milestone before that version ships) are roadmap markers, not "reported on" — drop them.
+2. **Body.** Use a **proximity-anchored** regex: `(?i)nemoclaw[^a-z\n]{0,80}v?(\d+\.\d+\.\d+)`. This matches a version that follows `nemoclaw` within 80 non-letter, non-newline characters, capturing just the semver. The anchoring is load-bearing — without it the parser also picks up `openshell 0.0.4`, Node.js `v22.16.0`, IP addresses (`0.0.0.0:11434`, `127.0.0.1`), and other near-NemoClaw products that happen to share the `v0.0.x` line. (This was confirmed in the dry-run: a non-anchored parser produced 12 false-positive candidates whose smallest tag-valid version was actually OpenShell's, not NemoClaw's.)
+3. **Comments by the original reporter** — same anchored regex as the body.
 
-After parsing, run two validation passes:
+Collect every match from sources 2 and 3 (a single body may mention multiple versions — `0.0.6 and v0.0.10`). Then validate.
 
-- **Clamp future:** if the parsed version is greater than `$LATEST`, treat it as unparseable. This catches roadmap labels that slipped past source 1.
-- **Validate against tags:** confirm the parsed version exists as an actual git tag. This catches reporter typos such as `NemoClaw: v0.1.0` (no such release in the current `v0.0.x` line) and calver mistakes like `NemoClaw: 2026.3.11` (date string, not a tag).
+**Validate against the tag list.** A parsed version must exist as a real git tag, otherwise drop it. This single check kills four classes of error in one pass:
+
+- Reporter typos that cite a non-existent version (`v0.1.0` when only `v0.0.x` is released — observed 3× in the live backlog).
+- Calver mistakes (`2026.3.11` — observed 1×).
+- Future roadmap labels that slipped past source 1.
+- Versions parsed from prose that happen to look semver-ish but aren't releases.
 
 ```bash
 git ls-remote --tags --refs git@github.com:NVIDIA/NemoClaw.git \
-  | awk -F/ '{print $NF}' \
-  | grep -Fx "v$PARSED_VERSION" >/dev/null \
-  || PARSED_VERSION=""   # treat as unparseable
+  | awk -F/ '{print $NF}' > /tmp/nemoclaw-tags.txt
+
+# For each candidate version V:
+grep -Fxq "$V" /tmp/nemoclaw-tags.txt || drop_version "$V"
 ```
 
-If no version survives both passes, drop the issue from the candidate set — we cannot establish "previous version".
+After validation, **pick the smallest surviving version** as the reported version (most conservative — it maximizes versions-behind). This handles "this bug was first reported on v0.0.6 and still happens on v0.0.10" cleanly: we verify against latest, and if the bug is gone, both reports are addressed.
 
-### Implementer note: regex-pipeline pitfall
+If no version survives, drop the issue from the candidate set — we cannot establish "previous version".
 
-In the v1 dry-run, a naive jq pipeline that chained the primary and fallback regexes via `[scan(primary)] | first | .[0] | tonumber // [scan(fallback)] | first | .[0] | tonumber` silently dropped 9 real candidates (e.g. #2861 with `NemoClaw 0.0.32` in body, #2604 with `NemoClaw: 0.0.28`). When the primary regex matched empty, `null | first` errored, and `//` did not propagate cleanly to the fallback.
+### Implementer note: regex-pipeline pitfalls
 
-Whichever language you implement in, structure the parser so the empty-match path returns null cleanly (not an error). Bind each pass to a named variable and `coalesce` them at the end:
+Two real failure modes surfaced during the v1 dry-run. Test both before trusting your implementation:
 
-```text
-primary  := first match of \bv\d+\.\d+\.\d+\b in body  (or null)
-fallback := first match of \b\d+\.\d+\.\d+\b on nemoclaw/version lines  (or null)
-result   := primary ?? fallback
-```
+1. **Empty-match handling.** A naive pipeline like `[scan(regex)] | first | .[0] | tonumber // fallback` silently dropped 9 real candidates (e.g. #2861 with `NemoClaw 0.0.32`, #2604 with `NemoClaw: 0.0.28`). When `scan` returns no matches, `[]` flows in, `first` returns null, `null | .[0]` errors, and `//` does not propagate cleanly through the error. Bind each pass to a named variable, coalesce at the end:
 
-Always test against an issue body with **no** version mention before trusting the result — that's the path that exercises the empty-match handling.
+   ```text
+   primary  := first nemoclaw-anchored match in body  (or null)
+   result   := primary ?? null
+   ```
+
+   Then explicitly test against a body with **no** version mention.
+
+2. **Capture-group consistency.** A regex without a capture group (e.g. `\bv\d+\.\d+\.\d+\b`) makes `scan` emit raw strings; with a capture group (e.g. `\b(v\d+\.\d+\.\d+)\b`), `scan` emits arrays. Mixing the two within one pipeline (`first | .[0]?`) works for one and silently fails for the other. Use capture groups consistently across all branches.
+
+3. **Variable scoping in `select(...)`.** A line like `select($tags | index(.))` rebinds `.` to `$tags` inside the parens, so `.` no longer refers to the surrounding label being checked. Bind first: `. as $lbl | select($tags | any(. == $lbl))`. Symptom in this dry-run: the future-release label `v0.0.35` passed validation that should have rejected it.
 
 ---
 
