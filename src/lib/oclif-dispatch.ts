@@ -143,19 +143,34 @@ export function resolveSandboxOclifDispatch(
     case "rebuild":
       if (hasHelpFlag(actionArgs)) return { kind: "help", usage: "rebuild [--yes|-y|--force] [--verbose|-v]" };
       return { kind: "oclif", commandId: "sandbox:rebuild", args: [sandboxName, ...actionArgs] };
+    case "recover":
+      if (hasHelpFlag(actionArgs)) return { kind: "help", usage: "recover" };
+      return { kind: "oclif", commandId: "sandbox:recover", args: [sandboxName, ...actionArgs] };
     case "share": {
       const shareSub = actionArgs[0];
       const shareArgs = actionArgs.slice(1);
-      if (!shareSub || shareSub === "--help" || shareSub === "-h") {
+      if (shareSub === "--help" || shareSub === "-h") {
+        return { kind: "help", usage: "share <mount|unmount|status>" };
+      }
+      if (!shareSub) {
         return { kind: "oclif", commandId: "sandbox:share", args: [sandboxName] };
       }
       if (shareSub === "mount") {
+        if (hasHelpFlag(shareArgs)) {
+          return { kind: "help", usage: "share mount [sandbox-path] [local-mount-point]" };
+        }
         return { kind: "oclif", commandId: "sandbox:share:mount", args: [sandboxName, ...shareArgs] };
       }
       if (shareSub === "unmount") {
+        if (hasHelpFlag(shareArgs)) {
+          return { kind: "help", usage: "share unmount [local-mount-point]" };
+        }
         return { kind: "oclif", commandId: "sandbox:share:unmount", args: [sandboxName, ...shareArgs] };
       }
       if (shareSub === "status") {
+        if (hasHelpFlag(shareArgs)) {
+          return { kind: "help", usage: "share status [local-mount-point]" };
+        }
         return { kind: "oclif", commandId: "sandbox:share:status", args: [sandboxName, ...shareArgs] };
       }
       return { kind: "oclif", commandId: "sandbox:share", args: [sandboxName, ...actionArgs] };
@@ -221,8 +236,12 @@ export function resolveSandboxOclifDispatch(
         if (hasHelpFlag(actionArgs.slice(1))) return { kind: "help", usage: "config get [--key dotpath] [--format json|yaml]" };
         return { kind: "oclif", commandId: "sandbox:config:get", args: [sandboxName, ...actionArgs.slice(1)] };
       }
-      if (configSub === "--help" || configSub === "-h") return { kind: "help", usage: "config get [--key dotpath] [--format json|yaml]" };
-      return { kind: "usageError", lines: ["config get [--key dotpath] [--format json|yaml]"] };
+      if (configSub === "set") {
+        if (hasHelpFlag(actionArgs.slice(1))) return { kind: "help", usage: "config set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]" };
+        return { kind: "oclif", commandId: "sandbox:config:set", args: [sandboxName, ...actionArgs.slice(1)] };
+      }
+      if (configSub === "--help" || configSub === "-h") return { kind: "help", usage: "config <get|set>" };
+      return { kind: "usageError", lines: ["config <get|set>", "get [--key dotpath] [--format json|yaml]", "set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]"] };
     }
     default:
       return { kind: "unknownAction", action };

@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentDefinition } from "../dist/lib/agent-defs.js";
 import { loadAgent } from "../dist/lib/agent-defs.js";
 import { buildChain, buildControlUiUrls } from "../dist/lib/dashboard-contract.js";
+import { NAME_ALLOWED_FORMAT } from "../dist/lib/name-validation.js";
 import { stageOptimizedSandboxBuildContext } from "../dist/lib/sandbox-build-context.js";
 
 type ShimScalar = string | number | boolean | null | undefined;
@@ -21,6 +22,8 @@ type ShimFn<TReturn = void> = (...args: ShimValue[]) => TReturn;
 type CommandEntry = {
   command: string;
   env?: Record<string, string | undefined>;
+  policyContent?: string;
+  policyReadError?: string;
 };
 type DashboardAccess = { label: string; url: string };
 type ResumeConflict = { field: string; requested: string | null; recorded: string | null };
@@ -53,6 +56,11 @@ type OnboardTestInternals = {
     portToStop: string,
   ) => string | null;
   formatOnboardConfigSummary: ShimFn<string>;
+  formatSandboxBuildEstimateNote: (host: {
+    isContainerRuntimeUnderProvisioned: boolean;
+    dockerCpus?: number;
+    dockerMemTotalBytes?: number;
+  }) => string | null;
   getDashboardAccessInfo: ShimFn<DashboardAccess[]>;
   getDashboardForwardStartCommand: ShimFn<string>;
   getNavigationChoice: (value?: string | null) => string | null;
@@ -137,6 +145,7 @@ function isOnboardTestInternals(
     typeof value.normalizeSandboxAgentName === "function" &&
     typeof value.agentSupportsWebSearch === "function" &&
     typeof value.configureWebSearch === "function" &&
+    typeof value.formatSandboxBuildEstimateNote === "function" &&
     typeof value.shouldRunCompatibleEndpointSandboxSmoke === "function" &&
     typeof value.writeSandboxConfigSyncFile === "function"
   );
@@ -200,6 +209,7 @@ const {
   writeSandboxConfigSyncFile,
   findDashboardForwardOwner,
   formatOnboardConfigSummary,
+  formatSandboxBuildEstimateNote,
 } = onboardTestInternals;
 
 describe("onboard helpers", () => {
@@ -803,6 +813,24 @@ describe("onboard helpers", () => {
         message: "HTTP 405: unsupported model",
       }),
     ).toEqual({ kind: "model", retry: "model" });
+  });
+
+  it("classifies TLS certificate errors as transport", () => {
+    expect(
+      classifyValidationFailure({
+        message: "transport error: invalid peer certificate: UnknownIssuer",
+      }),
+    ).toEqual({ kind: "transport", retry: "retry" });
+    expect(
+      classifyValidationFailure({
+        message: "SSL certificate problem: unable to get local issuer certificate",
+      }),
+    ).toEqual({ kind: "transport", retry: "retry" });
+    expect(
+      classifyValidationFailure({
+        message: "TLS handshake failure",
+      }),
+    ).toEqual({ kind: "transport", retry: "retry" });
   });
 
   it("detects tool-calling responses payloads conservatively", () => {
@@ -1882,7 +1910,7 @@ startGateway(null).catch(() => {});
   it("detects resume conflicts when --name does not match the recorded sandbox", () => {
     expect(
       getResumeConfigConflicts(
-        { sandboxName: "my-assistant" },
+        { sandboxName: "my-assistant", steps: { sandbox: { status: "complete" } } },
         { sandboxName: "second-assistant" },
       ),
     ).toEqual([
@@ -1896,13 +1924,19 @@ startGateway(null).catch(() => {});
 
   it("detects resume conflicts when a different sandbox is requested", () => {
     expect(
-      getResumeSandboxConflict({ sandboxName: "my-assistant" }, { sandboxName: "other-sandbox" }),
+      getResumeSandboxConflict(
+        { sandboxName: "my-assistant", steps: { sandbox: { status: "complete" } } },
+        { sandboxName: "other-sandbox" },
+      ),
     ).toEqual({
       requestedSandboxName: "other-sandbox",
       recordedSandboxName: "my-assistant",
     });
     expect(
-      getResumeSandboxConflict({ sandboxName: "other-sandbox" }, { sandboxName: "other-sandbox" }),
+      getResumeSandboxConflict(
+        { sandboxName: "other-sandbox", steps: { sandbox: { status: "complete" } } },
+        { sandboxName: "other-sandbox" },
+      ),
     ).toBe(null);
   });
 
@@ -1914,7 +1948,12 @@ startGateway(null).catch(() => {});
     const previous = process.env.NEMOCLAW_SANDBOX_NAME;
     process.env.NEMOCLAW_SANDBOX_NAME = "other-sandbox";
     try {
-      expect(getResumeSandboxConflict({ sandboxName: "my-assistant" })).toBe(null);
+      expect(
+        getResumeSandboxConflict({
+          sandboxName: "my-assistant",
+          steps: { sandbox: { status: "complete" } },
+        }),
+      ).toBe(null);
     } finally {
       if (previous === undefined) {
         delete process.env.NEMOCLAW_SANDBOX_NAME;
@@ -1922,6 +1961,24 @@ startGateway(null).catch(() => {});
         process.env.NEMOCLAW_SANDBOX_NAME = previous;
       }
     }
+  });
+
+  it("#2753: ignores an incomplete session sandbox name when checking resume conflicts", () => {
+    // A pre-fix on-disk session may carry sandboxName even though the
+    // sandbox step never completed. Treating that as a conflict source
+    // would block users from running `--resume --name <new>` to recover.
+    expect(
+      getResumeSandboxConflict(
+        { sandboxName: "interrupt-test", steps: { sandbox: { status: "pending" } } },
+        { sandboxName: "fresh-name" },
+      ),
+    ).toBe(null);
+    expect(
+      getResumeConfigConflicts(
+        { sandboxName: "interrupt-test", steps: { sandbox: { status: "pending" } } },
+        { sandboxName: "fresh-name" },
+      ),
+    ).toEqual([]);
   });
 
   it("returns provider and model hints only for non-interactive runs", () => {
@@ -2972,7 +3029,43 @@ const { setupInference } = require(${onboardPath});
 
     assert.match(
       source,
-      /startRecordedStep\("sandbox", \{ sandboxName, provider, model \}\);\s*selectedMessagingChannels = await setupMessagingChannels\(\);\s*onboardSession\.updateSession\(\(current[^)]*\) => \{\s*current\.messagingChannels = selectedMessagingChannels;\s*return current;\s*\}\);[\s\S]*?sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*nextWebSearchConfig,\s*selectedMessagingChannels,\s*fromDockerfile,\s*agent,\s*opts\.controlUiPort \|\| null,\s*\);/,
+      // #2753: sandboxName is intentionally absent from the options here so
+      // the session does not record a name before createSandbox completes.
+      /startRecordedStep\("sandbox", \{ provider, model \}\);\s*selectedMessagingChannels = await setupMessagingChannels\(\);\s*onboardSession\.updateSession\(\(current[^)]*\) => \{\s*current\.messagingChannels = selectedMessagingChannels;\s*return current;\s*\}\);[\s\S]*?sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*nextWebSearchConfig,\s*selectedMessagingChannels,\s*fromDockerfile,\s*agent,\s*opts\.controlUiPort \|\| null,\s*\);/,
+    );
+  });
+
+  it("does not persist sandboxName to onboard-session.json before createSandbox completes (#2753)", () => {
+    const source = fs.readFileSync(
+      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
+      "utf-8",
+    );
+
+    // Steps that run before `openshell sandbox create` succeeds must not
+    // write sandboxName into the session — otherwise a SIGINT in between
+    // leaves a phantom name that `nemoclaw list` resurrects until the user
+    // manually destroys it. sandboxName is only persisted at the sandbox
+    // step's markStepComplete, which runs after createSandbox returns.
+    assert.match(source, /startRecordedStep\("provider_selection"\);/);
+    assert.match(source, /startRecordedStep\("inference", \{ provider, model \}\);/);
+    assert.match(source, /startRecordedStep\("sandbox", \{ provider, model \}\);/);
+    assert.doesNotMatch(
+      source,
+      /startRecordedStep\("(?:provider_selection|inference|sandbox)",\s*\{[^}]*\bsandboxName\b/,
+    );
+    // The first markStepComplete that records sandboxName is the sandbox
+    // step, after createSandbox(). Locked in by checking createSandbox
+    // appears before the first sandboxName-bearing markStepComplete. The
+    // toSessionUpdates({ ... }) options object is matched non-greedily so a
+    // later sandboxName reference from a different call site cannot leak
+    // into the match.
+    const createIdx = source.indexOf("sandboxName = await createSandbox(");
+    const firstSandboxNameMarkComplete = source.search(
+      /onboardSession\.markStepComplete\(\s*"[^"]+",\s*toSessionUpdates\(\{[^}]*\bsandboxName\b/,
+    );
+    assert.ok(
+      createIdx > 0 && firstSandboxNameMarkComplete > createIdx,
+      `createSandbox (${createIdx}) must precede the first sandboxName-bearing markStepComplete (${firstSandboxNameMarkComplete})`,
     );
   });
 
@@ -3000,7 +3093,10 @@ const { setupInference } = require(${onboardPath});
 
     assert.match(
       source,
-      /let sandboxName = session\?\.sandboxName \|\| requestedSandboxName \|\| null;\s*if \(sandboxName && RESERVED_SANDBOX_NAMES\.has\(sandboxName\)\) \{[\s\S]*?process\.exit\(1\);\s*\}/,
+      // #2753: a stale `session.sandboxName` from an interrupted onboard
+      // must not override a fresh `--name` / NEMOCLAW_SANDBOX_NAME, so the
+      // session value participates only when its sandbox step completed.
+      /const recordedSandboxName =\s*session\?\.steps\?\.sandbox\?\.status === "complete" \? session\?\.sandboxName \|\| null : null;\s*let sandboxName = recordedSandboxName \|\| requestedSandboxName \|\| null;\s*if \(sandboxName && RESERVED_SANDBOX_NAMES\.has\(sandboxName\)\) \{[\s\S]*?process\.exit\(1\);\s*\}/,
     );
   });
   it("delegates sandbox-create progress streaming to the extracted helper module", () => {
@@ -3599,6 +3695,7 @@ const preflight = require(${preflightPath});
 const credentials = require(${credentialsPath});
 const childProcess = require("node:child_process");
 const { EventEmitter } = require("node:events");
+const fs = require("node:fs");
 
 const commands = [];
 runner.run = (command, opts = {}) => {
@@ -3626,7 +3723,17 @@ childProcess.spawn = (...args) => {
   const child = new EventEmitter();
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
-  commands.push({ command: _n(args[1][1]), env: args[2]?.env || null });
+  const command = _n(args[1][1]);
+  const entry = { command, env: args[2]?.env || null };
+  const policyMatch = command.match(/--policy ([^ ]+)/);
+  if (policyMatch) {
+    try {
+      entry.policyContent = fs.readFileSync(policyMatch[1], "utf-8");
+    } catch (error) {
+      entry.policyReadError = String(error);
+    }
+  }
+  commands.push(entry);
   process.nextTick(() => {
     child.stdout.emit("data", Buffer.from("Created sandbox: my-assistant\n"));
     child.emit("close", 0);
@@ -3704,6 +3811,11 @@ const { createSandbox } = require(${onboardPath});
       assert.match(createCommand.command, /--provider my-assistant-discord-bridge/);
       assert.match(createCommand.command, /--provider my-assistant-slack-bridge/);
       assert.match(createCommand.command, /--provider my-assistant-telegram-bridge/);
+      assert.match(createCommand.command, /--policy [^ ]*nemoclaw-initial-policy[^ ]*\.yaml/);
+      assert.equal(createCommand.policyReadError, undefined);
+      assert.match(createCommand.policyContent || "", /network_policies:/);
+      assert.match(createCommand.policyContent || "", /slack:/);
+      assert.match(createCommand.policyContent || "", /wss-primary\.slack\.com/);
 
       // Discord and Telegram tokens must NOT appear in the sandbox create command
       // (they flow exclusively through the openshell provider credential system).
@@ -6590,6 +6702,18 @@ const { createSandbox } = require(${onboardPath});
     // Non-interactive still exits within this function
     assert.match(fnBody, /isNonInteractive\(\)/);
     assert.match(fnBody, /process\.exit\(1\)/);
+    assert.match(fnBody, /getNameValidationGuidance\("sandbox name", sandboxName,/);
+  });
+
+  it("shows the full allowed sandbox name format before prompting", () => {
+    const source = fs.readFileSync(
+      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
+      "utf-8",
+    );
+    expect(NAME_ALLOWED_FORMAT).toBe(
+      "lowercase, starts with a letter, letters/numbers/internal hyphens only, ends with letter/number",
+    );
+    assert.match(source, /Sandbox name \(\$\{NAME_ALLOWED_FORMAT\}\)/);
   });
 
   it("guards against reusing the same sandbox name for a different agent", () => {
@@ -6948,7 +7072,7 @@ const { createSandbox } = require(${onboardPath});
       webSearchConfig: { fetchEnabled: true },
       enabledChannels: ["telegram", "slack"],
       sandboxName: "my-assistant",
-      notes: ["Sandbox build takes ~6 minutes on this host."],
+      notes: ["Sandbox build typically takes 5–15 minutes on this host."],
     });
 
     assert.ok(summary.includes("Review configuration"), "summary has review heading");
@@ -6962,7 +7086,7 @@ const { createSandbox } = require(${onboardPath});
     assert.ok(summary.includes("telegram, slack"), "summary lists enabled channels");
     assert.ok(summary.includes("my-assistant"), "summary shows sandbox name");
     assert.ok(
-      summary.includes("Note:          Sandbox build takes ~6 minutes on this host."),
+      summary.includes("Note:          Sandbox build typically takes 5–15 minutes on this host."),
       "summary renders notes under sandbox name",
     );
 
@@ -7005,5 +7129,32 @@ const { createSandbox } = require(${onboardPath});
     });
     assert.ok(!orphanSummary.includes("undefined"), "null fields never render as 'undefined'");
     assert.ok(orphanSummary.includes("(unset)"), "null fields fall back to '(unset)'");
+  });
+
+  it("formatSandboxBuildEstimateNote warns when runtime is under-provisioned (#2514)", () => {
+    const note = formatSandboxBuildEstimateNote({
+      isContainerRuntimeUnderProvisioned: true,
+      dockerCpus: 2,
+      dockerMemTotalBytes: 2 * 1024 ** 3,
+    });
+    assert.ok(note != null && note.length > 0, "returns a note");
+    assert.match(note as string, /under-provisioned/i, "note flags under-provisioned host");
+  });
+
+  it("formatSandboxBuildEstimateNote returns a tighter range on a generous host (#2514)", () => {
+    const note = formatSandboxBuildEstimateNote({
+      isContainerRuntimeUnderProvisioned: false,
+      dockerCpus: 12,
+      dockerMemTotalBytes: 32 * 1024 ** 3,
+    });
+    assert.ok(note != null, "returns a note");
+    assert.match(note ?? "", /\b3[–-]\d+\s+minutes\b/, "tight range starts at 3 minutes");
+  });
+
+  it("formatSandboxBuildEstimateNote returns null when no runtime resource signal is available (#2514)", () => {
+    const note = formatSandboxBuildEstimateNote({
+      isContainerRuntimeUnderProvisioned: false,
+    });
+    assert.strictEqual(note, null);
   });
 });
