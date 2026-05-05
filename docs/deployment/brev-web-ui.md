@@ -62,10 +62,9 @@ Keep this key ready for the next step.
 
 ## Launch NemoClaw from Brev
 
-1. Go to [brev.nvidia.com](https://brev.nvidia.com) and sign in.
-2. Click **NemoClaw** in the top navigation.
-3. Review the instance type, cloud provider, and estimated hourly cost on the NemoClaw setup page.
-4. Click **Deploy NemoClaw**.
+1. Open the [NemoClaw Brev launchable](https://brev.nvidia.com/launchable/deploy/now?launchableID=env-3Azt0aYgVNFEuz7opyx3gscmowS) and sign in if prompted.
+2. Review the instance type, cloud provider, and estimated hourly cost on the NemoClaw setup page.
+3. Click **Deploy NemoClaw**.
 
 The right-side deployment panel shows progress while Brev deploys the CPU instance and prepares VM mode.
 Keep this page open until the deployment completes.
