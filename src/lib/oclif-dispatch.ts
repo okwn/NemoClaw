@@ -103,6 +103,7 @@ const FLAT_SANDBOX_ROUTES: Readonly<Record<string, FlatSandboxRoute>> = {
     commandId: "sandbox:rebuild",
     helpUsage: "rebuild [--yes|-y|--force] [--verbose|-v]",
   },
+  recover: { commandId: "sandbox:recover", helpUsage: "recover" },
 };
 
 const NESTED_SANDBOX_ROUTES: Readonly<Record<string, NestedSandboxRoute>> = {
@@ -115,10 +116,20 @@ const NESTED_SANDBOX_ROUTES: Readonly<Record<string, NestedSandboxRoute>> = {
   },
   share: {
     parentCommandId: "sandbox:share",
+    helpUsage: "share <mount|unmount|status>",
     subcommands: {
-      mount: { commandId: "sandbox:share:mount" },
-      unmount: { commandId: "sandbox:share:unmount" },
-      status: { commandId: "sandbox:share:status" },
+      mount: {
+        commandId: "sandbox:share:mount",
+        helpUsage: "share mount [sandbox-path] [local-mount-point]",
+      },
+      unmount: {
+        commandId: "sandbox:share:unmount",
+        helpUsage: "share unmount [local-mount-point]",
+      },
+      status: {
+        commandId: "sandbox:share:status",
+        helpUsage: "share status [local-mount-point]",
+      },
     },
     unknown: "oclif-parent",
   },
@@ -126,7 +137,10 @@ const NESTED_SANDBOX_ROUTES: Readonly<Record<string, NestedSandboxRoute>> = {
     parentCommandId: "sandbox:snapshot",
     subcommands: {
       list: { commandId: "sandbox:snapshot:list", helpUsage: "snapshot list" },
-      create: { commandId: "sandbox:snapshot:create", helpUsage: "snapshot create [--name <name>]" },
+      create: {
+        commandId: "sandbox:snapshot:create",
+        helpUsage: "snapshot create [--name <name>]",
+      },
       restore: {
         commandId: "sandbox:snapshot:restore",
         helpUsage: "snapshot restore [selector] [--to <dst>]",
@@ -177,9 +191,17 @@ const NESTED_SANDBOX_ROUTES: Readonly<Record<string, NestedSandboxRoute>> = {
         commandId: "sandbox:config:get",
         helpUsage: "config get [--key dotpath] [--format json|yaml]",
       },
+      set: {
+        commandId: "sandbox:config:set",
+        helpUsage: "config set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]",
+      },
     },
     unknown: "usage",
-    usageLines: ["config get [--key dotpath] [--format json|yaml]"],
+    usageLines: [
+      "config <get|set>",
+      "get [--key dotpath] [--format json|yaml]",
+      "set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]",
+    ],
   },
 };
 
@@ -243,7 +265,14 @@ function resolveNestedSandboxRoute(
     }
   }
 
-  if (!subcommand || subcommand === "--help" || subcommand === "-h") {
+  if (!subcommand) {
+    return oclif(route.parentCommandId, [sandboxName]);
+  }
+
+  if (subcommand === "--help" || subcommand === "-h") {
+    if (route.helpUsage) {
+      return { kind: "help", usage: route.helpUsage };
+    }
     return oclif(route.parentCommandId, [sandboxName]);
   }
 
