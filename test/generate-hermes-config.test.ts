@@ -142,4 +142,15 @@ describe("agents/hermes/generate-config.ts", () => {
     expect(envFile).toContain("SLACK_BOT_TOKEN=openshell:resolve:env:SLACK_BOT_TOKEN\n");
     expect(envFile).toContain("SLACK_APP_TOKEN=openshell:resolve:env:SLACK_APP_TOKEN\n");
   });
+
+  it("omits Telegram behavior config when requireMention is not boolean", () => {
+    const { config, envFile } = runConfigScript({
+      NEMOCLAW_MESSAGING_CHANNELS_B64: encodeJson(["telegram"]),
+      NEMOCLAW_TELEGRAM_CONFIG_B64: encodeJson({ requireMention: "true" }),
+    });
+
+    expect(config.telegram).toBeUndefined();
+    expect(config.platforms.telegram).toBeUndefined();
+    expect(envFile).toContain("TELEGRAM_BOT_TOKEN=openshell:resolve:env:TELEGRAM_BOT_TOKEN\n");
+  });
 });
