@@ -7,13 +7,14 @@ import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { Interface as ReadlineInterface } from "node:readline";
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import policies from "../dist/lib/policies";
 import { execTimeout } from "./helpers/timeouts";
 
 const requireForTest = createRequire(import.meta.url);
 const readline = requireForTest("node:readline") as typeof import("node:readline");
+const YAML = requireForTest("yaml");
 const REPO_ROOT = path.join(import.meta.dirname, "..");
 const CLI_PATH = JSON.stringify(path.join(REPO_ROOT, "dist", "nemoclaw.js"));
 const CREDENTIALS_PATH = JSON.stringify(path.join(REPO_ROOT, "dist", "lib", "credentials.js"));
@@ -190,10 +191,26 @@ describe("policies", () => {
       expect(content).toContain("port: 8000");
     });
 
-    it("local-inference preset includes openclaw, claude, and common tool binaries", () => {
+    it("local-inference preset allowlists private host-gateway IP ranges", () => {
+      const content = requirePresetContent(policies.loadPreset("local-inference"));
+      const parsed = YAML.parse(content);
+      const endpoints = parsed.network_policies.local_inference.endpoints;
+      const expectedRanges = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"];
+
+      for (const port of [11434, 11435, 8000]) {
+        const endpoint = endpoints.find(
+          (item: { host?: string; port?: number; allowed_ips?: string[] }) =>
+            item.host === "host.openshell.internal" && item.port === port,
+        );
+        expect(endpoint, `missing host-gateway endpoint for port ${port}`).toBeDefined();
+        expect(endpoint?.allowed_ips).toEqual(expectedRanges);
+      }
+    });
+
+    it("local-inference preset includes openclaw and common tool binaries", () => {
       const content = requirePresetContent(policies.loadPreset("local-inference"));
       expect(content).toContain("/usr/local/bin/openclaw");
-      expect(content).toContain("/usr/local/bin/claude");
+      expect(content).not.toContain("/usr/local/bin/claude");
       // node, curl, and python3 are needed for direct inference access (#2199)
       expect(content).toContain("/usr/local/bin/node");
       expect(content).toContain("/usr/bin/node");
@@ -614,6 +631,28 @@ describe("policies", () => {
     });
   });
 
+  describe("mergePresetNamesIntoPolicy", () => {
+    it("merges built-in named presets into policy content", () => {
+      const current =
+        "version: 1\n\n" +
+        "network_policies:\n" +
+        "  existing:\n" +
+        "    name: existing\n" +
+        "    endpoints:\n" +
+        "      - host: api.example.com\n" +
+        "        port: 443\n" +
+        "        access: full\n";
+
+      const result = policies.mergePresetNamesIntoPolicy(current, ["slack"]);
+
+      expect(result.appliedPresets).toEqual(["slack"]);
+      expect(result.missingPresets).toEqual([]);
+      expect(result.policy).toContain("existing");
+      expect(result.policy).toContain("slack:");
+      expect(result.policy).toContain("wss-primary.slack.com");
+    });
+  });
+
   describe("preset YAML schema", () => {
     it("no preset has rules at NetworkPolicyRuleDef level", () => {
       // rules must be inside endpoints, not as sibling of endpoints/binaries
@@ -640,22 +679,34 @@ describe("policies", () => {
       }
     });
 
-    it("package-manager presets use protocol: rest with read-only rules", () => {
-      // Package managers only need read access to install packages.
-      // Using access: full opens a raw CONNECT tunnel that allows
-      // PUT/POST (publish, exfiltrate). Restrict via rest rules.
-      const packagePresets = ["pypi", "npm"];
-      for (const name of packagePresets) {
-        const content = requirePresetContent(policies.loadPreset(name));
-        expect(content).toBeTruthy();
-        expect(content.includes("access: full")).toBe(false);
-        expect(content.includes("protocol: rest")).toBe(true);
-        expect(content.includes("method: GET")).toBe(true);
-        // No write methods allowed
-        expect(content.includes("method: PUT")).toBe(false);
-        expect(content.includes("method: POST")).toBe(false);
-        expect(content.includes("method: DELETE")).toBe(false);
-      }
+    it("pypi preset uses protocol: rest with read-only rules", () => {
+      // PyPI only needs read access to install packages.
+      // PyPI's pip uses http.request() (not undici), so it goes through
+      // http-proxy-fix.js which rewrites FORWARD-mode to https.request,
+      // avoiding CONNECT entirely. protocol: rest is therefore safe and
+      // preferred for tighter L7 method enforcement.
+      const content = requirePresetContent(policies.loadPreset("pypi"));
+      expect(content).toBeTruthy();
+      expect(content.includes("access: full")).toBe(false);
+      expect(content.includes("protocol: rest")).toBe(true);
+      expect(content.includes("method: GET")).toBe(true);
+      // No write methods allowed
+      expect(content.includes("method: PUT")).toBe(false);
+      expect(content.includes("method: POST")).toBe(false);
+      expect(content.includes("method: DELETE")).toBe(false);
+    });
+
+    it("npm preset uses L4 tunnel for CONNECT compatibility (#2767)", () => {
+      // npm on Node 22 uses undici's built-in fetch which bypasses
+      // http.request() and issues CONNECT directly through HTTPS_PROXY.
+      // protocol: rest triggers L7 method inspection that rejects
+      // CONNECT, causing ECONNRESET on tarball downloads. access: full
+      // with tls: skip uses L4 tunneling that supports CONNECT.
+      const content = requirePresetContent(policies.loadPreset("npm"));
+      expect(content).toBeTruthy();
+      expect(content.includes("access: full")).toBe(true);
+      expect(content.includes("tls: skip")).toBe(true);
+      expect(content.includes("protocol: rest")).toBe(false);
     });
 
     it("outlook preset allows PATCH on graph.microsoft.com", () => {
@@ -680,12 +731,36 @@ describe("policies", () => {
       }
     });
 
-    it("telegram REST preset uses tls: terminate for L7 proxy", () => {
+    it("REST policy YAML avoids deprecated tls: terminate", () => {
+      const agentsDir = path.join(REPO_ROOT, "agents");
+      const agentPolicyFiles = fs.existsSync(agentsDir)
+        ? fs
+            .readdirSync(agentsDir, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => path.join(agentsDir, entry.name, "policy-additions.yaml"))
+            .filter((file) => fs.existsSync(file))
+        : [];
+      const policyFiles = [
+        path.join(REPO_ROOT, "nemoclaw-blueprint/policies/openclaw-sandbox.yaml"),
+        ...policies.listPresets().map((preset) =>
+          path.join(REPO_ROOT, "nemoclaw-blueprint/policies/presets", preset.file),
+        ),
+        ...agentPolicyFiles,
+      ];
+
+      for (const file of policyFiles) {
+        const content = fs.readFileSync(file, "utf8");
+        expect(content).not.toContain("tls: terminate");
+      }
+    });
+
+    it("telegram REST preset relies on automatic TLS handling", () => {
       const content = requirePresetContent(policies.loadPreset("telegram"));
       expect(content).toBeTruthy();
       expect(content).toMatch(
-        /host:\s*api\.telegram\.org[\s\S]*?protocol:\s*rest[\s\S]*?tls:\s*terminate/,
+        /host:\s*api\.telegram\.org[\s\S]*?protocol:\s*rest[\s\S]*?enforcement:\s*enforce/,
       );
+      expect(content).not.toMatch(/host:\s*api\.telegram\.org[\s\S]*?tls:/);
     });
 
     it("pypi preset allows HEAD for pip lazy-wheel metadata checks", () => {
@@ -1203,8 +1278,17 @@ Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
   });
 
   describe("loadPresetFromFile", () => {
+    const tmpDirs: string[] = [];
+    afterEach(() => {
+      while (tmpDirs.length > 0) {
+        const dir = tmpDirs.pop();
+        if (dir) fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     function writeTmp(body: string, ext = "yaml") {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-custom-preset-"));
+      tmpDirs.push(dir);
       const file = path.join(dir, `custom.${ext}`);
       fs.writeFileSync(file, body);
       return { dir, file };
@@ -1320,6 +1404,39 @@ Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
         expect(
           msgs.some((m) => typeof m === "string" && m.includes("collides with a built-in")),
         ).toBe(true);
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+
+    it("rejects files exceeding the size limit before reading", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-custom-preset-"));
+      tmpDirs.push(dir);
+      const file = path.join(dir, "huge.yaml");
+      const padding = "# ".repeat(5_500_000);
+      fs.writeFileSync(file, `preset:\n  name: huge\nnetwork_policies:\n  r:\n    name: r\n${padding}`);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        expect(policies.loadPresetFromFile(file)).toBe(null);
+        const msgs = errSpy.mock.calls.map((c) => c[0]);
+        expect(msgs.some((m) => typeof m === "string" && m.includes("too large"))).toBe(true);
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
+
+    it("rejects symbolic links to a preset file", () => {
+      const body = "preset:\n  name: link-target\nnetwork_policies:\n  r:\n    name: r\n";
+      const { dir, file } = writeTmp(body);
+      const linkPath = path.join(dir, "link.yaml");
+      fs.symlinkSync(file, linkPath);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        expect(policies.loadPresetFromFile(linkPath)).toBe(null);
+        const msgs = errSpy.mock.calls.map((c) => c[0]);
+        expect(msgs.some((m) => typeof m === "string" && m.includes("must not be a symbolic link"))).toBe(
+          true,
+        );
       } finally {
         errSpy.mockRestore();
       }
