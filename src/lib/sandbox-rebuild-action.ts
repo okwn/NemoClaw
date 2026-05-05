@@ -36,10 +36,16 @@ import { RD as _RD, B, D, G, R, YW } from "./terminal-style";
 
 const agentRuntime = require("../../bin/lib/agent-runtime");
 
+/**
+ * Emit timestamped rebuild diagnostics when verbose rebuild logging is enabled.
+ */
 function _rebuildLog(msg: string) {
   console.error(`  ${D}[rebuild ${new Date().toISOString()}] ${msg}${R}`);
 }
 
+/**
+ * Resolve the credential environment variable required to recreate a sandbox.
+ */
 function getRebuildCredentialEnvFromRegistry(provider: string | null | undefined): string | null {
   if (!provider || LOCAL_INFERENCE_PROVIDERS.includes(provider)) {
     return null;
@@ -51,6 +57,13 @@ function getRebuildCredentialEnvFromRegistry(provider: string | null | undefined
   return remoteConfig?.credentialEnv || null;
 }
 
+/**
+ * Rebuild a live sandbox while preserving registered agent state and policies.
+ *
+ * Agent sandboxes force-refresh their base image before backup/delete so local
+ * `Dockerfile.base` changes fail before destructive work and are applied to the
+ * recreated sandbox image.
+ */
 export async function rebuildSandbox(
   sandboxName: string,
   args: string[] = [],

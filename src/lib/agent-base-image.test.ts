@@ -8,6 +8,9 @@ type AgentOnboardModule = typeof import("../../dist/lib/agent-onboard");
 type DockerImageModule = typeof import("../../dist/lib/docker/image");
 type DockerInspectModule = typeof import("../../dist/lib/docker/inspect");
 
+/**
+ * Build a minimal Hermes agent manifest for base-image provisioning tests.
+ */
 function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
   return {
     name: "hermes",
@@ -41,6 +44,9 @@ function makeAgent(overrides: Partial<AgentDefinition> = {}): AgentDefinition {
   };
 }
 
+/**
+ * Load `agent-onboard` with Docker helpers replaced by Vitest mocks.
+ */
 function withMockedDocker<T>(
   run: (deps: {
     ensureAgentBaseImage: AgentOnboardModule["ensureAgentBaseImage"];

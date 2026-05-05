@@ -159,7 +159,12 @@ type AgentBinaryAvailability =
 
 const AGENT_BINARY_CHECK_PREFIX = "NEMOCLAW_AGENT_BINARY_CHECK:";
 
-// Exported for unit coverage of the sandbox-side guard without running onboarding.
+/**
+ * Check whether the selected agent binary is available inside the sandbox.
+ *
+ * Exported so tests can exercise the sandbox-side guard without running the
+ * full onboarding flow.
+ */
 export function verifyAgentBinaryAvailable(
   sandboxName: string,
   agent: AgentDefinition,
