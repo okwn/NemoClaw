@@ -755,6 +755,19 @@ If neither is found, verify that Colima is running:</p>
 </pre></div>
 </div>
 </section>
+<section id="sandbox-build-is-slow-or-hangs-under-provisioned-container-runtime">
+<h3>Sandbox build is slow or hangs (under-provisioned container runtime)<a class="headerlink" href="#sandbox-build-is-slow-or-hangs-under-provisioned-container-runtime" title="Link to this heading">#</a></h3>
+<p>Default Colima ships with 2 vCPU and 2 GiB of memory, which is not enough headroom for the BuildKit-driven sandbox image build.
+On macOS Apple Silicon, the build can stall part-way through with no progress and no error, leaving the wizard waiting indefinitely.</p>
+<p>Preflight inspects <code class="docutils literal notranslate"><span class="pre">docker</span> <span class="pre">info</span></code> for <code class="docutils literal notranslate"><span class="pre">NCPU</span></code> and <code class="docutils literal notranslate"><span class="pre">MemTotal</span></code> and prints a warning when the runtime falls below 4 vCPU or 8 GiB.
+On Colima, raise the resources before re-running onboard:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>colima<span class="w"> </span>stop
+<span class="gp">$ </span>colima<span class="w"> </span>start<span class="w"> </span>--cpu<span class="w"> </span><span class="m">6</span><span class="w"> </span>--memory<span class="w"> </span><span class="m">12</span><span class="w"> </span>--disk<span class="w"> </span><span class="m">100</span>
+</pre></div>
+</div>
+<p>On Docker Desktop, raise CPU and memory limits in <em>Settings → Resources</em>, then apply and restart.</p>
+<p>To silence the warning when the host is intentionally small, set <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_IGNORE_RUNTIME_RESOURCES=1</span></code> before running <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code>.</p>
+</section>
 <section id="re-onboard-fails-because-port-18789-is-held-by-ssh">
 <h3>Re-onboard fails because port 18789 is held by SSH<a class="headerlink" href="#re-onboard-fails-because-port-18789-is-held-by-ssh" title="Link to this heading">#</a></h3>
 <p>After destroying a sandbox and gateway, the SSH port-forward process for the
@@ -1391,6 +1404,7 @@ If you encounter issues with Podman, switch to a tested runtime (Docker Engine, 
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#invalid-sandbox-name">Invalid sandbox name</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sandbox-creation-fails-on-dgx">Sandbox creation fails on DGX</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#colima-socket-not-detected-macos">Colima socket not detected (macOS)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sandbox-build-is-slow-or-hangs-under-provisioned-container-runtime">Sandbox build is slow or hangs (under-provisioned container runtime)</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#re-onboard-fails-because-port-18789-is-held-by-ssh">Re-onboard fails because port 18789 is held by SSH</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#updated-messaging-token-is-not-picked-up">Updated messaging token is not picked up</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#sandbox-creation-killed-by-oom-exit-137">Sandbox creation killed by OOM (exit 137)</a></li>
