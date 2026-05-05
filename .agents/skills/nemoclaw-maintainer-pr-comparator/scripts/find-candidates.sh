@@ -33,8 +33,9 @@ JACCARD_THRESHOLD="0.4"
 MAX_CANDIDATES=10
 
 # Step 1: PRs that explicitly link the issue.
+# `in:body` is a search qualifier (part of the query string), not a CLI flag.
 candidates=$(gh search prs "${repo_args[@]}" --state open \
-  --in:body "#${issue_number}" --json number \
+  "\"#${issue_number}\" in:body" --json number \
   --jq ".[].number" 2>/dev/null | sort -u | head -n "$MAX_CANDIDATES")
 
 count=$(printf '%s\n' "$candidates" | grep -c '^[0-9]' || true)

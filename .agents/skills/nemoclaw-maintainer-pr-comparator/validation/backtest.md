@@ -20,7 +20,8 @@ gh pr list --state closed --search "is:closed -is:merged" --limit 100 \
   --jq '.[] | select(.body | test("supersed|duplicate|fixed by|closed in favor"; "i")) | {number, title}'
 
 # Merged PRs whose body explicitly superseded another
-gh search prs --repo OWNER/REPO --merged --in:body "supersedes" --limit 30
+# `in:body` is a search qualifier, not a flag — keep it inside the query string.
+gh search prs --repo OWNER/REPO --merged "supersedes in:body" --limit 30
 ```
 
 Pick 5-10 cases spanning different patterns:

@@ -35,8 +35,8 @@ gate_state_open=$([ "$state" = "OPEN" ] && echo true || echo false)
 
 # Gate 2: CI green on latest head SHA. statusCheckRollup contains the latest run.
 # Count failures and pendings; gate passes only when all are SUCCESS or SKIPPED.
-ci_failure_count=$(printf '%s' "$raw" | jq '[.statusCheckRollup[] | select((.conclusion // .state) == "FAILURE" or (.conclusion // .state) == "CANCELLED" or (.conclusion // .state) == "TIMED_OUT")] | length')
-ci_pending_count=$(printf '%s' "$raw" | jq '[.statusCheckRollup[] | select(.status == "IN_PROGRESS" or .status == "QUEUED" or .status == "PENDING")] | length')
+ci_failure_count=$(printf '%s' "$raw" | jq '[(.statusCheckRollup // [])[] | select((.conclusion // .state) == "FAILURE" or (.conclusion // .state) == "CANCELLED" or (.conclusion // .state) == "TIMED_OUT")] | length')
+ci_pending_count=$(printf '%s' "$raw" | jq '[(.statusCheckRollup // [])[] | select(.status == "IN_PROGRESS" or .status == "QUEUED" or .status == "PENDING")] | length')
 gate_ci_green=$([ "$ci_failure_count" = "0" ] && [ "$ci_pending_count" = "0" ] && echo true || echo false)
 
 # Gate 3: mergeable

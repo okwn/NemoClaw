@@ -31,7 +31,7 @@ Render the final scorecard with `scripts/render-verdict.py`. Below is the human-
 | Description-vs-diff drift | pass | pass |
 | Migration completion | pass | yellow (no follow-up link) |
 | Public surface preservation | pass | pass |
-| **Weighted score** | 18.5 / 21.0 | 14.0 / 21.0 |
+| **Weighted score** | 14.5 / 16.0 | 9.0 / 16.0 |
 
 ### Behavior Coverage Matrix
 

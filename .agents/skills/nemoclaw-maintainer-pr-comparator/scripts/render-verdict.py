@@ -203,10 +203,16 @@ def main() -> int:
         print()
 
     if mode == "happy":
-        print(f"\n### Verdict: MERGE PR #{winner}\n")
+        if winner is None:
+            print("\n### Verdict: No clear winner — see scorecard for recommended action\n")
+        else:
+            print(f"\n### Verdict: MERGE PR #{winner}\n")
     else:
         print("\n### Verdict: Neither mergeable yet\n")
-        print(f"PR #{winner} is closer to ready.\n")
+        if winner is not None:
+            print(f"PR #{winner} is closer to ready.\n")
+        else:
+            print("No PR is meaningfully closer; both need substantial salvage.\n")
 
     print("Reasoning trace:")
     if supersession:

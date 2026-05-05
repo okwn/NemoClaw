@@ -1,12 +1,13 @@
 # Tier 2 — Code Quality Checks
 
-Three 1%-clever LLM judgments. Score: pass = 1, yellow = 0.5, fail = 0; weight 1.0× per check.
+Four 1%-clever LLM judgments. Score: pass = 1, yellow = 0.5, fail = 0; weight 1.0× per check.
 
 ## Contents
 
 - 2.1 Description-vs-diff drift
 - 2.2 Migration completion
 - 2.3 Public surface preservation
+- 2.4 Workaround-vs-root-cause
 
 ## 2.1 Description-vs-diff drift
 
@@ -46,3 +47,18 @@ For any content **change** (not pure move) in:
 **Fail if:** Content changes change user-facing behavior AND no Notes AND no docs update.
 
 **Why this catches real bugs:** Authors often make small UX changes (error message wording, help format) without realizing they're public-surface changes. End users notice. Forcing a Notes section forces awareness.
+
+## 2.4 Workaround-vs-root-cause
+
+Grep the diff for symptom-suppression patterns:
+
+- `try { ... } catch { /* empty or swallow */ }` blocks
+- `catch (err) { return; }` with no rethrow or logging
+- `if (err.code === '<errno>') return` (errno-specific silent ignores like EACCES, ENOENT, EEXIST)
+- Defensive returns in error paths that hide failures from callers
+
+If any are added in the diff, the PR body must (a) link to a follow-up issue for the root-cause fix, OR (b) explain why the suppression is the correct behavior (e.g., "expected during shutdown, callers handle absence elsewhere"). Without (a) or (b) → yellow.
+
+**Why this catches real bugs:** Symptom-suppression hides bugs without fixing them. The same code can fail in production for a different reason and now no one sees it. Forcing a justification or follow-up makes the cost-of-suppression visible.
+
+**Score key:** Tier 2 has 4 checks total. Max contribution per PR = 4 × 1.0 = 4.0 points. Combined with Tier 1's max of 12.0 (6 checks × 2.0), the overall max weighted score is **16.0**.
