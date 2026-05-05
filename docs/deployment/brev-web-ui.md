@@ -1,6 +1,6 @@
 ---
 title:
-  page: "Get Started with NemoClaw on Brev (Web UI)"
+  page: "Launch NemoClaw with the Brev Web UI"
   nav: "Brev Web UI"
 description:
   main: "Launch a hosted NemoClaw sandbox from the Brev web interface without installing the CLI or using a local GPU."
@@ -20,7 +20,7 @@ status: published
   SPDX-License-Identifier: Apache-2.0
 -->
 
-# Get Started with NemoClaw on Brev (Web UI)
+# Launch NemoClaw with the Brev Web UI
 
 Use the Brev web UI to launch a hosted NemoClaw sandbox from your browser.
 This flow provisions a remote VM, configures inference, starts OpenClaw inside an OpenShell sandbox, and opens the OpenClaw dashboard.
