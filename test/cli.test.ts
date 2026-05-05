@@ -360,6 +360,10 @@ describe("CLI dispatch", () => {
     expect(r.out.includes("Sandbox Management")).toBeTruthy();
     expect(r.out.includes("Policy Presets")).toBeTruthy();
     expect(r.out.includes("Compatibility Commands")).toBeTruthy();
+    expect(r.out).toContain("nemoclaw onboard");
+    expect(r.out).toContain("Configure inference endpoint and credentials");
+    expect(r.out).toContain("nemoclaw onboard --from");
+    expect(r.out).toContain("Use a custom Dockerfile for the sandbox image");
   });
 
   it("--help exits 0", () => {
