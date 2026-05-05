@@ -550,7 +550,7 @@ If both WSL and Windows-host Ollama are running, pick the intended menu entry du
 The native install/start paths also reset NemoClaw-managed systemd launches to the loopback binding.
 Containers and other hosts on the local network reach Ollama only through the
 proxy, which validates a Bearer token before forwarding requests.
-On that native path, Ollama itself is never exposed without authentication.</p>
+On that native path, NemoClaw never exposes Ollama without authentication.</p>
 <p>WSL Ollama paths do not use this proxy.
 Windows-host Ollama uses the Windows daemon through <code class="docutils literal notranslate"><span class="pre">host.docker.internal</span></code>.</p>
 <p>For non-WSL Ollama setups, the onboard wizard manages the proxy automatically:</p>
