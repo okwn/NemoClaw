@@ -43,7 +43,7 @@
 #   NEMOCLAW_EXPERIMENTAL=1            — experimental inference options (onboard)
 #   NEMOCLAW_PROVIDER=cloud            — non-interactive provider selection
 #   NEMOCLAW_MODEL=...                 — optional during Phase 3 install
-#   NEMOCLAW_CLOUD_EXPERIMENTAL_MODEL  — cloud model for first onboard (default: moonshotai/kimi-k2.5); legacy: NEMOCLAW_SCENARIO_A_MODEL
+#   NEMOCLAW_CLOUD_EXPERIMENTAL_MODEL  — cloud model for first onboard (default: moonshotai/kimi-k2.6); legacy: NEMOCLAW_SCENARIO_A_MODEL
 #   NEMOCLAW_POLICY_MODE=custom
 #   NEMOCLAW_POLICY_PRESETS            — e.g. npm,pypi (github preset TBD in repo)
 #   RUN_E2E_CLOUD_EXPERIMENTAL_INTERACTIVE=1 — optional: expect-based steps (later phases)
@@ -174,7 +174,7 @@ else
 fi
 unset _script_dir _candidate
 
-CLOUD_EXPERIMENTAL_MODEL="${NEMOCLAW_CLOUD_EXPERIMENTAL_MODEL:-${NEMOCLAW_SCENARIO_A_MODEL:-moonshotai/kimi-k2.5}}"
+CLOUD_EXPERIMENTAL_MODEL="${NEMOCLAW_CLOUD_EXPERIMENTAL_MODEL:-${NEMOCLAW_SCENARIO_A_MODEL:-moonshotai/kimi-k2.6}}"
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 E2E_CLOUD_EXPERIMENTAL_READY_DIR="${E2E_DIR}/e2e-cloud-experimental/checks"
 
