@@ -2594,6 +2594,7 @@ function handleFinalGatewayStartFailure({
   collectDiagnostics = () =>
     runCaptureOpenshell(["doctor", "logs", "--name", GATEWAY_NAME], {
       ignoreError: true,
+      timeout: 10_000,
     }),
   cleanupGateway = destroyGateway,
   exitProcess = (code) => process.exit(code),
