@@ -99,6 +99,7 @@ export NEMOCLAW_REBUILD_VERBOSE=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 EXPECTED_HERMES_VERSION="$(grep -E '^expected_version:' "${REPO_ROOT}/agents/hermes/manifest.yaml" | sed -E 's/.*"([^"]+)".*/\1/')"
+[ -n "${EXPECTED_HERMES_VERSION}" ] || fail "Could not parse expected Hermes version from manifest"
 
 if [ "${STALE_BASE_REBUILD}" = "1" ]; then
   info "Hermes stale-base rebuild E2E (old: ${OLD_HERMES_VERSION}, expected: ${EXPECTED_HERMES_VERSION}, sandbox: ${SANDBOX_NAME})"

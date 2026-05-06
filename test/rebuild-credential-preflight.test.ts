@@ -225,7 +225,8 @@ if (a[0]==="build") { process.exit(${dockerBuildExitCode}); }
 if (a[0]==="image" && a[1]==="inspect") { process.exit(0); }
 if (a[0]==="inspect") { process.stdout.write("true\\n"); process.exit(0); }
 if (a[0]==="ps") { process.exit(0); }
-process.exit(0);
+process.stderr.write("unexpected docker call: " + a.join(" ") + "\\n");
+process.exit(1);
 `,
     { mode: 0o755 },
   );
