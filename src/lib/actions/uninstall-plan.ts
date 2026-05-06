@@ -13,7 +13,7 @@ export interface FileSystemDeps {
 }
 
 export interface HostUninstallPlanOptions extends Omit<UninstallPlanOptions, "shim"> {
-  env: Pick<NodeJS.ProcessEnv, "HOME" | "TMPDIR" | "XDG_BIN_HOME">;
+  env: Partial<Pick<NodeJS.ProcessEnv, "HOME" | "TMPDIR" | "XDG_BIN_HOME">>;
   fs?: FileSystemDeps;
 }
 
