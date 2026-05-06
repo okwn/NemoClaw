@@ -207,16 +207,8 @@ export function verifyDeployment(
       : "The gateway process may have crashed during startup. Check /tmp/gateway.log inside the sandbox.",
   });
 
-  // 2. Gateway version
+  // 2. Gateway version (cosmetic — not a health signal)
   const gatewayVersion = gateway.reachable ? fetchGatewayVersion(sandboxName, deps) : null;
-  if (gateway.reachable && !gatewayVersion) {
-    diagnostics.push({
-      link: "version",
-      status: "warn",
-      detail: "gateway is running but version could not be determined",
-      hint: "This may indicate an outdated OpenClaw installation.",
-    });
-  }
 
   // 3. Dashboard reachable from host (port forward)
   const dashboard = verifyDashboardFromHost(chain, deps);
