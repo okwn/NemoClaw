@@ -51,6 +51,28 @@ describe("runFixCoreDns", () => {
     expect(log).toHaveBeenCalledWith("Done. DNS should resolve in ~10 seconds.");
   });
 
+  it("does not probe the Colima VM resolver for non-Colima runtimes", () => {
+    const run = vi.fn(() => ok("nameserver 8.8.8.8\n"));
+    const result = runFixCoreDns(
+      { gatewayName: "nemoclaw" },
+      {
+        commandExists: () => true,
+        env: { DOCKER_HOST: "unix:///run/user/1000/podman/podman.sock" },
+        log: vi.fn(),
+        readFile: () => "nameserver 1.1.1.1\n",
+        run,
+        runDocker: (args) => {
+          if (args[0] === "ps") return ok("openshell-cluster-nemoclaw\n");
+          if (args[0] === "exec" && args[2] === "cat") return ok("nameserver 9.9.9.9\n");
+          return ok();
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it("fails before patching when the upstream contains shell metacharacters", () => {
     const calls: Array<[string, string[]]> = [];
     const result = runFixCoreDns(

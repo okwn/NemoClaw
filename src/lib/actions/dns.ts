@@ -157,8 +157,9 @@ export function runFixCoreDns(
     runDocker(["exec", cluster, "cat", "/etc/resolv.conf"], { env: dockerEnv }),
   );
   const hostResolvConf = readFile("/etc/resolv.conf");
+  const colimaVmResolvConf = detected.runtime === "colima" ? getColimaVmResolvConf(deps, dockerEnv) : undefined;
   const upstreamDns = resolveCoreDnsUpstream({
-    colimaVmResolvConf: getColimaVmResolvConf(deps, dockerEnv),
+    colimaVmResolvConf,
     containerResolvConf,
     hostResolvConf,
     runtime: detected.runtime,
