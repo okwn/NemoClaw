@@ -70,7 +70,6 @@ describe("resolveLegacySandboxDispatch", () => {
       args: ["alpha", "install", "--help"],
     });
     expect(resolveLegacySandboxDispatch("alpha", "skill", ["bogus"])).toEqual({
-
       kind: "oclif",
       commandId: "sandbox:skill",
       args: ["alpha", "bogus"],
