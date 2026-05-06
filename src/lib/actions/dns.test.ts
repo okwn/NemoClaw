@@ -20,7 +20,22 @@ describe("runFixCoreDns", () => {
     const result = runFixCoreDns({}, { env: { HOME: "/tmp/none" }, existsSocket: () => false, log });
 
     expect(result).toEqual({ exitCode: 0, runtime: "unknown", skipped: true });
-    expect(log).toHaveBeenCalledWith("Skipping CoreDNS patch: no Colima or Podman socket found.");
+    expect(log).toHaveBeenCalledWith("Skipping CoreDNS patch: no supported Colima or Podman Docker socket found.");
+  });
+
+  it("skips unsupported explicit Docker hosts", () => {
+    const log = vi.fn();
+    const result = runFixCoreDns(
+      {},
+      {
+        env: { DOCKER_HOST: "unix:///var/run/docker.sock" },
+        log,
+        runDocker: vi.fn(),
+      },
+    );
+
+    expect(result).toEqual({ exitCode: 0, runtime: "custom", skipped: true });
+    expect(log).toHaveBeenCalledWith("Skipping CoreDNS patch: no supported Colima or Podman Docker socket found.");
   });
 
   it("patches CoreDNS through docker with JSON-escaped Corefile payload", () => {
@@ -50,6 +65,28 @@ describe("runFixCoreDns", () => {
     const patchJson = patchCall?.[1].at(-1) ?? "";
     expect(JSON.parse(patchJson).data.Corefile).toContain("forward . 9.9.9.9");
     expect(log).toHaveBeenCalledWith("Done. DNS should resolve in ~10 seconds.");
+  });
+
+  it("does not probe the Colima VM resolver for non-Colima runtimes", () => {
+    const run = vi.fn(() => ok("nameserver 8.8.8.8\n"));
+    const result = runFixCoreDns(
+      { gatewayName: "nemoclaw" },
+      {
+        commandExists: () => true,
+        env: { DOCKER_HOST: "unix:///run/user/1000/podman/podman.sock" },
+        log: vi.fn(),
+        readFile: () => "nameserver 1.1.1.1\n",
+        run,
+        runDocker: (args) => {
+          if (args[0] === "ps") return ok("openshell-cluster-nemoclaw\n");
+          if (args[0] === "exec" && args[2] === "cat") return ok("nameserver 9.9.9.9\n");
+          return ok();
+        },
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("fails before patching when the upstream contains shell metacharacters", () => {

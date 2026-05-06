@@ -64,6 +64,32 @@ describe("uninstall run plan", () => {
     expect(dockerCalls.some((args) => args.join(" ") === "volume rm -f openshell-cluster-nemoclaw")).toBe(true);
   });
 
+  it("accepts typed interactive confirmation", () => {
+    const logs: string[] = [];
+    const run = vi.fn((_command: string, args: string[]) => {
+      if (args[0] === "-c") return ok("/fake/bin/tool\n");
+      if (args[0] === "-f") return ok("");
+      return ok();
+    });
+
+    const result = runUninstallPlan(
+      { assumeYes: false, deleteModels: false, keepOpenShell: true },
+      {
+        env: { HOME: "/tmp/nemoclaw-uninstall-test" } as NodeJS.ProcessEnv,
+        existsSync: () => false,
+        isTty: true,
+        log: (line) => logs.push(line),
+        readLine: () => "yes",
+        run,
+        runDocker: () => ok(""),
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(logs).toContain("Proceed? [y/N]");
+    expect(logs).toContain("Claws retracted. Until next time.");
+  });
+
   it("aborts without applying the plan when confirmation is declined", () => {
     const logs: string[] = [];
     const run = vi.fn();
@@ -80,5 +106,31 @@ describe("uninstall run plan", () => {
     expect(result.exitCode).toBe(0);
     expect(logs).toContain("Aborted.");
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it("does not report swap cleanup success when swapoff fails", () => {
+    const warnings: string[] = [];
+    const logs: string[] = [];
+    const result = runUninstallPlan(
+      { assumeYes: true, deleteModels: false, keepOpenShell: true },
+      {
+        commandExists: (command) => command !== "docker" && command !== "pgrep",
+        env: { HOME: "/home/test", TMPDIR: "/tmp/test" } as NodeJS.ProcessEnv,
+        error: (line) => warnings.push(line),
+        existsSync: (target) => target === "/swapfile" || target === "/home/test/.nemoclaw/managed_swap",
+        isTty: true,
+        log: (line) => logs.push(line),
+        rmSync: vi.fn(),
+        run: (_command, args) => {
+          if (args[0] === "swapoff") return { status: 1, stdout: "", stderr: "swapoff failed" };
+          return ok();
+        },
+        runDocker: () => ok(""),
+      },
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(warnings).toContain("Failed to disable /swapfile; skipping swap cleanup.");
+    expect(logs).not.toContain("Swap file removed");
   });
 });

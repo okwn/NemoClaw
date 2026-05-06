@@ -183,8 +183,8 @@ export function runFixCoreDns(
   const runDocker = deps.runDocker ?? defaultRunDocker;
   const detected = detectDockerHost(env, deps);
 
-  if (!detected.dockerHost) {
-    log("Skipping CoreDNS patch: no Colima or Podman socket found.");
+  if (!detected.dockerHost || (detected.runtime !== "colima" && detected.runtime !== "podman")) {
+    log("Skipping CoreDNS patch: no supported Colima or Podman Docker socket found.");
     return { exitCode: 0, runtime: detected.runtime, skipped: true };
   }
 
@@ -208,8 +208,9 @@ export function runFixCoreDns(
     runDocker(["exec", cluster, "cat", "/etc/resolv.conf"], { env: dockerEnv }),
   );
   const hostResolvConf = readFile("/etc/resolv.conf");
+  const colimaVmResolvConf = detected.runtime === "colima" ? getColimaVmResolvConf(deps, dockerEnv) : undefined;
   const upstreamDns = resolveCoreDnsUpstream({
-    colimaVmResolvConf: getColimaVmResolvConf(deps, dockerEnv),
+    colimaVmResolvConf,
     containerResolvConf,
     hostResolvConf,
     runtime: detected.runtime,

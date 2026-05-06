@@ -54,6 +54,9 @@ except Exception:
 `;
 }
 
+// Kubernetes pod names append generated suffixes to the requested sandbox name.
+// Keep substring matching so names such as "box[1]" match "pod/box[1]-abc",
+// then strip the leading "pod/" prefix before returning the pod name.
 export function selectSandboxPod(sandboxName: string, podsOutput: string): string | null {
   for (const line of podsOutput.split(/\r?\n/)) {
     const trimmed = line.trim();

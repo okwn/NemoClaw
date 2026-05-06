@@ -65,6 +65,15 @@ function defaultCommandExists(command: string, env: NodeJS.ProcessEnv): boolean 
   return defaultRun("sh", ["-c", `command -v ${JSON.stringify(command)} >/dev/null 2>&1`], { env }).status === 0;
 }
 
+function defaultReadLine(env: NodeJS.ProcessEnv): string | null {
+  const result = defaultRun("sh", ["-c", "IFS= read -r reply; printf '%s' \"$reply\""], {
+    encoding: "utf-8",
+    env,
+    stdio: ["inherit", "pipe", "inherit"],
+  });
+  return result.status === 0 ? result.stdout : null;
+}
+
 function splitNonEmptyLines(output: string): string[] {
   return output
     .split(/\r?\n/)
@@ -140,7 +149,7 @@ function buildRuntime(deps: UninstallRunDeps): UninstallRuntime {
     env,
     error: deps.error ?? ((message) => console.error(message)),
     existsSync: deps.existsSync ?? ((target) => fs.existsSync(target)),
-    isTty: deps.isTty ?? !!process.stdout.isTTY,
+    isTty: deps.isTty ?? !!process.stdin.isTTY,
     kill:
       deps.kill ??
       ((pid, signal) => {
@@ -152,7 +161,7 @@ function buildRuntime(deps: UninstallRunDeps): UninstallRuntime {
         }
       }),
     log: deps.log ?? ((message) => console.log(message)),
-    readLine: deps.readLine ?? (() => null),
+    readLine: deps.readLine ?? (() => defaultReadLine(env)),
     rmSync: deps.rmSync ?? fs.rmSync,
     run: deps.run ?? defaultRun,
     runDocker: deps.runDocker ?? defaultRunDocker,
@@ -178,6 +187,7 @@ function confirm(options: UninstallRunOptions, runtime: UninstallRuntime): boole
   runtime.log("  · ~/.nemoclaw  ~/.config/openshell  ~/.config/nemoclaw");
   runtime.log("  · Global nemoclaw npm package");
   runtime.log(options.deleteModels ? `  · Ollama models: ${NEMOCLAW_OLLAMA_MODELS.join(" ")}` : "  · Ollama models: kept");
+  runtime.log("Proceed? [y/N]");
   const reply = runtime.readLine();
   if (reply && /^(y|yes)$/i.test(reply.trim())) return true;
   runtime.log("Aborted.");
@@ -388,9 +398,14 @@ function removeManagedSwap(paths: UninstallPaths, runtime: UninstallRuntime): vo
     runtime.warn("Skipping swap cleanup in non-interactive mode (requires sudo).");
     return;
   }
-  runtime.run("sudo", ["swapoff", "/swapfile"], { env: runtime.env, stdio: "ignore" });
-  runtime.run("sudo", ["rm", "-f", "/swapfile"], { env: runtime.env, stdio: "ignore" });
-  runtime.log("Swap file removed");
+  const swapoff = runtime.run("sudo", ["swapoff", "/swapfile"], { env: runtime.env, stdio: "ignore" });
+  if (swapoff.status !== 0) {
+    runtime.warn("Failed to disable /swapfile; skipping swap cleanup.");
+    return;
+  }
+  const rm = runtime.run("sudo", ["rm", "-f", "/swapfile"], { env: runtime.env, stdio: "ignore" });
+  if (rm.status === 0) runtime.log("Swap file removed");
+  else runtime.warn("Failed to remove /swapfile.");
 }
 
 function executePlan(plan: UninstallPlan, paths: UninstallPaths, options: UninstallRunOptions, runtime: UninstallRuntime): void {

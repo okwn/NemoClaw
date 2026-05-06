@@ -23,8 +23,11 @@ export default class InternalDnsFixCoreDnsCommand extends Command {
     const { args } = await this.parse(InternalDnsFixCoreDnsCommand);
     const result = runFixCoreDns({ gatewayName: args.gatewayName });
     if (result.exitCode !== 0) {
-      if (result.message) console.error(result.message);
-      process.exit(result.exitCode);
+      if (result.message) {
+        this.error(result.message, { exit: result.exitCode });
+      } else {
+        this.exit(result.exitCode);
+      }
     }
   }
 }

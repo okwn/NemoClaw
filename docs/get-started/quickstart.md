@@ -43,6 +43,13 @@ NemoClaw creates a fresh OpenClaw instance inside the sandbox during the onboard
 curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 ```
 
+The piped installer prompts through your terminal. In headless scripts or CI,
+pass explicit acceptance to the `bash` side of the pipe:
+
+```console
+$ curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_NON_INTERACTIVE=1 NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
+```
+
 If you use nvm or fnm to manage Node.js, the installer might not update your current shell's PATH.
 If `nemoclaw` is not found after install, run `source ~/.bashrc` (or `source ~/.zshrc` for zsh) or open a new terminal.
 
@@ -73,7 +80,7 @@ The inference provider prompt presents a numbered list.
 
 Pick the option that matches where you want inference traffic to go, then expand the matching helper below for the follow-up prompts and the API key environment variable to set.
 For the full list of providers and validation behavior, refer to [Inference Options](../inference/inference-options.md).
-Local Ollama appears only when NemoClaw detects Ollama on the host.
+Local Ollama appears when NemoClaw detects a usable local Ollama path or can offer an install or start action for your platform.
 
 :::{tip}
 Export the API key before launching the installer so the wizard does not have to ask for it.
@@ -185,9 +192,10 @@ Respond to the wizard as follows.
 :::{dropdown} Option 7: Local Ollama
 :icon: cpu
 
-Routes inference to a local Ollama instance on `localhost:11434`. This option only appears when Ollama is installed or running on the host.
+Routes inference to a local Ollama instance. Depending on your platform, the wizard can use an existing daemon, start an installed daemon, or offer an install action.
 
-No API key is required. NemoClaw generates a token and starts an authenticated proxy so containers can reach Ollama without exposing it to your network.
+No API key is required. On non-WSL hosts, NemoClaw generates a token and starts an authenticated proxy so containers can reach Ollama without exposing the daemon directly to your network.
+On WSL, NemoClaw can also use Ollama on the Windows host through `host.docker.internal`.
 
 Respond to the wizard as follows.
 
@@ -196,9 +204,6 @@ Respond to the wizard as follows.
 
 For setup details, including GPU recommendations and starter model choices, refer to [Use a Local Inference Server](../inference/use-local-inference.md).
 
-:::{warning}
-Ollama binds to `0.0.0.0` so the sandbox can reach it through Docker. On public WiFi, any device on the same network can send prompts to your GPU through the Ollama API. Refer to CNVD-2025-04094 and CVE-2024-37032.
-:::
 :::
 
 :::{dropdown} Experimental: Local NIM and Local vLLM
@@ -207,7 +212,7 @@ Ollama binds to `0.0.0.0` so the sandbox can reach it through Docker. On public 
 These options appear when `NEMOCLAW_EXPERIMENTAL=1` is set and the prerequisites are met.
 
 - **Local NVIDIA NIM** requires a NIM-capable GPU. NemoClaw pulls and manages a NIM container.
-- **Local vLLM** requires a vLLM server already running on `localhost:8000`. NemoClaw auto-detects the loaded model.
+- **Local vLLM** uses a vLLM server already running on `localhost:8000`, or installs and starts a managed vLLM container on supported DGX Spark, DGX Station, and Linux NVIDIA GPU hosts. NemoClaw auto-detects the loaded model.
 
 For setup, refer to [Use a Local Inference Server](../inference/use-local-inference.md).
 :::
@@ -227,7 +232,7 @@ For example, if you picked an OpenAI-compatible endpoint, the summary looks like
   Web search:    disabled
   Messaging:     none
   Sandbox name:  my-gpt-claw
-  Note:          Sandbox build takes ~6 minutes on this host.
+  Note:          Sandbox build typically takes 5–15 minutes on this host.
   ──────────────────────────────────────────────────
   Web search and messaging channels will be prompted next.
   Apply this configuration? [Y/n]:
@@ -282,21 +287,24 @@ You can chat with the agent from the terminal or the browser.
 
 ### Open the OpenClaw UI in a Browser to Chat with the Agent
 
-The onboard wizard starts a background port forward to the sandbox dashboard, then prints a tokenized URL in the install summary.
+The onboard wizard starts a background port forward to the sandbox dashboard, then prints the dashboard URL in the install summary.
 The default host port is `18789`.
 If that port is already taken, NemoClaw uses the next free dashboard port, such as `18790`, and prints that port in the final URL.
+The gateway token is redacted from displayed output; retrieve it explicitly when the browser asks for authentication.
 
 ```text
 ──────────────────────────────────────────────────
-OpenClaw UI (tokenized URL; treat it like a password; save it now - it will not be printed again)
+OpenClaw UI (auth token redacted from displayed URLs)
 Port 18790 must be forwarded before opening these URLs.
-Dashboard: http://127.0.0.1:18790/#token=<auth-token>
+Dashboard: http://127.0.0.1:18790/
+Token:       nemoclaw my-gpt-claw gateway-token --quiet
+             append  #token=<token> locally if the browser asks for auth.
 ──────────────────────────────────────────────────
 ```
 
-Open the printed URL in your browser.
-The `#token=<auth-token>` fragment authenticates the browser to the sandbox gateway, so save the URL securely and treat it like a password.
-NemoClaw prints the token only once.
+Open the dashboard URL in your browser.
+If the browser asks for authentication, run the printed `gateway-token --quiet` command and append `#token=<token>` locally.
+Treat the token like a password.
 
 ### Chat with the Agent from the Terminal
 
@@ -319,6 +327,7 @@ openclaw agent --agent main --local -m "hello" --session-id test
 - [Switch inference providers](../inference/switch-inference-providers.md) to use a different model or endpoint.
 - [Approve or deny network requests](../network-policy/approve-network-requests.md) when the agent tries to reach external hosts.
 - [Customize the network policy](../network-policy/customize-network-policy.md) to pre-approve trusted domains.
+- [Common integration policy examples](../network-policy/integration-policy-examples.md) for maintained policy presets such as Outlook, messaging, GitHub, Jira, Brave Search, package managers, Hugging Face, and local inference.
 - [Deploy to a remote GPU instance](../deployment/deploy-to-remote-gpu.md) for always-on operation.
 - [Monitor sandbox activity](../monitoring/monitor-sandbox-activity.md) through the OpenShell TUI.
 - [Consult the troubleshooting guide](../reference/troubleshooting.md) for common error messages and resolution steps.
