@@ -251,6 +251,34 @@ describe("onboard helpers", () => {
     }
   });
 
+  it("falls back to agent default when NEMOCLAW_SANDBOX_NAME is invalid", () => {
+    const previous = process.env.NEMOCLAW_SANDBOX_NAME;
+    try {
+      process.env.NEMOCLAW_SANDBOX_NAME = "123-leading-digit-invalid";
+      expect(getSandboxPromptDefault(null)).toBe("my-assistant");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.NEMOCLAW_SANDBOX_NAME;
+      } else {
+        process.env.NEMOCLAW_SANDBOX_NAME = previous;
+      }
+    }
+  });
+
+  it("falls back to agent default when NEMOCLAW_SANDBOX_NAME contains spaces", () => {
+    const previous = process.env.NEMOCLAW_SANDBOX_NAME;
+    try {
+      process.env.NEMOCLAW_SANDBOX_NAME = "bad name";
+      expect(getSandboxPromptDefault(null)).toBe("my-assistant");
+    } finally {
+      if (previous === undefined) {
+        delete process.env.NEMOCLAW_SANDBOX_NAME;
+      } else {
+        process.env.NEMOCLAW_SANDBOX_NAME = previous;
+      }
+    }
+  });
+
   it("classifies sandbox create timeout failures and tracks upload progress", () => {
     expect(
       classifySandboxCreateFailure("Error: failed to read image export stream\nTimeout error").kind,

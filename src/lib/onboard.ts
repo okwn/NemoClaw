@@ -3861,7 +3861,13 @@ function getDefaultSandboxNameForAgent(agent: AgentDefinition | null | undefined
 
 function getSandboxPromptDefault(agent: AgentDefinition | null | undefined): string {
   const envName = (process.env.NEMOCLAW_SANDBOX_NAME || "").trim().toLowerCase();
-  return envName || getDefaultSandboxNameForAgent(agent);
+  const agentDefault = getDefaultSandboxNameForAgent(agent);
+  if (!envName) return agentDefault;
+  try {
+    return validateName(envName, "sandbox name");
+  } catch {
+    return agentDefault;
+  }
 }
 
 function getEffectiveSandboxAgent(agent: AgentDefinition | null | undefined): AgentDefinition {
