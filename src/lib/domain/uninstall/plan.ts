@@ -20,7 +20,10 @@ export interface UninstallPlanOptions {
 
 export type UninstallPlanAction =
   | { kind: "delete-docker-volume"; name: string }
+  | { kind: "delete-managed-swap" }
   | { kind: "delete-ollama-model"; name: string }
+  | { kind: "delete-related-docker-containers" }
+  | { kind: "delete-related-docker-images" }
   | { kind: "delete-openshell-binary"; path: string }
   | { kind: "delete-openshell-provider"; name: string }
   | { kind: "delete-path"; path: string }
@@ -79,7 +82,11 @@ export function buildUninstallPlan(paths: UninstallPaths, options: UninstallPlan
       },
       {
         name: "Docker resources",
-        actions: gatewayVolumeCandidates(gatewayName).map((name) => ({ kind: "delete-docker-volume" as const, name })),
+        actions: [
+          { kind: "delete-related-docker-containers" },
+          { kind: "delete-related-docker-images" },
+          ...gatewayVolumeCandidates(gatewayName).map((name) => ({ kind: "delete-docker-volume" as const, name })),
+        ],
       },
       {
         name: "Ollama models",
@@ -90,6 +97,7 @@ export function buildUninstallPlan(paths: UninstallPaths, options: UninstallPlan
       {
         name: "State and binaries",
         actions: [
+          { kind: "delete-managed-swap" },
           ...paths.runtimeTempGlobs.map((pattern) => ({ kind: "delete-runtime-glob" as const, pattern })),
           ...(options.keepOpenShell
             ? [{ kind: "preserve-openshell-binary" as const, paths: paths.openshellInstallPaths }]
