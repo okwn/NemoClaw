@@ -73,7 +73,7 @@ These are the primary `make` and `npm` targets for day-to-day development:
 | `make check` | Run all linters (TypeScript + Python) |
 | `make lint` | Same as `make check` |
 | `make format` | Auto-format TypeScript and Python source |
-| `npm run typecheck:cli` | Type-check CLI TypeScript (`bin/`, `scripts/`) |
+| `npm run typecheck:cli` | Type-check CLI TypeScript (`bin/`, `scripts/`, `src/`, `test/`) |
 | `npm test` | Run root-level tests (`test/*.test.js`) |
 | `cd nemoclaw && npm test` | Run plugin unit tests (Vitest) |
 | `make docs` | Build documentation (Sphinx/MyST) |
@@ -91,6 +91,10 @@ All git hooks are managed by [prek](https://prek.j178.dev/), a fast, single-bina
 | **pre-push** | TypeScript type check (`tsc --noEmit` for plugin, JS, and CLI) |
 
 For a full manual check: `npx prek run --all-files`. For scoped runs: `npx prek run --from-ref <base> --to-ref HEAD`.
+
+For TypeScript changes under `src/`, `test/`, `scripts/`, or `bin/`, also run
+`npm run typecheck:cli` before opening a PR. CI runs this unconditionally, and the
+pre-push hook is configured to run it when CLI TypeScript files change.
 
 If you still have `core.hooksPath` set from an old Husky setup, Git will ignore `.git/hooks`. Run `git config --unset core.hooksPath` in this repo, then `npm install` so `prek install` (via `prepare`) can register the hooks.
 
