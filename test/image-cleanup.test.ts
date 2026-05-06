@@ -16,7 +16,7 @@ import { getSandboxDeleteOutcome } from "../src/lib/domain/sandbox/destroy";
 import { normalizeGarbageCollectImagesOptions } from "../src/lib/domain/lifecycle/options";
 import { help as renderRootHelp } from "../src/lib/actions/root-help";
 import { COMMANDS, globalCommandTokens } from "../src/lib/command-registry";
-import { resolveGlobalOclifDispatch } from "../src/lib/cli/oclif-dispatch";
+import { getRegisteredOclifCommandMetadata } from "../src/lib/cli/oclif-metadata";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -125,8 +125,8 @@ describe("image cleanup: gc command exists (#2086)", () => {
     expect(globalCommandTokens()).toContain("gc");
   });
 
-  it("gc command is dispatched through the oclif bridge", () => {
-    expect(resolveGlobalOclifDispatch("gc", [])).toEqual({ kind: "oclif", commandId: "gc", args: [] });
+  it("gc command is discovered by oclif", () => {
+    expect(getRegisteredOclifCommandMetadata("gc")).toBeTruthy();
   });
 
   it("gc option normalization supports dry-run and confirmation aliases", () => {

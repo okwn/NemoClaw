@@ -8,7 +8,7 @@ export default withCommandDisplay(Command, [
   {
     usage: "nemoclaw <name> snapshot restore",
     description: "Restore state from a snapshot",
-    flags: "[v<N>|name|timestamp] [--to <dst>] (omit version for latest; auto-creates <dst> from this sandbox image if needed)",
+    flags: "[selector] [--to <dst>]",
     group: "Sandbox Management",
     scope: "sandbox",
     order: 9,

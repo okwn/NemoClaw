@@ -3,116 +3,91 @@
 
 import { describe, expect, it } from "vitest";
 
-import { resolveGlobalOclifDispatch, resolveSandboxOclifDispatch } from "./oclif-dispatch";
+import { resolveLegacySandboxDispatch } from "./oclif-dispatch";
 
-describe("resolveGlobalOclifDispatch", () => {
-  it("routes simple and nested global commands through oclif", () => {
-    expect(resolveGlobalOclifDispatch("list", ["--json"])).toEqual({
-      kind: "oclif",
-      commandId: "list",
-      args: ["--json"],
-    });
-    expect(resolveGlobalOclifDispatch("tunnel", ["start"])).toEqual({
-      kind: "oclif",
-      commandId: "tunnel:start",
-      args: [],
-    });
-    expect(resolveGlobalOclifDispatch("--version", [])).toEqual({
-      kind: "oclif",
-      commandId: "root:version",
-      args: [],
-    });
-  });
-
-  it("returns usage and unknown-subcommand dispatches for unsupported global forms", () => {
-    expect(resolveGlobalOclifDispatch("tunnel", ["restart"])).toEqual({
-      kind: "usageError",
-      lines: ["tunnel <start|stop>"],
-    });
-    expect(resolveGlobalOclifDispatch("credentials", ["bogus"])).toEqual({
-      kind: "unknownSubcommand",
-      command: "credentials",
-      subcommand: "bogus",
-    });
-    expect(resolveGlobalOclifDispatch("bogus", [])).toEqual({ kind: "usageError", lines: [] });
-  });
-});
-
-describe("resolveSandboxOclifDispatch", () => {
-  it("routes sandbox status through oclif", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "status", [])).toEqual({
+describe("resolveLegacySandboxDispatch", () => {
+  it("rewrites simple legacy sandbox actions to oclif command dispatches", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "status", [])).toEqual({
       kind: "oclif",
       commandId: "sandbox:status",
       args: ["alpha"],
     });
-  });
-
-  it("keeps sandbox status help public", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "status", ["--help"])).toMatchObject({
-      kind: "help",
-      usage: "status",
-    });
-  });
-
-  it("routes sandbox doctor through oclif", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "doctor", ["--json"])).toEqual({
+    expect(resolveLegacySandboxDispatch("alpha", "doctor", ["--json"])).toEqual({
       kind: "oclif",
       commandId: "sandbox:doctor",
       args: ["alpha", "--json"],
     });
   });
 
-  it("keeps sandbox doctor help public", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "doctor", ["--help"])).toMatchObject({
-      kind: "help",
-      usage: "doctor [--json]",
-    });
-  });
-
-  it("keeps logs help public with filter flags", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "logs", ["--help"])).toMatchObject({
-      kind: "help",
-      usage: "logs [--follow] [--tail <lines>|-n <lines>] [--since <duration>]",
-    });
-  });
-
-  it("routes policy-add missing-value errors through the strict oclif adapter", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "policy-add", ["--from-file"])).toEqual({
+  it("rewrites legacy hyphenated actions to oclif-native command ids", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "policy-add", ["--from-file"])).toEqual({
       kind: "oclif",
       commandId: "sandbox:policy:add",
       args: ["alpha", "--from-file"],
     });
-  });
-
-  it("routes skill help and unknown subcommands through oclif", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "skill", ["--help"])).toEqual({
+    expect(resolveLegacySandboxDispatch("alpha", "gateway-token", ["--quiet"])).toEqual({
       kind: "oclif",
-      commandId: "sandbox:skill",
-      args: ["alpha", "--help"],
-    });
-    expect(resolveSandboxOclifDispatch("alpha", "skill", ["bogus"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:skill",
-      args: ["alpha", "bogus"],
+      commandId: "sandbox:gateway:token",
+      args: ["alpha", "--quiet"],
     });
   });
 
-  it("routes nested sandbox defaults, help, and usage errors", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "channels", [])).toEqual({
+  it("keeps legacy public help usage for sandbox-scoped commands", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "status", ["--help"])).toEqual({
+      kind: "help",
+      commandId: "sandbox:status",
+      publicUsage: "<name> status",
+    });
+    expect(resolveLegacySandboxDispatch("alpha", "logs", ["--help"])).toEqual({
+      kind: "help",
+      commandId: "sandbox:logs",
+      publicUsage: "<name> logs [--follow] [--tail <lines>|-n <lines>] [--since <duration>]",
+    });
+  });
+
+  it("rewrites nested sandbox subcommands and defaults", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "channels", [])).toEqual({
       kind: "oclif",
       commandId: "sandbox:channels:list",
       args: ["alpha"],
     });
-    expect(resolveSandboxOclifDispatch("alpha", "channels", ["add", "slack"])).toEqual({
+    expect(resolveLegacySandboxDispatch("alpha", "channels", ["add", "slack"])).toEqual({
       kind: "oclif",
       commandId: "sandbox:channels:add",
       args: ["alpha", "slack"],
     });
-    expect(resolveSandboxOclifDispatch("alpha", "config", ["bogus"])).toEqual({
+    expect(resolveLegacySandboxDispatch("alpha", "snapshot", ["restore", "latest"])).toEqual({
+      kind: "oclif",
+      commandId: "sandbox:snapshot:restore",
+      args: ["alpha", "latest"],
+    });
+  });
+
+  it("falls back to parent commands that intentionally own unknown subcommands and custom help", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "skill", ["install", "--help"])).toEqual({
+      kind: "oclif",
+      commandId: "sandbox:skill",
+      args: ["alpha", "install", "--help"],
+    });
+    expect(resolveLegacySandboxDispatch("alpha", "skill", ["bogus"])).toEqual({
+
+      kind: "oclif",
+      commandId: "sandbox:skill",
+      args: ["alpha", "bogus"],
+    });
+    expect(resolveLegacySandboxDispatch("alpha", "snapshot", ["bogus"])).toEqual({
+      kind: "oclif",
+      commandId: "sandbox:snapshot",
+      args: ["alpha", "bogus"],
+    });
+  });
+
+  it("preserves legacy usage errors for config and shields groups", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "config", ["bogus"])).toEqual({
       kind: "usageError",
       lines: ["config get [--key dotpath] [--format json|yaml]"],
     });
-    expect(resolveSandboxOclifDispatch("alpha", "shields", ["bogus"])).toEqual({
+    expect(resolveLegacySandboxDispatch("alpha", "shields", ["bogus"])).toEqual({
       kind: "usageError",
       lines: [
         "shields <down|up|status>",
@@ -123,13 +98,13 @@ describe("resolveSandboxOclifDispatch", () => {
     });
   });
 
-  it("routes snapshot unknown subcommands and unknown actions", () => {
-    expect(resolveSandboxOclifDispatch("alpha", "snapshot", ["bogus"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:snapshot",
-      args: ["alpha", "bogus"],
+  it("reports channel subcommand and action errors", () => {
+    expect(resolveLegacySandboxDispatch("alpha", "channels", ["bogus"])).toEqual({
+      kind: "unknownSubcommand",
+      command: "channels",
+      subcommand: "bogus",
     });
-    expect(resolveSandboxOclifDispatch("alpha", "bogus", [])).toEqual({
+    expect(resolveLegacySandboxDispatch("alpha", "bogus", [])).toEqual({
       kind: "unknownAction",
       action: "bogus",
     });
