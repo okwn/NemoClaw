@@ -557,7 +557,7 @@ Running <code class="docutils literal notranslate"><span class="pre">nemoclaw</s
 <p>Run the interactive setup wizard (recommended for new installs).
 The wizard creates an OpenShell gateway, registers inference providers, builds the sandbox image, and creates the sandbox.
 Use this command for new installs and for recreating a sandbox after changes to policy or configuration.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span><span class="o">[</span>--non-interactive<span class="o">]</span><span class="w"> </span><span class="o">[</span>--resume<span class="w"> </span><span class="p">|</span><span class="w"> </span>--fresh<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate-sandbox<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gpu<span class="o">]</span><span class="w"> </span><span class="o">[</span>--from<span class="w"> </span>&lt;Dockerfile&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>&lt;sandbox&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--agent<span class="w"> </span>&lt;name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--control-ui-port<span class="w"> </span>&lt;N&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes-i-accept-third-party-software<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span><span class="o">[</span>--non-interactive<span class="o">]</span><span class="w"> </span><span class="o">[</span>--resume<span class="w"> </span><span class="p">|</span><span class="w"> </span>--fresh<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate-sandbox<span class="o">]</span><span class="w"> </span><span class="o">[</span>--gpu<span class="w"> </span><span class="p">|</span><span class="w"> </span>--no-gpu<span class="o">]</span><span class="w"> </span><span class="o">[</span>--from<span class="w"> </span>&lt;Dockerfile&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>&lt;sandbox&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--agent<span class="w"> </span>&lt;name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--control-ui-port<span class="w"> </span>&lt;N&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes-i-accept-third-party-software<span class="o">]</span>
 </pre></div>
 </div>
 <div class="admonition warning">
@@ -729,15 +729,16 @@ This variant of <code class="docutils literal notranslate"><span class="pre">nem
 </section>
 <section id="gpu-passthrough">
 <h3>GPU passthrough<a class="headerlink" href="#gpu-passthrough" title="Link to this heading">#</a></h3>
-<p>Pass <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> to enable OpenShell GPU passthrough at both the gateway and sandbox level.
-Use this when the agent workload itself needs direct GPU access inside the sandbox, such as CUDA tools or <code class="docutils literal notranslate"><span class="pre">nvidia-smi</span></code>.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> detects an NVIDIA GPU on the host (<code class="docutils literal notranslate"><span class="pre">nvidia-smi</span></code> succeeds), it enables OpenShell GPU passthrough at both the gateway and sandbox level by default.
+Use <code class="docutils literal notranslate"><span class="pre">--no-gpu</span></code> to opt out when you want host-side inference providers only and do not need direct GPU access inside the sandbox.
+Use <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> to require GPU passthrough and fail fast if an NVIDIA GPU is not detected.</p>
 <p>Prerequisites:</p>
 <ul class="simple">
 <li><p>NVIDIA GPU drivers installed and working (<code class="docutils literal notranslate"><span class="pre">nvidia-smi</span></code> must succeed).</p></li>
 <li><p>NVIDIA Container Toolkit configured for Docker.</p></li>
 </ul>
-<p>If a gateway already exists without GPU passthrough, <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span> <span class="pre">--gpu</span></code> exits with guidance to destroy and re-onboard.
-To add GPU to an existing sandbox, rerun with <code class="docutils literal notranslate"><span class="pre">--gpu</span> <span class="pre">--recreate-sandbox</span></code>.</p>
+<p>When GPU passthrough is enabled and a gateway already exists without it, onboarding exits with guidance to destroy and re-onboard.
+To add GPU to an existing sandbox, rerun with <code class="docutils literal notranslate"><span class="pre">--recreate-sandbox</span></code>.</p>
 </section>
 <section id="nemoclaw-list">
 <h3><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">list</span></code><a class="headerlink" href="#nemoclaw-list" title="Link to this heading">#</a></h3>
