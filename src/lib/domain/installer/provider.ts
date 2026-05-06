@@ -15,11 +15,10 @@ export const INSTALLER_PROVIDER_VALUES = [
 
 export type InstallerProvider = (typeof INSTALLER_PROVIDER_VALUES)[number];
 
-const PROVIDER_ALIASES: Readonly<Record<string, InstallerProvider>> = {
+export const INSTALLER_PROVIDER_ALIASES: Readonly<Record<string, InstallerProvider>> = {
   anthropiccompatible: "anthropicCompatible",
   cloud: "build",
   nim: "nim-local",
-  vllm: "vllm",
 };
 
 const PROVIDERS_BY_LOWERCASE = new Map<string, InstallerProvider>(
@@ -30,17 +29,20 @@ export function normalizeInstallerProvider(value: string | null | undefined): In
   const provider = (value ?? "").trim();
   if (!provider) return null;
   const key = provider.toLowerCase();
-  return PROVIDER_ALIASES[key] ?? PROVIDERS_BY_LOWERCASE.get(key) ?? null;
+  return INSTALLER_PROVIDER_ALIASES[key] ?? PROVIDERS_BY_LOWERCASE.get(key) ?? null;
 }
 
 export function installerProviderHelpValues(): string {
-  return "build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm";
+  return INSTALLER_PROVIDER_VALUES.join(", ");
 }
 
 export function installerProviderUsageLines(): readonly string[] {
+  const aliases = Object.entries(INSTALLER_PROVIDER_ALIASES)
+    .map(([alias, provider]) => `${alias} -> ${provider}`)
+    .join(", ");
   return [
-    "build | openai | anthropic | anthropicCompatible",
-    "gemini | ollama | custom | nim-local | vllm",
-    "aliases: cloud -> build, nim -> nim-local",
+    INSTALLER_PROVIDER_VALUES.slice(0, 4).join(" | "),
+    INSTALLER_PROVIDER_VALUES.slice(4).join(" | "),
+    `aliases: ${aliases}`,
   ];
 }
