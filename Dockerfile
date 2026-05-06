@@ -230,14 +230,21 @@ COPY scripts/nemoclaw-start.sh /usr/local/bin/nemoclaw-start
 COPY nemoclaw-blueprint/scripts/*.js /usr/local/lib/nemoclaw/preloads/
 COPY scripts/codex-acp-wrapper.sh /usr/local/bin/nemoclaw-codex-acp
 COPY scripts/generate-openclaw-config.py /usr/local/lib/nemoclaw/generate-openclaw-config.py
-RUN chmod 755 /usr/local/bin/nemoclaw-start /usr/local/bin/nemoclaw-codex-acp /usr/local/lib/nemoclaw/sandbox-init.sh \
-    && chmod 644 /usr/local/lib/nemoclaw/preloads/*.js
+COPY nemoclaw-blueprint/openclaw-plugins/ /usr/local/share/nemoclaw/openclaw-plugins/
+RUN chmod 755 /usr/local/bin/nemoclaw-start /usr/local/bin/nemoclaw-codex-acp \
+        /usr/local/lib/nemoclaw/sandbox-init.sh \
+        /usr/local/lib/nemoclaw/generate-openclaw-config.py \
+    && chmod 644 /usr/local/lib/nemoclaw/preloads/*.js \
+    && chmod 755 /usr/local/share/nemoclaw \
+        /usr/local/share/nemoclaw/openclaw-plugins \
+    && find /usr/local/share/nemoclaw/openclaw-plugins -type d -exec chmod 755 {} + \
+    && find /usr/local/share/nemoclaw/openclaw-plugins -type f -exec chmod 644 {} +
 
 # Build args for config that varies per deployment.
 # nemoclaw onboard passes these at image build time.
 ARG NEMOCLAW_MODEL=nvidia/nemotron-3-super-120b-a12b
-ARG NEMOCLAW_PROVIDER_KEY=nvidia
-ARG NEMOCLAW_PRIMARY_MODEL_REF=nvidia/nemotron-3-super-120b-a12b
+ARG NEMOCLAW_PROVIDER_KEY=inference
+ARG NEMOCLAW_PRIMARY_MODEL_REF=inference/nvidia/nemotron-3-super-120b-a12b
 # Default dashboard port 18789 — override at runtime via NEMOCLAW_DASHBOARD_PORT.
 ARG CHAT_UI_URL=http://127.0.0.1:18789
 ARG NEMOCLAW_INFERENCE_BASE_URL=https://inference.local/v1
@@ -268,8 +275,8 @@ ARG NEMOCLAW_MESSAGING_ALLOWED_IDS_B64=e30=
 # Used to enable guild-channel responses for native Discord. Default: empty map.
 ARG NEMOCLAW_DISCORD_GUILDS_B64=e30=
 # Base64-encoded JSON Telegram config (e.g. {"requireMention":true}).
-# When requireMention is true, Telegram groups get groupPolicy: mentions;
-# otherwise groupPolicy: open (existing default). See #1737. Default: empty map.
+# When requireMention is true, Telegram groups get groups: {"*": {"requireMention": true}}
+# with groupPolicy: open. See #1737, #3022. Default: empty map.
 ARG NEMOCLAW_TELEGRAM_CONFIG_B64=e30=
 # Set to "1" to force-disable device-pairing auth. Also auto-disabled when
 # CHAT_UI_URL is a non-loopback address (Brev Launchable, remote deployments)
@@ -513,6 +520,34 @@ RUN chown -R sandbox:sandbox /sandbox/.openclaw \
     && find /sandbox/.openclaw -type d -exec chmod g+s {} + \
     && chmod 2770 /sandbox/.openclaw \
     && chmod 660 /sandbox/.openclaw/openclaw.json
+
+# System-wide proxy hooks for shells where ~/.bashrc / ~/.profile aren't
+# sourced (e.g. `bash -ic` / `bash -lc` invoked under a different user or
+# without HOME=/sandbox). Defined in Dockerfile.base; replayed here so the
+# fix applies before the GHCR base image catches up. Idempotent — `mv` of
+# a freshly-rebuilt /etc/bash.bashrc is harmless once the base layer
+# already includes the prepended hook (the cat | mv block just rewrites
+# with the same first line).
+# Ref: https://github.com/NVIDIA/NemoClaw/issues/2704
+# hadolint ignore=SC2028,DL4006
+RUN if ! grep -q "/tmp/nemoclaw-proxy-env.sh" /etc/profile.d/nemoclaw-proxy.sh 2>/dev/null; then \
+        printf '%s\n' \
+            '# NemoClaw runtime proxy config — see /tmp/nemoclaw-proxy-env.sh (#2704)' \
+            '[ -f /tmp/nemoclaw-proxy-env.sh ] && . /tmp/nemoclaw-proxy-env.sh' \
+            > /etc/profile.d/nemoclaw-proxy.sh \
+        && chmod 444 /etc/profile.d/nemoclaw-proxy.sh; \
+    fi \
+    && if ! head -2 /etc/bash.bashrc | grep -q "/tmp/nemoclaw-proxy-env.sh"; then \
+        chmod 644 /etc/bash.bashrc 2>/dev/null || true; \
+        { printf '%s\n' \
+              '# NemoClaw runtime proxy config — see /tmp/nemoclaw-proxy-env.sh (#2704)' \
+              '[ -f /tmp/nemoclaw-proxy-env.sh ] && . /tmp/nemoclaw-proxy-env.sh' \
+              ''; \
+          cat /etc/bash.bashrc; \
+        } > /etc/bash.bashrc.new \
+        && mv /etc/bash.bashrc.new /etc/bash.bashrc \
+        && chmod 444 /etc/bash.bashrc; \
+    fi
 
 # Pin config hash at build time so the entrypoint can verify integrity.
 RUN sha256sum /sandbox/.openclaw/openclaw.json > /sandbox/.openclaw/.config-hash \

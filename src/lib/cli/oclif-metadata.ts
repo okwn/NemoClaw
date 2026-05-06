@@ -44,7 +44,11 @@ function* walkCommandFiles(dir: string, prefix = ""): Generator<string> {
     const stat = fs.statSync(absolute);
     if (stat.isDirectory()) {
       yield* walkCommandFiles(absolute, relative);
-    } else if (stat.isFile() && entry.endsWith(".js") && !entry.endsWith(".test.js")) {
+    } else if (
+      stat.isFile() &&
+      /\.(js|cjs|mjs|ts|tsx|mts|cts)$/.test(entry) &&
+      !/\.(d|test|spec)\.(js|ts|tsx|mts|cts)$/.test(entry)
+    ) {
       yield relative;
     }
   }

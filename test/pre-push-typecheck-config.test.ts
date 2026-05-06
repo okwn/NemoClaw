@@ -23,6 +23,7 @@ describe("pre-push TypeScript checks", () => {
 
     expect(block).toContain("entry: npx tsc -p tsconfig.cli.json");
     expect(block).toContain("stages: [pre-push]");
+    expect(block).toContain("always_run: true");
     expect(block).toContain(
       String.raw`files: ^(bin|scripts|src|test|nemoclaw-blueprint/scripts)/.*\.(ts|tsx)$|^tsconfig\.cli\.json$`,
     );

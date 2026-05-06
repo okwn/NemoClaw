@@ -3,7 +3,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { installerProviderHelpValues, installerProviderUsageLines, normalizeInstallerProvider } from "./provider";
+import {
+  INSTALLER_PROVIDER_ALIASES,
+  INSTALLER_PROVIDER_VALUES,
+  installerProviderHelpValues,
+  installerProviderUsageLines,
+  normalizeInstallerProvider,
+} from "./provider";
 
 describe("installer provider helpers", () => {
   it("normalizes installer provider aliases and case variants", () => {
@@ -16,6 +22,15 @@ describe("installer provider helpers", () => {
     expect(normalizeInstallerProvider("unsupported")).toBeNull();
   });
 
+  it("keeps provider values and aliases aligned with normalization", () => {
+    for (const provider of INSTALLER_PROVIDER_VALUES) {
+      expect(normalizeInstallerProvider(provider)).toBe(provider);
+    }
+    for (const [alias, provider] of Object.entries(INSTALLER_PROVIDER_ALIASES)) {
+      expect(normalizeInstallerProvider(alias)).toBe(provider);
+    }
+  });
+
   it("keeps help text values aligned with install.sh usage", () => {
     expect(installerProviderHelpValues()).toBe(
       "build, openai, anthropic, anthropicCompatible, gemini, ollama, custom, nim-local, vllm",
@@ -23,7 +38,7 @@ describe("installer provider helpers", () => {
     expect(installerProviderUsageLines()).toEqual([
       "build | openai | anthropic | anthropicCompatible",
       "gemini | ollama | custom | nim-local | vllm",
-      "aliases: cloud -> build, nim -> nim-local",
+      "aliases: anthropiccompatible -> anthropicCompatible, cloud -> build, nim -> nim-local",
     ]);
   });
 });

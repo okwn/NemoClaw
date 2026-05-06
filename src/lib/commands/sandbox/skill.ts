@@ -15,6 +15,9 @@ export default class SkillCliCommand extends Command {
 
   public async run(): Promise<void> {
     const [sandboxName, ...actionArgs] = this.argv;
+    if (!sandboxName || sandboxName.trim() === "") {
+      this.error("Missing required sandboxName for skill.", { exit: 2 });
+    }
     await getSkillInstallRuntimeBridge().sandboxSkillInstall(sandboxName, actionArgs);
   }
 }

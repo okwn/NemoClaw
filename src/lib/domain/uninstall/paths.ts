@@ -50,7 +50,7 @@ export function defaultUninstallPaths(options: UninstallPathOptions): UninstallP
     nemoclawStateDir: path.join(options.home, ".nemoclaw"),
     openshellConfigDir: path.join(options.home, ".config", "openshell"),
     openshellInstallPaths: ["/usr/local/bin/openshell", path.join(xdgBinHome, "openshell")],
-    repoRoot: options.repoRoot || path.resolve(__dirname, "..", "..", ".."),
+    repoRoot: options.repoRoot || path.resolve(__dirname, "..", "..", "..", ".."),
     runtimeTempGlobs: [path.join(tmpDir, "nemoclaw-create-*.log"), path.join(tmpDir, "nemoclaw-tg-ssh-*.conf")],
     shellProfilePaths: [
       path.join(options.home, ".bashrc"),

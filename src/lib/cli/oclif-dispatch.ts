@@ -123,7 +123,9 @@ export function resolveGlobalOclifDispatch(cmd: string, args: string[]): Dispatc
     return { kind: "unknownSubcommand", command: "credentials", subcommand: sub };
   }
 
-  if (cmd === "--version" || cmd === "-v") return oclif("root:version", []);
+  if (cmd === "version" || cmd === "--version" || cmd === "-v") {
+    return oclif("root:version", []);
+  }
 
   return { kind: "usageError", lines: [] };
 }
@@ -179,6 +181,10 @@ export function resolveLegacySandboxDispatch(
     return { kind: "usageError", lines: SHIELDS_USAGE };
   }
 
+  if (action === "share" && hasHelpFlag(actionArgs)) {
+    return { kind: "help", commandId: "sandbox:share", publicUsage: "<name> share <mount|unmount|status>" };
+  }
+
   if (PARENT_ACTIONS.has(action)) {
     return {
       kind: "oclif",
@@ -189,3 +195,5 @@ export function resolveLegacySandboxDispatch(
 
   return { kind: "unknownAction", action };
 }
+
+export const resolveSandboxOclifDispatch = resolveLegacySandboxDispatch;

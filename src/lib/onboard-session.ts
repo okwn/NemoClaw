@@ -89,6 +89,7 @@ export interface Session {
   // migrated set is NOT seeded from the persisted record, so the cleanup
   // gate keeps the file until the *current* value is actually re-migrated.
   migratedLegacyValueHashes: Record<string, string> | null;
+  gpuPassthrough: boolean;
   telegramConfig: TelegramConfig | null;
   metadata: SessionMetadata;
   steps: Record<string, StepState>;
@@ -125,6 +126,7 @@ export interface SessionUpdates {
   policyPresets?: string[];
   messagingChannels?: string[];
   migratedLegacyValueHashes?: Record<string, string>;
+  gpuPassthrough?: boolean;
   telegramConfig?: TelegramConfig | null;
   metadata?: { gatewayName?: string; fromDockerfile?: string | null };
 }
@@ -145,6 +147,7 @@ export interface DebugSessionSummary {
   preferredInferenceApi: string | null;
   nimContainer: string | null;
   policyPresets: string[] | null;
+  gpuPassthrough: boolean;
   lastStepStarted: string | null;
   lastCompletedStep: string | null;
   failure: SessionFailure | null;
@@ -301,6 +304,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     migratedLegacyValueHashes: overrides.migratedLegacyValueHashes
       ? readStringRecord(overrides.migratedLegacyValueHashes)
       : null,
+    gpuPassthrough: overrides.gpuPassthrough === true,
     telegramConfig: parseTelegramConfig(overrides.telegramConfig),
     metadata: {
       gatewayName: overrides.metadata?.gatewayName ?? "nemoclaw",
@@ -333,6 +337,7 @@ export function normalizeSession(data: Session | SessionJsonValue | undefined): 
     policyPresets: readStringArray(data.policyPresets),
     messagingChannels: readStringArray(data.messagingChannels),
     migratedLegacyValueHashes: readStringRecord(data.migratedLegacyValueHashes),
+    gpuPassthrough: data.gpuPassthrough === true,
     telegramConfig: parseTelegramConfig(data.telegramConfig),
     lastStepStarted: readString(data.lastStepStarted),
     lastCompletedStep: readString(data.lastCompletedStep),
@@ -399,6 +404,8 @@ function parseLockFile(contents: string): LockInfo | null {
   }
 }
 
+const MALFORMED_STALE_SECONDS = 30;
+
 function isProcessAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -407,6 +414,49 @@ function isProcessAlive(pid: number): boolean {
   } catch (error) {
     return isErrnoException(error) && error.code === "EPERM";
   }
+}
+
+function readProcProcessStartMs(pid: number): number | null {
+  try {
+    const statText = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const btimeLine = fs
+      .readFileSync("/proc/stat", "utf8")
+      .split("\n")
+      .find((line) => line.startsWith("btime "));
+    const bootSeconds = btimeLine ? Number(btimeLine.trim().split(/\s+/)[1]) : NaN;
+    const closeParen = statText.lastIndexOf(")");
+    if (!Number.isFinite(bootSeconds) || closeParen < 0) return null;
+
+    const fieldsAfterComm = statText
+      .slice(closeParen + 2)
+      .trim()
+      .split(/\s+/);
+    const startTicks = Number(fieldsAfterComm[19]);
+    if (!Number.isFinite(startTicks)) return null;
+
+    // Linux exposes /proc/<pid>/stat starttime in USER_HZ ticks. 100 is the
+    // stable value on supported NemoClaw Linux hosts.
+    const clockTicksPerSecond = 100;
+    return (bootSeconds + startTicks / clockTicksPerSecond) * 1000;
+  } catch {
+    return null;
+  }
+}
+
+function lockHolderStillMatches(lock: LockInfo): boolean {
+  if (!isProcessAlive(lock.pid)) return false;
+  if (lock.pid === process.pid) return true;
+
+  const lockStartedMs = lock.startedAt ? Date.parse(lock.startedAt) : NaN;
+  if (!Number.isFinite(lockStartedMs)) return true;
+
+  const processStartMs = readProcProcessStartMs(lock.pid);
+  if (processStartMs === null) return true;
+
+  // The original lock holder must have started before it wrote the lock. If
+  // the currently-live PID started after the lock timestamp, the PID was reused
+  // and the lock is stale even though kill(pid, 0) succeeds.
+  return processStartMs <= lockStartedMs + 1000;
 }
 
 // File descriptor we hold across the lifetime of an acquired lock. On
@@ -468,12 +518,25 @@ export function acquireOnboardLock(command: string | null = null): LockResult {
         throw readError;
       }
       if (!existing) {
-        // Malformed lock file — leave it on disk (a human or another
-        // process may be mid-write) and retry. Pre-#1281 behavior
-        // preserved: never unlink a malformed lock automatically.
+        // Malformed lock file. If the file is very recent (<30 s), a
+        // concurrent process may be mid-write — leave it and retry.
+        // Otherwise the file is stale debris from a crash between
+        // openSync("wx") and writeSync() — remove it so subsequent
+        // onboard runs are not permanently blocked (#2765).
+        try {
+          const lockStat = fs.statSync(LOCK_FILE);
+          const ageMs = Date.now() - lockStat.mtimeMs;
+          if (ageMs > MALFORMED_STALE_SECONDS * 1000) {
+            unlinkIfInodeMatches(LOCK_FILE, staleInode);
+          }
+        } catch (statErr) {
+          if (!(isErrnoException(statErr) && statErr.code === "ENOENT")) {
+            throw statErr;
+          }
+        }
         continue;
       }
-      if (isProcessAlive(existing.pid)) {
+      if (lockHolderStillMatches(existing)) {
         return {
           acquired: false,
           lockFile: LOCK_FILE,
@@ -647,6 +710,9 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
     }
     safe.migratedLegacyValueHashes = cleaned;
   }
+  if (updates.gpuPassthrough === true || updates.gpuPassthrough === false) {
+    safe.gpuPassthrough = updates.gpuPassthrough;
+  }
   if (isObject(updates.telegramConfig) && typeof updates.telegramConfig.requireMention === "boolean") {
     safe.telegramConfig = { requireMention: updates.telegramConfig.requireMention };
   } else if (updates.telegramConfig === null) {
@@ -759,6 +825,7 @@ export function summarizeForDebug(
     preferredInferenceApi: session.preferredInferenceApi,
     nimContainer: session.nimContainer,
     policyPresets: session.policyPresets,
+    gpuPassthrough: session.gpuPassthrough,
     lastStepStarted: session.lastStepStarted,
     lastCompletedStep: session.lastCompletedStep,
     failure: sanitizeFailure(session.failure),

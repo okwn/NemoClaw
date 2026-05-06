@@ -8,7 +8,7 @@ export default withCommandDisplay(Command, [
   {
     usage: "nemoclaw gc",
     description: "Remove orphaned sandbox Docker images",
-    flags: "(--yes|--force, --dry-run)",
+    flags: "(--yes|-y|--force, --dry-run)",
     group: "Cleanup",
     scope: "global",
     order: 42,
