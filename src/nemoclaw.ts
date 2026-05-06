@@ -223,7 +223,7 @@ async function runDispatchResult(
 
 // eslint-disable-next-line complexity
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
-  if (argv[0] === "internal") {
+  if (argv[0] === "internal" || argv[0] === "sandbox") {
     await runOclifArgv(argv, {
       rootDir: ROOT,
       error: console.error,

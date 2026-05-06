@@ -1485,6 +1485,28 @@ describe("CLI dispatch", () => {
     expect(start.out).toContain("Channel 'telegram' is already enabled for 'alpha'. Nothing to do.");
   });
 
+  it("supports oclif-native sandbox command forms", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-native-sandbox-"));
+    writeSandboxRegistry(home);
+
+    const statusHelp = runWithEnv("sandbox status alpha --help", { HOME: home });
+    expect(statusHelp.code).toBe(0);
+    expect(statusHelp.out).toContain("$ nemoclaw sandbox status <name>");
+    expect(statusHelp.out).not.toContain("Sandbox 'sandbox' does not exist");
+
+    const policy = runWithEnv("sandbox policy add alpha github --dry-run", { HOME: home });
+    expect(policy.code).toBe(0);
+    expect(policy.out).toContain("--dry-run: no changes applied.");
+
+    const channels = runWithEnv("sandbox channels add alpha telegram --dry-run", { HOME: home });
+    expect(channels.code).toBe(0);
+    expect(channels.out).toContain("--dry-run: would enable channel 'telegram' for 'alpha'.");
+
+    const snapshots = runWithEnv("sandbox snapshot list alpha", { HOME: home });
+    expect(snapshots.code).toBe(0);
+    expect(snapshots.out).toContain("No snapshots found for 'alpha'.");
+  });
+
   it("policy and channel mutations reject missing parser-owned values before dispatch", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-mutation-missing-values-"));
     writeSandboxRegistry(home);

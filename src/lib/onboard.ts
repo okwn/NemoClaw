@@ -3886,10 +3886,12 @@ async function recoverGatewayRuntime() {
 
 // ── Step 3: Sandbox ──────────────────────────────────────────────
 
-// Names that collide with global CLI commands. A sandbox named 'status'
+// Names that collide with CLI command namespaces. A sandbox named 'status'
 // makes 'nemoclaw status connect' route to the global status command
-// instead of the sandbox, so reject these wherever a sandbox name enters
-// the system (interactive prompt, --name flag, NEMOCLAW_SANDBOX_NAME).
+// instead of the sandbox, and a sandbox named 'sandbox' collides with the
+// oclif-native `nemoclaw sandbox ...` command namespace. Reject these wherever
+// a sandbox name enters the system (interactive prompt, --name flag,
+// NEMOCLAW_SANDBOX_NAME).
 const RESERVED_SANDBOX_NAMES = new Set([
   "onboard",
   "list",
@@ -3903,6 +3905,7 @@ const RESERVED_SANDBOX_NAMES = new Set([
   "uninstall",
   "credentials",
   "help",
+  "sandbox",
 ]);
 
 function normalizeSandboxAgentName(agentName: string | null | undefined): string {
