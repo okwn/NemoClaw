@@ -19,7 +19,22 @@ describe("runFixCoreDns", () => {
     const result = runFixCoreDns({}, { env: { HOME: "/tmp/none" }, existsSocket: () => false, log });
 
     expect(result).toEqual({ exitCode: 0, runtime: "unknown", skipped: true });
-    expect(log).toHaveBeenCalledWith("Skipping CoreDNS patch: no Colima or Podman socket found.");
+    expect(log).toHaveBeenCalledWith("Skipping CoreDNS patch: no supported Colima or Podman Docker socket found.");
+  });
+
+  it("skips unsupported explicit Docker hosts", () => {
+    const log = vi.fn();
+    const result = runFixCoreDns(
+      {},
+      {
+        env: { DOCKER_HOST: "unix:///var/run/docker.sock" },
+        log,
+        runDocker: vi.fn(),
+      },
+    );
+
+    expect(result).toEqual({ exitCode: 0, runtime: "custom", skipped: true });
+    expect(log).toHaveBeenCalledWith("Skipping CoreDNS patch: no supported Colima or Podman Docker socket found.");
   });
 
   it("patches CoreDNS through docker with JSON-escaped Corefile payload", () => {
