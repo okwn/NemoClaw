@@ -8,7 +8,7 @@ export default withCommandDisplay(Command, [
   {
     usage: "nemoclaw upgrade-sandboxes",
     description: "Detect and rebuild stale sandboxes",
-    flags: "(--check, --auto)",
+    flags: "(--check, --auto, --yes|-y)",
     group: "Upgrade",
     scope: "global",
     order: 41,
