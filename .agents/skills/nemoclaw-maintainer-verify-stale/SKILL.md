@@ -115,6 +115,14 @@ If no version survives, drop the issue from the candidate set — we cannot esta
 
 **Variable format for downstream steps.** Set `REPORTED_VERSION` to the **full tag string** (e.g., `REPORTED_VERSION="v0.0.32"`), not just the patch number. Step 8a's installer expects the full tag via the `NEMOCLAW_INSTALL_TAG` env var.
 
+**NVBugs cross-reference.** Many NV QA bugs include an NVBugs ticket footer like `[NVB#6100043]`. Extract it at the same time as the version so Step 8.5's comment template (and any other comment template that wants to mention it) can include the cross-reference:
+
+```bash
+NVBUGS_REF=$(printf '%s' "$BODY" | grep -oE '\[NVB#[0-9]+\]' | head -1)
+```
+
+Templates ignore this when empty. When present, the comment must note that closing the GitHub issue does not propagate to NVBugs and QA needs to update the ticket separately.
+
 ### Implementer note: regex-pipeline pitfalls
 
 Three real failure modes surfaced during the v1 dry-run. Test each before trusting your implementation:
@@ -427,42 +435,133 @@ brev shell "$INSTANCE_NAME"
 
 ## Step 8.5: Detect "Behavior Changed by Design"
 
-Before scoring, check whether the symptom is intentional. Some bugs are filed against behavior that was **deliberately changed or removed** in a merged PR — running the rubric on these produces misleading verdicts. The symptom "still reproduces" but the right answer is "won't fix, see PR #X." Issue #2791 is the prototype: `config set` was removed in PR #2227, the reporter tested a version that already had it gone, and a verify-stale run that scored against the standard rubric would post a low-confidence `verify-inconclusive` label that buries the actual answer.
+Before scoring, check whether the symptom is intentional. Some bugs are filed against behavior that was **deliberately changed or removed** in a merged PR — running the standard rubric on these produces misleading verdicts. The symptom "still reproduces" but the right answer is "won't fix, see PR #X." Issue #2791 is the prototype: `config set` was removed in PR #2227, the reporter tested a version that already had it gone, and a standard rubric run would have buried that context under a low-confidence `verify-inconclusive` label.
 
-**Signals that fire this branch (any one is sufficient):**
+This step is split into substeps so the rigor is mechanical, not optional. Every claim in the final comment must be backed by a verifiable evidence block — a comment URL with quoted phrase, a commit SHA with diff range, or a grep command with its actual output. Hand-wavy claims fail Step 8.5d's self-verification pass and force a bail to `verify-inconclusive`.
 
-1. **Maintainer attribution in comments.** Any comment by an author with `authorAssociation` of `MEMBER`, `OWNER`, or `COLLABORATOR` matches `removed in #\d+`, `removed in [Pp][Rr] ?#\d+`, `by design`, `wontfix`, `won't fix`, `not a bug`, or `intentional`.
-2. **Removal commit in range.** A commit between the reported version and `$LATEST` has subject matching `(?i)\b(remove|delete|drop|deprecate)\b` AND its diff deletes the symbol implicated by the reproducer (CLI subcommand, function, flag).
-3. **Symbol absent in both versions.** The implicated symbol (e.g. `config set`) is not present in either the reported version's source tree or `$LATEST`'s — meaning it was already gone when the issue was filed.
+### Step 8.5a: Run signal detection
 
-**If any signal fires:**
+Any single signal is sufficient to trigger the by-design branch.
+
+**Signal 1 — Maintainer attribution in comments.** Any comment by an author with `authorAssociation` of `MEMBER`, `OWNER`, or `COLLABORATOR` matches `removed in #\d+`, `removed in [Pp][Rr] ?#\d+`, `by design`, `wontfix`, `won't fix`, `not a bug`, or `intentional`.
+
+```bash
+gh issue view "$ISSUE_NUMBER" --repo NVIDIA/NemoClaw --json comments \
+  --jq '.comments[]
+        | select(.authorAssociation == "MEMBER" or .authorAssociation == "OWNER" or .authorAssociation == "COLLABORATOR")
+        | select(.body | test("removed in #\\d+|by design|wontfix|won.t fix|not a bug|intentional"; "i"))
+        | {url, author: .author.login, body}'
+```
+
+Capture for evidence: comment URL + author login + the exact quoted phrase.
+
+**Signal 2 — Removal commit in range.** A commit between the reported version and `$LATEST` has subject matching `(?i)\b(remove|delete|drop|deprecate)\b` AND its diff deletes the symbol implicated by the reproducer (CLI subcommand, function, flag).
+
+```bash
+# Find candidate removal commits.
+git log "$REPORTED_VERSION".."$LATEST" --grep='remove\|delete\|drop\|deprecate' -i --oneline
+
+# For each candidate, confirm the diff actually deletes the symbol (not just renames).
+git log -p <candidate-sha> -- src/ bin/ nemoclaw/src/ | grep -nE '^-.*\b<symbol>\b'
+```
+
+Capture for evidence: commit SHA + each `file:line` block of deletions touching the symbol.
+
+**Signal 3 — Symbol absent in both reported version and latest.** The implicated symbol (e.g. `config set`) is not present in either tag's source tree — meaning the responsible change landed before the version the reporter tested. This is the #2791 case.
+
+```bash
+git grep -n "<symbol>" "$REPORTED_VERSION" -- src/ bin/ nemoclaw/   # expect: zero matches (or shim-only — see sub-case)
+git grep -n "<symbol>" "$LATEST"            -- src/ bin/ nemoclaw/   # expect: zero matches (or shim-only)
+```
+
+Capture for evidence: both grep commands and their (empty) outputs.
+
+**Sub-case for signals 2 and 3 — vestigial deprecation shims.** It's common for a removed symbol to survive in latest *only* as a deprecation message (e.g., a CLI subcommand that prints `"--<flag> was removed; use <X> instead"` and exits non-zero). When a grep returns matches in latest, inspect each `file:line`. If every match is a deprecation stub with no functional effect on the bug-as-filed, signal 2 or 3 still fires; record the shim locations and behavior as a separate evidence block. Do not silently treat shims as functional code, and do not silently treat them as absence.
+
+### Step 8.5b: Pre-check related failure modes
+
+A by-design verdict says "the bug *as filed* can't reproduce." It does NOT say "every bug shaped like this is fixed." Before drafting the comment, search latest's source for code paths that could still produce the issue's described **symptom** (not the literal removed flag/symbol — the symptom).
+
+```bash
+# Use the issue's symptom keywords, not the removed symbol.
+git grep -nE "<symptom-keyword-1>|<symptom-keyword-2>" "$LATEST" -- src/ nemoclaw/src/
+```
+
+For #2168 the literal flag is `--dangerously-skip-permissions`, but the symptom is "sandbox created but not registered in CLI." Grepping for `register.*[Ss]andbox`, the readiness-gate / cleanup-failure path in `src/lib/onboard.ts` surfaces as a related-but-different way to produce an orphan sandbox.
+
+If a related failure mode is found, the by-design comment MUST include a "What's not literally the same bug" section that names it with `file:line`. Don't suppress the call-out by claiming "the symptom is impossible" when the symptom can be reached via a different path.
+
+### Step 8.5c: Check existing test coverage
+
+Search the repo for tests that exercise the NEW intended workflow (the one that replaced the removed symbol). Citing them strengthens the comment from "trust me, it was removed" to "the new workflow is exercised by these tests."
+
+```bash
+git grep -lnE "<new-workflow-keyword>" -- test/ nemoclaw/src/ 2>/dev/null | head -5
+```
+
+Cite at most three concrete test paths. If none exist, omit the section — do not invent paths.
+
+### Step 8.5d: Self-verification pass before posting
+
+Re-run every grep / git / `gh` command cited in the evidence blocks before composing the comment. If any cited `file:line`, commit SHA, or quoted output doesn't reproduce on a fresh invocation, **stop and revise** — or bail to `verify-inconclusive` if the discrepancy can't be resolved. The cost of an incorrect "I checked and X is gone" claim in a public comment is higher than spending 30 seconds re-checking. This step exists because LLMs can confidently overstate; mechanical re-verification catches it.
+
+### Step 8.5e: If any signal fires
 
 - **Skip the Step 9 score table** entirely. The "exit 0 + expected output" axis doesn't apply when the expected output is no longer the contract.
-- **Skip Brev provisioning** if the signal fires before Step 7 — a remote run would just confirm what static analysis already proved. (Detection on signals 2 and 3 can run as soon as the reported version is parsed in Step 4.)
-- **Apply label `wontfix-by-design`** (create the label if it doesn't exist; coordinate with maintainers on the canonical name before first use).
+- **Skip Brev provisioning** if the signal fires before Step 7 — a remote run would just confirm what static analysis already proved. (Signals 2 and 3 can run as soon as the reported version is parsed in Step 4.)
+- **Apply label `wontfix-by-design`** (`gh label create wontfix-by-design ...` if it doesn't exist; coordinate with maintainers on the canonical name before first use).
 - **Use the by-design comment template below** instead of the standard Step 10 template.
 - **@-mention the reporter** so they can object if the framing is wrong.
 - **Never auto-close.** A maintainer pulls the trigger, same as the other label paths.
 
-**Comment template** (4-backtick outer fence so any nested code blocks render correctly):
+### By-design comment template
+
+Mandatory sections in this order. Omit only the sections explicitly noted as omittable.
 
 ````markdown
 ## Stale-issue verification — behavior is by-design
 
-**Reported on:** v0.0.31
-**Verified on:** <tag-or-build-id>
-**Outcome:** symptom reproduces, but the implicated behavior was intentionally changed.
+**Reported on:** v0.0.<X>
+**Verified on:** v0.0.<Y> (PR #<NNNN> first shipped in v0.0.<Z>)
+**Outcome:** symptom reproduces against the reproducer as filed, but the implicated behavior was intentionally changed.
 
-**Reference:** #<PR> (merged YYYY-MM-DD) <removed | renamed | replaced> the
-`<symbol>` <command | function | flag>. <One-sentence summary of the new
-intended workflow.>
+### What's structurally fixed
 
-@<reporter> — recommend closing as "won't fix / by design". If the secondary
-UX issue (e.g. confusing error message when invoking the removed symbol) is
-worth tracking, that should be a fresh issue.
+- `<file:line>` — `<one-sentence summary of the change at that location>`
+- `<file:line>` — `<…>`
+
+The new workflow is `<one-sentence: how to do what the user was trying to do>`.
+
+### Vestigial references
+
+- `<file:line>` — `<deprecation behavior: e.g. "prints '--<flag> was removed; use <X> instead' and exits 1; no functional effect">`
+
+(Omit this section entirely when the symbol is fully gone with no surviving stubs.)
+
+### What's not literally the same bug
+
+`<one-sentence acknowledgement of the related failure mode found in Step 8.5b, with file:line>` — OR — `None. The symptom requires the removed symbol; no related code path produces it on latest.`
+
+### Existing CI coverage
+
+- `<test/path/file>` — `<one-sentence: what this test demonstrates about the new workflow>`
+
+(Omit when no direct test exists. Do not invent paths.)
+
+### Recommendation
+
+@<reporter> — recommend closing as "won't fix / by design". If a related symptom (e.g. `<related failure mode from above>`) is hitting you on ≥ v0.0.<Z>, please file a fresh issue with a v0.0.<Z>+ reproducer.
+
+`<NVBugs cross-ref line — see below>`
 
 <!-- nemoclaw-verify-stale v1 YYYY-MM-DD -->
 ````
+
+**NVBugs cross-ref line.** If `NVBUGS_REF` was set in Step 4, append:
+
+> NVBugs<NVBUGS_REF without brackets> will need a separate update; closing this GitHub issue won't propagate.
+
+Otherwise omit the sentence.
 
 **If no signal fires:** continue to Step 9 normally.
 
