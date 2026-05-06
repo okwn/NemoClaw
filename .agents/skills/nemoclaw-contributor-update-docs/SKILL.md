@@ -209,8 +209,15 @@ User says: "Catch up the docs for everything merged since v0.1.0."
 2. Filter to `feat`, `fix`, `refactor`, `perf` commits touching user-facing code.
 3. Map each to a doc page.
 4. Read the commit diffs and current doc pages.
-5. Draft updates following the style guide.
-6. Apply release-prep version bumps if the user requested release prep.
-7. Run `python3 scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user`.
+5. Draft doc updates reflecting the source code changes in the commits following the style guide.
+6. **Release prep only:** Apply release-prep version bumps if the user requested release prep.
+7. **Release prep only:** Run `python3 scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user`.
 8. Present the summary.
 9. Build with `make docs` to verify.
+10. **Release prep only:** Commit changes and open a pull request with a concise summary of the doc updates and a source summary that links each identified merged PR to its matching doc page. Include the PR number, affected doc page, links, and description of the doc change in this shape:
+
+   ```markdown
+   - #<doc-impacting-PR-number> -> `docs/path.md`: Description of the doc change reflecting the source code changes in the PR.
+   ```
+
+11.Apply the `documentation` label so reviewers can identify doc-only changes.
