@@ -5,7 +5,7 @@ import { runDeployAction as executeDeployAction } from "./deploy-action";
 import {
   type GarbageCollectImagesOptions,
   type UpgradeSandboxesOptions,
-} from "./lifecycle-options";
+} from "./domain/lifecycle/options";
 import {
   backupAll as executeBackupAllAction,
   garbageCollectImages as executeGarbageCollectImagesAction,
@@ -16,7 +16,7 @@ import {
   runSetupSparkAction as executeSetupSparkAction,
 } from "./onboard-action";
 import { recoverNamedGatewayRuntime as recoverNamedGatewayRuntimeAction } from "./gateway-runtime-action";
-import { runOpenshell } from "./openshell-runtime";
+import { runOpenshell } from "./adapters/openshell/runtime";
 import { help, version } from "./root-help-action";
 
 type GatewayRecovery = { recovered: boolean };
