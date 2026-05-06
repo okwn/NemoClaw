@@ -73,6 +73,7 @@ After provider and policy selection, review the summary and confirm the build.
 NemoClaw writes Hermes configuration into `/sandbox/.hermes`, routes model traffic through `inference.local`, and starts the Hermes gateway inside the sandbox.
 The Hermes image includes runtime dependencies for the supported NemoClaw messaging integrations, API service, and health endpoint.
 The base image does not include unsupported Hermes integrations.
+Hermes uses an agent-specific baseline policy that allows the Hermes binary and Python runtime to reach the required Nous Research service endpoints, PyPI, NVIDIA inference endpoints, and selected messaging APIs.
 
 ## Use Non-Interactive Setup
 
