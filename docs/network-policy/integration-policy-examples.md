@@ -17,12 +17,10 @@ skill:
 status: published
 ---
 
-<!--
-  SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-  SPDX-License-Identifier: Apache-2.0
--->
+<!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Common Integration Policy Examples
+# Common NemoClaw Integration Policy Examples
 
 Use these examples when a sandbox is already installed and an integration needs network access.
 This page covers only integrations that NemoClaw currently ships as maintained policy preset YAML under `nemoclaw-blueprint/policies/presets/`.
@@ -273,7 +271,7 @@ $ openshell policy set --policy live-policy.yaml my-assistant --wait
 It does not accept a preset file that starts with a `preset:` block, and it does not merge a single endpoint into the existing policy.
 Use `nemoclaw my-assistant policy-add` for maintained NemoClaw presets.
 
-## Related Topics
+## Next Steps
 
 - [Approve or Deny Agent Network Requests](approve-network-requests.md) for the interactive OpenShell TUI flow.
 - [Customize the Sandbox Network Policy](customize-network-policy.md) for static policy edits and raw OpenShell policy files.
