@@ -72,7 +72,7 @@ describe("gateway liveness probe (#2020)", () => {
     expect(cleanupAfterProbe).toBeTruthy();
   });
 
-  it("does not modify isGatewayHealthy() in gateway-state.ts", () => {
+  it("does not modify isGatewayHealthy() in src/lib/state/gateway.ts", () => {
     // isGatewayHealthy() must remain a pure function — no I/O.
     // Scope the check to the function body so unrelated helpers don't cause false failures.
     const gsContent = fs.readFileSync(path.join(ROOT, "src/lib/state/gateway.ts"), "utf-8");

@@ -151,8 +151,11 @@ $ nemoclaw my-assistant channels stop telegram
 $ nemoclaw my-assistant channels start telegram
 ```
 
-Telegram, Discord, and Slack each allow only one active consumer per bot token.
+Telegram, Discord, and Slack each allow only one active consumer per channel credential.
+Multiple sandboxes can use the same channel type at the same time when each sandbox uses a distinct bot/app token.
+For example, two Telegram sandboxes can DM the same `TELEGRAM_ALLOWED_IDS` account as long as they use different `TELEGRAM_BOT_TOKEN` values.
 If you enable a messaging channel and another sandbox already uses the same token, onboarding prompts you to confirm before continuing in interactive mode and exits non-zero in non-interactive mode.
+If NemoClaw only has legacy channel metadata and cannot compare credential hashes, it keeps the conservative warning; re-run `channels add <channel>` with the intended token to refresh the stored non-secret hash.
 `nemoclaw status` reports cross-sandbox overlaps so you can resolve duplicates before messages start dropping.
 
 ## Stop Messaging Delivery
@@ -165,7 +168,7 @@ Stopping the in-sandbox gateway stops Telegram, Discord, and Slack polling for t
 
 After the sandbox is running, send a message to the configured bot or app.
 If delivery fails, use `openshell term` on the host, check gateway logs, and verify network policy allows the channel API.
-Use the matching policy preset (`telegram`, `discord`, or `slack`) or review [Customize the Network Policy](../network-policy/customize-network-policy.md).
+Use the matching policy preset (`telegram`, `discord`, or `slack`) or review [Common Integration Policy Examples](../network-policy/integration-policy-examples.md).
 
 ## Tunnel Command
 
