@@ -185,13 +185,11 @@ Check for:
 
 ## Step 10: Open the Docs PR
 
-When the workflow produces a pull request, compose the PR description with a concise summary of the doc updates and a source summary that links each identified commit to its matching PR when a PR is available. Include the commit subject, affected doc page, links, and description of the doc change in this shape:
+Commit changes and open a pull request with a concise summary of the doc updates and a source summary that links each identified merged PR to its matching doc page. Include the PR number, affected doc page, links, and description of the doc change in this shape:
 
 ```markdown
-- `<short-sha>` <commit subject> ([commit](https://github.com/NVIDIA/NemoClaw/commit/<sha>), [PR #<number>](https://github.com/NVIDIA/NemoClaw/pull/<number>)) -> `docs/path.md`: Description of the doc change reflecting the commit message and diff.
+- #<doc-impacting-PR-number> -> `docs/path.md`: Description of the doc change reflecting the source code changes in the PR.
 ```
-
-For release-prep docs refresh PRs, include both docs and generated user skills. For ordinary docs catch-up PRs, include only the source docs under `docs/`.
 
 Apply the `documentation` label so reviewers can identify doc-only changes.
 
