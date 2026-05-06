@@ -851,6 +851,7 @@ window.runMermaid = runMermaid;</script>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../network-policy/approve-network-requests.html">Approve or Deny Network Requests</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../network-policy/customize-network-policy.html">Customize the Network Policy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../network-policy/integration-policy-examples.html">Integration Policy Examples</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul class="nav bd-sidenav">
@@ -1215,23 +1216,27 @@ The <code class="docutils literal notranslate"><span class="pre">protocol</span>
 <td><p>Atlassian Jira API.</p></td>
 <td><p>Gives agent read/write access to project issues and comments.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">npm</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">local-inference</span></code></p></td>
+<td><p>Local Ollama and vLLM through the host gateway.</p></td>
+<td><p>Allows sandbox access to host-side local inference ports covered by the preset.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">npm</span></code></p></td>
 <td><p>npm and Yarn registries via L4 pass-through.</p></td>
 <td><p>Allows installing arbitrary npm packages, which may contain malicious code. OpenShell still gates by host, port, and binary, but does not inspect HTTP method, path, or body for this preset.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">outlook</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">outlook</span></code></p></td>
 <td><p>Microsoft 365, Outlook.</p></td>
 <td><p>Gives agent access to email.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pypi</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">pypi</span></code></p></td>
 <td><p>Python Package Index (GET and HEAD only).</p></td>
 <td><p>Allows installing arbitrary Python packages, which may contain malicious code. Publishing is blocked.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">slack</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">slack</span></code></p></td>
 <td><p>Slack API, Socket Mode, webhooks.</p></td>
 <td><p>WebSocket uses <code class="docutils literal notranslate"><span class="pre">access:</span> <span class="pre">full</span></code>. Agent can post to any channel the bot token has access to.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">telegram</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">telegram</span></code></p></td>
 <td><p>Telegram Bot API.</p></td>
 <td><p>Agent can send messages to any chat the bot token has access to.</p></td>
 </tr>
