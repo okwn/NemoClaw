@@ -23,9 +23,11 @@ import OnboardCliCommand from "./onboard";
 import PolicyAddCommand from "./sandbox/policy/add";
 import PolicyListCommand from "./sandbox/policy/list";
 import PolicyRemoveCommand from "./sandbox/policy/remove";
+import RecoverCliCommand from "../recover-cli-command";
 import RebuildCliCommand from "./sandbox/rebuild";
 import RootHelpCommand from "./root/help";
 import SandboxConfigGetCommand from "./sandbox/config/get";
+import SandboxConfigSetCommand from "../sandbox-config-set-cli-command";
 import SandboxDoctorCliCommand from "./sandbox/doctor";
 import SandboxLogsCommand from "./sandbox/logs";
 import SandboxStatusCommand from "./sandbox/status";
@@ -68,6 +70,7 @@ export default {
   "sandbox:channels:start": ChannelsStartCommand,
   "sandbox:channels:stop": ChannelsStopCommand,
   "sandbox:config:get": SandboxConfigGetCommand,
+  "sandbox:config:set": SandboxConfigSetCommand,
   "sandbox:connect": ConnectCliCommand,
   "sandbox:destroy": DestroyCliCommand,
   "sandbox:doctor": SandboxDoctorCliCommand,
@@ -77,6 +80,7 @@ export default {
   "sandbox:policy:list": PolicyListCommand,
   "sandbox:policy:remove": PolicyRemoveCommand,
   "sandbox:rebuild": RebuildCliCommand,
+  "sandbox:recover": RecoverCliCommand,
   "sandbox:share": ShareCommand,
   "sandbox:share:mount": ShareMountCommand,
   "sandbox:share:status": ShareStatusCommand,
