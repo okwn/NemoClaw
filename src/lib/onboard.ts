@@ -3902,7 +3902,14 @@ function getDefaultSandboxNameForAgent(agent: AgentDefinition | null | undefined
 }
 
 function getSandboxPromptDefault(agent: AgentDefinition | null | undefined): string {
-  return getDefaultSandboxNameForAgent(agent);
+  const envName = (process.env.NEMOCLAW_SANDBOX_NAME || "").trim().toLowerCase();
+  const agentDefault = getDefaultSandboxNameForAgent(agent);
+  if (!envName) return agentDefault;
+  try {
+    return validateName(envName, "sandbox name");
+  } catch {
+    return agentDefault;
+  }
 }
 
 function getEffectiveSandboxAgent(agent: AgentDefinition | null | undefined): AgentDefinition {
@@ -8652,11 +8659,9 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     (isNonInteractive() ? process.env.NEMOCLAW_FROM_DOCKERFILE || null : null);
   // Resolve the explicit sandbox name early so both validation and the
   // --from guard work off the same source. --name always counts; the env
-  // var only counts when we cannot prompt (otherwise interactive runs would
-  // bypass the prompt UX), since the existing prompt path already seeds
-  // from the env var via promptOrDefault when --non-interactive is set.
-  // Cover both --non-interactive and missing-TTY runs (CI scripts, piped
-  // stdin) — the issue's test plan asks for both.
+  // var is used as the interactive prompt default via getSandboxPromptDefault,
+  // and also as the resolved name when we cannot prompt (non-interactive or
+  // missing-TTY runs such as CI scripts and piped stdin).
   const stdinIsTty = Boolean(process.stdin && process.stdin.isTTY);
   const stdoutIsTty = Boolean(process.stdout && process.stdout.isTTY);
   const cannotPrompt = isNonInteractive() || !stdinIsTty || !stdoutIsTty;
