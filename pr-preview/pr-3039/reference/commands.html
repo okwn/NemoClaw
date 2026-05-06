@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=f956fd49"></script>
+    <script src="../_static/documentation_options.js?v=9d992d0d"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.34';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.35';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -415,10 +415,12 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../network-policy/approve-network-requests.html">Approve or Deny Network Requests</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../network-policy/customize-network-policy.html">Customize the Network Policy</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../network-policy/integration-policy-examples.html">Integration Policy Examples</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../deployment/deploy-to-remote-gpu.html">Deploy to a Remote GPU Instance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/brev-web-ui.html">Brev Web UI</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../deployment/install-openclaw-plugins.html">Install OpenClaw Plugins</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../deployment/sandbox-hardening.html">Sandbox Hardening</a></li>
 </ul>
@@ -555,7 +557,7 @@ Running <code class="docutils literal notranslate"><span class="pre">nemoclaw</s
 <p>Run the interactive setup wizard (recommended for new installs).
 The wizard creates an OpenShell gateway, registers inference providers, builds the sandbox image, and creates the sandbox.
 Use this command for new installs and for recreating a sandbox after changes to policy or configuration.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span><span class="o">[</span>--non-interactive<span class="o">]</span><span class="w"> </span><span class="o">[</span>--resume<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate-sandbox<span class="o">]</span><span class="w"> </span><span class="o">[</span>--from<span class="w"> </span>&lt;Dockerfile&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>&lt;sandbox&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--agent<span class="w"> </span>&lt;name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--control-ui-port<span class="w"> </span>&lt;N&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes-i-accept-third-party-software<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span><span class="o">[</span>--non-interactive<span class="o">]</span><span class="w"> </span><span class="o">[</span>--resume<span class="w"> </span><span class="p">|</span><span class="w"> </span>--fresh<span class="o">]</span><span class="w"> </span><span class="o">[</span>--recreate-sandbox<span class="o">]</span><span class="w"> </span><span class="o">[</span>--from<span class="w"> </span>&lt;Dockerfile&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--name<span class="w"> </span>&lt;sandbox&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--agent<span class="w"> </span>&lt;name&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--control-ui-port<span class="w"> </span>&lt;N&gt;<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes-i-accept-third-party-software<span class="o">]</span>
 </pre></div>
 </div>
 <div class="admonition warning">
@@ -636,8 +638,11 @@ Treat Brave Search as an explicit opt-in and use a dedicated low-privilege Brave
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span>--non-interactive
 </pre></div>
 </div>
-<p>For scripted installer runs, set <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_NON_INTERACTIVE=1</span></code> and <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1</span></code> before invoking <code class="docutils literal notranslate"><span class="pre">curl</span> <span class="pre">-fsSL</span> <span class="pre">https://www.nvidia.com/nemoclaw.sh</span> <span class="pre">|</span> <span class="pre">bash</span></code>.
-If the installer cannot prompt for the notice in a terminal and no explicit acceptance is set, it exits before installing Node.js or the NemoClaw CLI.</p>
+<p>For scripted installer runs, pass explicit acceptance to the <code class="docutils literal notranslate"><span class="pre">bash</span></code> side of the installer pipe:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://www.nvidia.com/nemoclaw.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="nv">NEMOCLAW_NON_INTERACTIVE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE</span><span class="o">=</span><span class="m">1</span><span class="w"> </span>bash
+</pre></div>
+</div>
+<p>If the installer cannot prompt for the notice in a terminal and no explicit acceptance is set, it exits before installing Node.js or the NemoClaw CLI.</p>
 <p>To enable Brave Search in non-interactive mode, set:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">BRAVE_API_KEY</span><span class="o">=</span>...<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span>--non-interactive
@@ -871,7 +876,7 @@ Back up your workspace first with <code class="docutils literal notranslate"><sp
 If you want to upgrade the sandbox while preserving state, use <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">rebuild</span></code> instead.</p>
 </div>
 <p>If another terminal has an active SSH session to the sandbox, <code class="docutils literal notranslate"><span class="pre">destroy</span></code> prints an active-session warning and requires a second confirmation before it proceeds.
-Pass <code class="docutils literal notranslate"><span class="pre">--yes</span></code> or <code class="docutils literal notranslate"><span class="pre">--force</span></code> to skip the prompt in scripted workflows.</p>
+Pass <code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">-y</span></code>, or <code class="docutils literal notranslate"><span class="pre">--force</span></code> to skip the prompt in scripted workflows.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>my-assistant<span class="w"> </span>destroy
 </pre></div>
 </div>
@@ -1089,7 +1094,7 @@ For new installs, the agent session index is refreshed so the agent discovers th
 The command backs up workspace state, destroys the old sandbox (including its host-side Docker image), recreates it with the current image via <code class="docutils literal notranslate"><span class="pre">onboard</span> <span class="pre">--resume</span></code>, and restores workspace state into the new sandbox.
 Credentials are stripped from backups before storage.
 Policy presets applied to the old sandbox are reapplied to the new one so your egress rules survive the rebuild.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>my-assistant<span class="w"> </span>rebuild<span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>my-assistant<span class="w"> </span>rebuild<span class="w"> </span><span class="o">[</span>--yes<span class="p">|</span>-y<span class="p">|</span>--force<span class="o">]</span><span class="w"> </span><span class="o">[</span>--verbose<span class="p">|</span>-v<span class="o">]</span>
 </pre></div>
 </div>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -1099,17 +1104,17 @@ Policy presets applied to the old sandbox are reapplied to the new one so your e
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">-y</span></code>, <code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
 <td><p>Skip the confirmation prompt</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--verbose</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--verbose</span></code>, <code class="docutils literal notranslate"><span class="pre">-v</span></code></p></td>
 <td><p>Log SSH commands, exit codes, and session state (also enabled by <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_REBUILD_VERBOSE=1</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <p>If another terminal has an active SSH session to the sandbox, <code class="docutils literal notranslate"><span class="pre">rebuild</span></code> prints an active-session warning and requires confirmation before destroying the sandbox.
-Pass <code class="docutils literal notranslate"><span class="pre">--yes</span></code> or <code class="docutils literal notranslate"><span class="pre">--force</span></code> to skip the prompt in scripted workflows.</p>
+Pass <code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">-y</span></code>, or <code class="docutils literal notranslate"><span class="pre">--force</span></code> to skip the prompt in scripted workflows.</p>
 <p>The sandbox must be running for the backup step to succeed.
 If any manifest-defined state path cannot be archived, <code class="docutils literal notranslate"><span class="pre">rebuild</span></code> reports the failed paths and exits before destroying the original sandbox.
 After restore, the command runs <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">doctor</span> <span class="pre">--fix</span></code> for cross-version structure repair.</p>
@@ -1119,7 +1124,7 @@ After restore, the command runs <code class="docutils literal notranslate"><span
 <p>Rebuild sandboxes whose base image is older than the one currently pinned by NemoClaw.
 NemoClaw resolves the digest of <code class="docutils literal notranslate"><span class="pre">ghcr.io/nvidia/nemoclaw/sandbox-base:latest</span></code> from the registry, then compares it against the digest each sandbox was created with.
 Sandboxes that match the current digest are left alone.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>upgrade-sandboxes<span class="w"> </span><span class="o">[</span>--check<span class="o">]</span><span class="w"> </span><span class="o">[</span>--auto<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>upgrade-sandboxes<span class="w"> </span><span class="o">[</span>--check<span class="o">]</span><span class="w"> </span><span class="o">[</span>--auto<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="p">|</span>-y<span class="o">]</span>
 </pre></div>
 </div>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -1135,7 +1140,7 @@ Sandboxes that match the current digest are left alone.</p>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--auto</span></code></p></td>
 <td><p>Rebuild every stale sandbox without prompting. Used by the installer to upgrade in place.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">-y</span></code></p></td>
 <td><p>Skip the confirmation prompt for the rebuild plan.</p></td>
 </tr>
 </tbody>
@@ -1380,7 +1385,7 @@ Use the standard installer and run <code class="docutils literal notranslate"><s
 <p>Collect diagnostics for bug reports.
 Gathers system info, Docker state, gateway logs, and sandbox status into a summary or tarball.
 Use <code class="docutils literal notranslate"><span class="pre">--sandbox</span> <span class="pre">&lt;name&gt;</span></code> to target a specific sandbox, <code class="docutils literal notranslate"><span class="pre">--quick</span></code> for a smaller snapshot, or <code class="docutils literal notranslate"><span class="pre">--output</span> <span class="pre">&lt;path&gt;</span></code> to save a tarball that you can attach to an issue.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>debug<span class="w"> </span><span class="o">[</span>--quick<span class="o">]</span><span class="w"> </span><span class="o">[</span>--sandbox<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--output<span class="w"> </span>PATH<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>debug<span class="w"> </span><span class="o">[</span>--quick<span class="p">|</span>-q<span class="o">]</span><span class="w"> </span><span class="o">[</span>--sandbox<span class="w"> </span>NAME<span class="o">]</span><span class="w"> </span><span class="o">[</span>--output<span class="w"> </span>PATH<span class="p">|</span>-o<span class="w"> </span>PATH<span class="o">]</span>
 </pre></div>
 </div>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -1390,13 +1395,13 @@ Use <code class="docutils literal notranslate"><span class="pre">--sandbox</span
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--quick</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--quick</span></code>, <code class="docutils literal notranslate"><span class="pre">-q</span></code></p></td>
 <td><p>Collect minimal diagnostics only</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--sandbox</span> <span class="pre">NAME</span></code></p></td>
 <td><p>Target a specific sandbox (default: auto-detect)</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--output</span> <span class="pre">PATH</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--output</span> <span class="pre">PATH</span></code>, <code class="docutils literal notranslate"><span class="pre">-o</span> <span class="pre">PATH</span></code></p></td>
 <td><p>Write diagnostics tarball to the given path</p></td>
 </tr>
 </tbody>
@@ -1440,7 +1445,7 @@ Run <code class="docutils literal notranslate"><span class="pre">nemoclaw</span>
 Each <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> builds an <code class="docutils literal notranslate"><span class="pre">openshell/sandbox-from:&lt;timestamp&gt;</span></code> image (~765 MB).
 The <code class="docutils literal notranslate"><span class="pre">destroy</span></code> and <code class="docutils literal notranslate"><span class="pre">rebuild</span></code> commands clean up the image automatically, but images from older NemoClaw versions or interrupted operations may remain.
 This command lists all <code class="docutils literal notranslate"><span class="pre">openshell/sandbox-from:*</span></code> images, cross-references the sandbox registry, and removes any that are no longer associated with a registered sandbox.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="p">|</span>--force<span class="o">]</span>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>gc<span class="w"> </span><span class="o">[</span>--dry-run<span class="o">]</span><span class="w"> </span><span class="o">[</span>--yes<span class="p">|</span>-y<span class="p">|</span>--force<span class="o">]</span>
 </pre></div>
 </div>
 <div class="pst-scrollable-table-container"><table class="table">
@@ -1453,7 +1458,7 @@ This command lists all <code class="docutils literal notranslate"><span class="p
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--dry-run</span></code></p></td>
 <td><p>List orphaned images without removing them</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--yes</span></code>, <code class="docutils literal notranslate"><span class="pre">-y</span></code>, <code class="docutils literal notranslate"><span class="pre">--force</span></code></p></td>
 <td><p>Skip the confirmation prompt</p></td>
 </tr>
 </tbody>
