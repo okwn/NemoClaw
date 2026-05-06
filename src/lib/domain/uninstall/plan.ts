@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+/* v8 ignore start -- covered by source-level unit tests; CLI coverage tracks dist integration. */
 import {
   DEFAULT_GATEWAY_NAME,
   gatewayVolumeCandidates,
@@ -112,3 +113,4 @@ export function buildUninstallPlan(paths: UninstallPaths, options: UninstallPlan
 export function flattenUninstallPlan(plan: UninstallPlan): UninstallPlanAction[] {
   return plan.steps.flatMap((step) => step.actions);
 }
+/* v8 ignore stop */

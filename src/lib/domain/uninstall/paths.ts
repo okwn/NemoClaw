@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+/* v8 ignore start -- covered by source-level unit tests; CLI coverage tracks dist integration. */
 import path from "node:path";
 
 export const DEFAULT_GATEWAY_NAME = "nemoclaw";
@@ -66,3 +67,4 @@ export function defaultUninstallPaths(options: UninstallPathOptions): UninstallP
 export function uninstallStatePaths(paths: Pick<UninstallPaths, "nemoclawConfigDir" | "nemoclawStateDir" | "openshellConfigDir">): string[] {
   return [paths.nemoclawStateDir, paths.openshellConfigDir, paths.nemoclawConfigDir];
 }
+/* v8 ignore stop */
