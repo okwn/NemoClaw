@@ -12,7 +12,9 @@
     "commands": {
       "strategy": "pattern",
       "target": "./dist/commands"
-    }
+    },
+    "flexibleTaxonomy": true,
+    "topicSeparator": " "
   },
   "scripts": {
     "test": "vitest run",
