@@ -23,6 +23,9 @@ describe("CoreDNS domain helpers", () => {
 
   it("selects the first non-loopback nameserver", () => {
     expect(firstNonLoopbackNameserver("nameserver 127.0.0.1\nnameserver 9.9.9.9\n")).toBe("9.9.9.9");
+    expect(firstNonLoopbackNameserver("nameserver ::1\nnameserver localhost\nnameserver 9.9.9.9\n")).toBe(
+      "9.9.9.9",
+    );
     expect(firstNonLoopbackNameserver("# comment\noptions ndots:5\n")).toBeNull();
   });
 
@@ -59,6 +62,7 @@ describe("CoreDNS domain helpers", () => {
       "openshell-cluster-nemoclaw",
     );
     expect(selectOpenshellClusterContainer(undefined, "a\nb")).toBeNull();
+    expect(selectOpenshellClusterContainer("nemoclaw", "openshell-cluster-nemoclaw-extra")).toBeNull();
     expect(selectOpenshellClusterContainer("box", "openshell-cluster-box-a\nopenshell-cluster-box-b")).toBeNull();
   });
 

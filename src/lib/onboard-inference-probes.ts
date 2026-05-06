@@ -23,6 +23,20 @@ const {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
+// Hostnames that only resolve from inside the OpenShell sandbox network.
+// Probing them from the host always fails with curl exit 6 ("Could not
+// resolve host"), so we skip host-side validation for these URLs. See #893.
+const SANDBOX_INTERNAL_HOSTS = ["host.openshell.internal", "host.docker.internal"];
+
+function isSandboxInternalUrl(url) {
+  try {
+    const { hostname } = new URL(String(url));
+    return SANDBOX_INTERNAL_HOSTS.includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
 function parseJsonObject(body) {
   if (!body) return null;
   try {
@@ -83,6 +97,13 @@ function getDeepSeekV4ProValidationProbeCurlArgs(opts) {
     return ["--connect-timeout", "30", "--max-time", "150"];
   }
   return ["--connect-timeout", "20", "--max-time", "120"];
+}
+
+function getKimiK26ValidationProbeCurlArgs(opts) {
+  if (isWsl(opts)) {
+    return ["--connect-timeout", "20", "--max-time", "90"];
+  }
+  return ["--connect-timeout", "10", "--max-time", "60"];
 }
 
 function getCurlMaxTimeSeconds(args) {
@@ -193,6 +214,10 @@ function isDeepSeekV4ProModel(model) {
   return String(model || "").toLowerCase() === "deepseek-ai/deepseek-v4-pro";
 }
 
+function isKimiK26Model(model) {
+  return String(model || "").toLowerCase() === "moonshotai/kimi-k2.6";
+}
+
 function getChatCompletionsProbePayload(model) {
   const payload = {
     model,
@@ -210,15 +235,24 @@ function getChatCompletionsProbePayload(model) {
     };
   }
 
+  if (isKimiK26Model(model)) {
+    return {
+      ...payload,
+      max_tokens: 8,
+    };
+  }
+
   return payload;
 }
 
 function getChatCompletionsProbeCurlArgs({ authHeader, model, url, isWsl: isWslOverride }) {
   const platformOptions =
     typeof isWslOverride === "boolean" ? { isWsl: isWslOverride } : undefined;
-  const timingArgs = isDeepSeekV4ProModel(model)
-    ? getDeepSeekV4ProValidationProbeCurlArgs(platformOptions)
-    : getValidationProbeCurlArgs(platformOptions);
+  const timingArgs = (() => {
+    if (isDeepSeekV4ProModel(model)) return getDeepSeekV4ProValidationProbeCurlArgs(platformOptions);
+    if (isKimiK26Model(model)) return getKimiK26ValidationProbeCurlArgs(platformOptions);
+    return getValidationProbeCurlArgs(platformOptions);
+  })();
   return [
     "-sS",
     ...timingArgs,
@@ -247,6 +281,16 @@ function runChatCompletionsProbe({ authHeader, model, url, isWsl: isWslOverride 
 }
 
 function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
+  if (isSandboxInternalUrl(endpointUrl)) {
+    const { hostname } = new URL(String(endpointUrl));
+    return {
+      ok: true,
+      api: null,
+      label: null,
+      note: `${hostname} only resolves inside the sandbox — validation skipped. If the endpoint is unreachable at runtime, re-run onboard with a routable URL.`,
+    };
+  }
+
   const useQueryParam = options.authMode === "query-param";
   const normalizedKey = apiKey ? normalizeCredentialValue(apiKey) : "";
   const baseUrl = String(endpointUrl).replace(/\/+$/, "");
@@ -479,12 +523,14 @@ function probeAnthropicEndpoint(endpointUrl, model, apiKey) {
 }
 
 module.exports = {
+  isSandboxInternalUrl,
   parseJsonObject,
   hasResponsesToolCall,
   shouldRequireResponsesToolCalling,
   getProbeAuthMode,
   getValidationProbeCurlArgs,
   getDeepSeekV4ProValidationProbeCurlArgs,
+  getKimiK26ValidationProbeCurlArgs,
   getChatCompletionsProbePayload,
   getChatCompletionsProbeCurlArgs,
   probeResponsesToolCalling,
