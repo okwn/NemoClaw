@@ -81,8 +81,8 @@ function collectImportRefs(absPath: string): ImportRef[] {
       add(node.moduleSpecifier.text, node.moduleSpecifier);
     } else if (
       ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      (node.expression.text === "require" || node.expression.text === "import") &&
+      ((ts.isIdentifier(node.expression) && node.expression.text === "require") ||
+        node.expression.kind === ts.SyntaxKind.ImportKeyword) &&
       node.arguments.length > 0 &&
       ts.isStringLiteralLike(node.arguments[0])
     ) {
@@ -264,14 +264,14 @@ function checkCommandFile(absPath: string, repoPath: string, violations: Violati
   }
 
   visit(sourceFile);
-  if (commandClassCount > 1) {
+  if (commandClassCount !== 1) {
     addViolation(
       violations,
       repoPath,
       1,
       1,
       "one-command-per-file",
-      `command files must define at most one registered oclif command class; found ${commandClassCount}`,
+      `command files must define exactly one registered oclif command class; found ${commandClassCount}`,
     );
   }
 }
@@ -303,6 +303,6 @@ function main(): void {
   console.log("Layer import boundaries passed.");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (fileURLToPath(import.meta.url) === path.resolve(process.argv[1] || "")) {
   main();
 }

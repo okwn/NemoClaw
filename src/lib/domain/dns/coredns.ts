@@ -23,7 +23,8 @@ export function firstNonLoopbackNameserver(resolvConf: string): string | null {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const [kind, value] = trimmed.split(/\s+/);
-    if (kind === "nameserver" && value && !value.startsWith("127.")) return value;
+    const isLoopback = value === "::1" || value === "localhost" || Boolean(value?.startsWith("127."));
+    if (kind === "nameserver" && value && !isLoopback) return value;
   }
   return null;
 }
@@ -54,9 +55,11 @@ export function selectOpenshellClusterContainer(
   if (containers.length === 0) return null;
 
   if (gatewayName) {
-    const matches = containers.filter((container) => container.includes(gatewayName));
-    if (matches.length === 1) return matches[0];
-    if (matches.length > 1) return null;
+    const expectedName = gatewayName.startsWith("openshell-cluster-")
+      ? gatewayName
+      : `openshell-cluster-${gatewayName}`;
+    const matches = containers.filter((container) => container === expectedName);
+    return matches.length === 1 ? matches[0] : null;
   }
 
   return containers.length === 1 ? containers[0] : null;

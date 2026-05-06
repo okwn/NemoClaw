@@ -10,6 +10,8 @@ const {
   getChatCompletionsProbeCurlArgs,
   getChatCompletionsProbePayload,
   getDeepSeekV4ProValidationProbeCurlArgs,
+  getKimiK26ValidationProbeCurlArgs,
+  isSandboxInternalUrl,
   probeOpenAiLikeEndpoint,
 } = require("../../dist/lib/onboard-inference-probes");
 
@@ -31,6 +33,38 @@ describe("OpenAI-compatible inference probes", () => {
       model: "nvidia/nemotron-3-super-120b-a12b",
       messages: [{ role: "user", content: "Reply with exactly: OK" }],
     });
+  });
+
+  it("caps Kimi K2.6 probe output and gives it a slower validation budget", () => {
+    expect(getChatCompletionsProbePayload("moonshotai/kimi-k2.6")).toEqual({
+      model: "moonshotai/kimi-k2.6",
+      messages: [{ role: "user", content: "Reply with exactly: OK" }],
+      max_tokens: 8,
+    });
+
+    expect(getKimiK26ValidationProbeCurlArgs({ isWsl: false })).toEqual([
+      "--connect-timeout",
+      "10",
+      "--max-time",
+      "60",
+    ]);
+    expect(getKimiK26ValidationProbeCurlArgs({ isWsl: true })).toEqual([
+      "--connect-timeout",
+      "20",
+      "--max-time",
+      "90",
+    ]);
+
+    const args = getChatCompletionsProbeCurlArgs({
+      authHeader: ["-H", "Authorization: Bearer nvapi-test"],
+      model: "moonshotai/kimi-k2.6",
+      url: "https://integrate.api.nvidia.com/v1/chat/completions",
+      isWsl: false,
+    });
+
+    expect(args).toContain("--max-time");
+    expect(args[args.indexOf("--max-time") + 1]).toBe("60");
+    expect(args).toContain(JSON.stringify(getChatCompletionsProbePayload("moonshotai/kimi-k2.6")));
   });
 
   it("uses an extended streaming validation budget for DeepSeek V4 Pro", () => {
@@ -57,6 +91,43 @@ describe("OpenAI-compatible inference probes", () => {
     expect(args).toContain("--max-time");
     expect(args[args.indexOf("--max-time") + 1]).toBe("120");
     expect(args).toContain("Authorization: Bearer nvapi-test");
+  });
+
+  describe("sandbox-internal URL handling", () => {
+    it("identifies host.openshell.internal and host.docker.internal as sandbox-internal", () => {
+      expect(isSandboxInternalUrl("http://host.openshell.internal:8001/v1")).toBe(true);
+      expect(isSandboxInternalUrl("http://host.docker.internal:11434/v1")).toBe(true);
+    });
+
+    it("does not treat normal hostnames as sandbox-internal", () => {
+      expect(isSandboxInternalUrl("http://localhost:8001/v1")).toBe(false);
+      expect(isSandboxInternalUrl("https://api.openai.com/v1")).toBe(false);
+      expect(isSandboxInternalUrl("http://127.0.0.1:8001/v1")).toBe(false);
+    });
+
+    it("skips the curl probe for sandbox-internal URLs and returns ok with a note", () => {
+      const result = probeOpenAiLikeEndpoint(
+        "http://host.openshell.internal:8001/v1",
+        "openai/local-model",
+        "dummy",
+      );
+      expect(result).toMatchObject({
+        ok: true,
+        api: null,
+        note: expect.stringContaining("host.openshell.internal"),
+      });
+      expect(result.note).toMatch(/only resolves inside the sandbox/);
+    });
+
+    it("skips the curl probe for host.docker.internal and returns ok with a note", () => {
+      const result = probeOpenAiLikeEndpoint(
+        "http://host.docker.internal:11434/v1",
+        "openai/nemotron-mini",
+        "",
+      );
+      expect(result).toMatchObject({ ok: true, api: null });
+      expect(result.note).toMatch(/host\.docker\.internal/);
+    });
   });
 
   it("continues with openai-completions when DeepSeek V4 Pro stream validation times out", () => {
