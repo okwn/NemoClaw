@@ -89,12 +89,6 @@ const REMOTE_PROVIDER_CONFIG = {
 
 // Providers that run on the host and need the local-inference policy preset.
 const LOCAL_INFERENCE_PROVIDERS = ["ollama-local", "vllm-local"];
-const KIMI_K26_MODEL_ID = "moonshotai/kimi-k2.6";
-const KIMI_K26_MANAGED_INFERENCE_COMPAT = {
-  requiresStringContent: true,
-  maxTokensField: "max_tokens",
-  requiresToolResultName: true,
-};
 
 type SandboxInferenceConfig = {
   providerKey: string;
@@ -352,17 +346,6 @@ function getSandboxInferenceConfig(
       providerKey = "inference";
       primaryModelRef = `inference/${model}`;
       break;
-  }
-
-  if (
-    providerKey === "inference" &&
-    inferenceApi === "openai-completions" &&
-    model.trim().toLowerCase() === KIMI_K26_MODEL_ID
-  ) {
-    inferenceCompat = {
-      ...(inferenceCompat || {}),
-      ...KIMI_K26_MANAGED_INFERENCE_COMPAT,
-    };
   }
 
   return { providerKey, primaryModelRef, inferenceBaseUrl, inferenceApi, inferenceCompat };

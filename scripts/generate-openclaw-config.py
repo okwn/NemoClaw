@@ -199,6 +199,12 @@ def _validate_selected_agent_effects(payload: dict, manifest_path: Path, registr
                     f"{manifest_path}: effects.openclawPlugins[{index}].path does not exist: "
                     f"{plugin['path']}"
                 )
+            expected_load_path = f"/usr/local/share/nemoclaw/{plugin['path'].strip('/')}"
+            if plugin["loadPath"].rstrip("/") != expected_load_path:
+                raise ValueError(
+                    f"{manifest_path}: effects.openclawPlugins[{index}].loadPath "
+                    f"must be '{expected_load_path}'"
+                )
 
     if agent == "hermes":
         compat = effects.get("hermesCompat")

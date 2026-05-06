@@ -288,3 +288,41 @@ describe("openclaw-plugin.schema.json", () => {
     expect(validate(bad)).toBe(false);
   });
 });
+
+// ── Model-Specific Setup ────────────────────────────────────────────────────
+
+describe("model-specific-setup/schema.json", () => {
+  const validate = compileSchema("nemoclaw-blueprint/model-specific-setup/schema.json");
+  const data = loadJSON(
+    repoPath("nemoclaw-blueprint/model-specific-setup/openclaw/kimi-k2.6-managed-inference.json"),
+  );
+
+  it("accepts the OpenClaw Kimi manifest", () => {
+    expectValid(validate, data, "kimi-k2.6-managed-inference.json");
+  });
+
+  it("rejects OpenClaw manifests with Hermes effects", () => {
+    const bad = {
+      ...cloneObject(data),
+      effects: {
+        hermesCompat: {
+          future: true,
+        },
+      },
+    };
+    expect(validate(bad)).toBe(false);
+  });
+
+  it("rejects Hermes manifests with OpenClaw effects", () => {
+    const bad = {
+      id: "fixture-hermes",
+      agent: "hermes",
+      description: "Fixture Hermes setup",
+      match: {},
+      effects: {
+        openclawCompat: {},
+      },
+    };
+    expect(validate(bad)).toBe(false);
+  });
+});

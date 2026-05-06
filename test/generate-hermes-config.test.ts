@@ -47,20 +47,24 @@ function runConfigScript(envOverrides: Record<string, string> = {}): {
 
 function runConfigScriptRaw(
   envOverrides: Record<string, string> = {},
-  opts: { cwd?: string } = {},
+  opts: { cwd?: string; scriptPath?: string } = {},
 ) {
   fs.mkdirSync(path.join(tmpDir, ".hermes"), { recursive: true });
-  return spawnSync(process.execPath, ["--experimental-strip-types", SCRIPT_PATH], {
-    encoding: "utf-8",
-    cwd: opts.cwd,
-    env: {
-      PATH: process.env.PATH || "/usr/bin:/bin",
-      ...BASE_ENV,
-      ...envOverrides,
-      HOME: tmpDir,
+  return spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", opts.scriptPath || SCRIPT_PATH],
+    {
+      encoding: "utf-8",
+      cwd: opts.cwd,
+      env: {
+        PATH: process.env.PATH || "/usr/bin:/bin",
+        ...BASE_ENV,
+        ...envOverrides,
+        HOME: tmpDir,
+      },
+      timeout: 10_000,
     },
-    timeout: 10_000,
-  });
+  );
 }
 
 function writeRegistryManifest(
@@ -226,12 +230,15 @@ describe("agents/hermes/generate-config.ts", () => {
   });
 
   it("discovers the bundled registry from the script path when cwd differs", () => {
-    const registryDir = path.join(
+    const sourceRegistryDir = path.join(
       import.meta.dirname,
       "..",
       "nemoclaw-blueprint",
       "model-specific-setup",
     );
+    const fixtureRoot = path.join(tmpDir, "script-relative-fixture");
+    const fixtureScriptPath = path.join(fixtureRoot, "agents", "hermes", "generate-config.ts");
+    const registryDir = path.join(fixtureRoot, "nemoclaw-blueprint", "model-specific-setup");
     const manifestPath = path.join(
       registryDir,
       "hermes",
@@ -239,6 +246,9 @@ describe("agents/hermes/generate-config.ts", () => {
     );
 
     try {
+      fs.mkdirSync(path.dirname(fixtureScriptPath), { recursive: true });
+      fs.copyFileSync(SCRIPT_PATH, fixtureScriptPath);
+      fs.cpSync(sourceRegistryDir, registryDir, { recursive: true });
       fs.writeFileSync(
         manifestPath,
         JSON.stringify(
@@ -263,13 +273,13 @@ describe("agents/hermes/generate-config.ts", () => {
           NEMOCLAW_MODEL: "fixture/script-relative-hermes-model",
           NEMOCLAW_PROVIDER_KEY: "custom",
         },
-        { cwd: tmpDir },
+        { cwd: tmpDir, scriptPath: fixtureScriptPath },
       );
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("unknown effects for agent 'hermes': openclawCompat");
     } finally {
-      fs.rmSync(manifestPath, { force: true });
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
     }
   });
 

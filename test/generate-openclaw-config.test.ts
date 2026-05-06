@@ -437,6 +437,38 @@ describe("generate-openclaw-config.py: config generation", () => {
 
     expect(missingPluginResult.status).not.toBe(0);
     expect(missingPluginResult.stderr).toContain("path does not exist");
+
+    fs.rmSync(path.join(blueprintDir, "model-specific-setup", "openclaw", "missing-plugin.json"));
+    fs.mkdirSync(path.join(blueprintDir, "openclaw-plugins", "fixture"), { recursive: true });
+    const badLoadPathRegistryDir = writeRegistryManifest(
+      blueprintDir,
+      "openclaw/bad-load-path.json",
+      {
+        id: "bad-load-path",
+        agent: "openclaw",
+        description: "Invalid plugin load path",
+        match: {},
+        effects: {
+          openclawPlugins: [
+            {
+              id: "fixture-plugin",
+              path: "openclaw-plugins/fixture",
+              loadPath: "/usr/local/share/nemoclaw/openclaw-plugins/wrong",
+            },
+          ],
+        },
+      },
+    );
+
+    const badLoadPathResult = runConfigScriptRaw({
+      NEMOCLAW_MODEL_SPECIFIC_SETUP_DIR: badLoadPathRegistryDir,
+    });
+
+    expect(badLoadPathResult.status).not.toBe(0);
+    expect(badLoadPathResult.stderr).toContain(
+      "effects.openclawPlugins[0].loadPath must be " +
+        "'/usr/local/share/nemoclaw/openclaw-plugins/fixture'",
+    );
   });
 
   it("rejects conflicting OpenClaw compat effects and duplicate plugin ids", () => {
