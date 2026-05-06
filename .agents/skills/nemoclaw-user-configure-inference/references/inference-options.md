@@ -29,7 +29,6 @@ NemoClaw uses provider-specific local tokens for those routes, and rebuilds of l
 | Other Anthropic-compatible endpoint | Tested | Custom Anthropic-compatible | For Claude proxies and compatible gateways |
 | Google Gemini | Tested | OpenAI-compatible | Uses Google's OpenAI-compatible endpoint |
 | Local Ollama | Caveated | Local Ollama API | Available when Ollama is installed or running on the host |
-| Model Router | Caveated | Host-side OpenAI-compatible router | Uses a local routing proxy to select from a configured NVIDIA model pool |
 | Local NVIDIA NIM | Experimental | Local OpenAI-compatible | Requires `NEMOCLAW_EXPERIMENTAL=1` and a NIM-capable GPU |
 | Local vLLM | Experimental | Local OpenAI-compatible | Requires `NEMOCLAW_EXPERIMENTAL=1` and a server already running on `localhost:8000` |
 <!-- provider-status:end -->

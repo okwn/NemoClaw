@@ -29,7 +29,10 @@ Any request to an unlisted destination is intercepted by OpenShell, and the oper
 ## Baseline Policy
 
 The baseline policy is defined in `nemoclaw-blueprint/policies/openclaw-sandbox.yaml`.
+
+:::{note}
 Hermes sandboxes use an agent-specific baseline policy in `agents/hermes/policy-additions.yaml` so Hermes runtime binaries can reach the service endpoints they need while keeping the same deny-by-default model.
+:::
 
 ### Filesystem
 
