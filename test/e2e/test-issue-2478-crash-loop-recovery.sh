@@ -300,6 +300,29 @@ if [ "${NEMOCLAW_NON_INTERACTIVE:-}" != "1" ] || [ "${NEMOCLAW_ACCEPT_THIRD_PART
 fi
 pass "Required env vars set"
 
+# Pre-pull Docker base images used by install.sh's sandbox build.
+# GitHub Actions runners share egress IPs, so unauthenticated Docker Hub
+# pulls can hit the 429 rate limit intermittently. Pulling ahead of time
+# with retries ensures the image is in the local cache before the build.
+NODE_IMAGE="node:22-trixie-slim@sha256:2d9f5c76c8f4dd36e8f253bee5d828a83a6c09f36188f0b0414325232e0b175d"
+pull_ok=false
+for attempt in 1 2 3 4 5; do
+  if docker pull "$NODE_IMAGE" >/dev/null 2>&1; then
+    pull_ok=true
+    break
+  fi
+  if [ "$attempt" -lt 5 ]; then
+    sleep_sec=$((attempt * 15))
+    info "Docker pre-pull attempt $attempt failed, retrying in ${sleep_sec}s..."
+    sleep "$sleep_sec"
+  fi
+done
+if $pull_ok; then
+  pass "Docker base image pre-pulled"
+else
+  info "WARNING: all 5 Docker pre-pull attempts failed — build will retry inline"
+fi
+
 # ══════════════════════════════════════════════════════════════════
 # Phase 1: Pre-cleanup + onboard
 # ══════════════════════════════════════════════════════════════════
