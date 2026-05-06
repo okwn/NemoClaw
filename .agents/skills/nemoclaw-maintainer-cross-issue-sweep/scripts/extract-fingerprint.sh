@@ -69,9 +69,13 @@ extract_symbols() {
   printf '%s' "$1" | grep -oE 'func [A-Z][A-Za-z0-9_]*' | awk '{print $2}' || true
   # Go receiver methods: `func (r *Repo) GetIssue(...)` — capture the method name.
   printf '%s' "$1" | grep -oE 'func \([^)]+\) [A-Z][A-Za-z0-9_]*' | awk '{print $NF}' || true
+  # Go exported types: `type ExportedName struct/interface/...`.
+  printf '%s' "$1" | grep -oE 'type [A-Z][A-Za-z0-9_]*' | awk '{print $2}' || true
   printf '%s' "$1" | grep -oE 'const [A-Za-z_$][A-Za-z0-9_$]*' | awk '{print $2}' || true
   printf '%s' "$1" | grep -oE 'export default (function|class) [A-Za-z_$][A-Za-z0-9_$]*' | awk '{print $4}' || true
   printf '%s' "$1" | grep -oE 'export (function|class|const|let|var) [A-Za-z_$][A-Za-z0-9_$]*' | awk '{print $3}' || true
+  # POSIX shell function declarations: `name() { ... }`.
+  printf '%s\n' "$1" | sed -nE 's/^([a-z_][A-Za-z0-9_]*)[[:space:]]*\(\)[[:space:]]*\{.*/\1/p' || true
 }
 
 # Drop common short / language-keyword names. Keep symbols >= 4 chars.
@@ -86,8 +90,14 @@ symbols=$(extract_symbols "$added_lines" \
 # distinctive error-shaped strings starting with capital + 'Error'/'Failed'/etc.
 extract_error_strings() {
   printf '%s' "$1" | grep -oE 'throw new Error\("[^"]+"\)' | sed -E 's/throw new Error\("([^"]+)"\)/\1/' || true
+  # `throw Error("...")` without `new` — also valid JS.
+  printf '%s' "$1" | grep -oE 'throw Error\("[^"]+"\)' | sed -E 's/throw Error\("([^"]+)"\)/\1/' || true
   printf '%s' "$1" | grep -oE 'console\.error\("[^"]+"\)' | sed -E 's/console\.error\("([^"]+)"\)/\1/' || true
   printf '%s' "$1" | grep -oE '"[A-Z][^"]*\b(Error|Failed|Cannot|Unable|Invalid|Missing|Unsupported)\b[^"]*"' | tr -d '"' || true
+  # Python f-strings printed via print(f"...") containing error-shape keywords.
+  printf '%s\n' "$1" | sed -nE 's/.*print\(f"([^"]*(Error:|Failed|Cannot|Unable|Invalid|Missing|Unsupported)[^"]*)"\).*/\1/p' || true
+  # Flag/option tokens — high-info, rarely false-match (e.g. --no-color, --verbose).
+  printf '%s' "$1" | grep -oE -- '--[a-z0-9][a-z0-9-]+' || true
 }
 
 error_strings=$(extract_error_strings "$added_lines" \
@@ -102,10 +112,14 @@ body=$(gh pr view "$pr" "${repo_args[@]+"${repo_args[@]}"}" --json body --jq .bo
   echo "Failed to fetch PR body for #$pr" >&2
   exit 65
 }
-primary_issue=$(printf '%s' "$body" \
-  | { grep -oiE '(closes|fixes|resolves|fix)\s+#[0-9]+' || true; } \
-  | { grep -oE '[0-9]+' || true; } \
-  | head -n 1)
+primary_issue=$(
+  {
+    printf '%s' "$body" | grep -oiE '(closes|fixes|resolves|fix)\s+#[0-9]+' || true
+    printf '%s' "$body" | grep -oiE 'linked[[:space:]]+issue:[[:space:]]*#[0-9]+' || true
+  } \
+    | { grep -oE '[0-9]+' || true; } \
+    | head -n 1
+)
 primary_issue="${primary_issue:-null}"
 
 cat <<JSON
