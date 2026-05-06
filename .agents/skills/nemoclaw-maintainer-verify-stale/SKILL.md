@@ -241,8 +241,8 @@ pkill -9 -f openshell 2>/dev/null || true
 docker ps -a --filter "name=openshell-" -q 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
 docker ps -a --filter "name=nemoclaw-" -q 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
 rm -rf ~/.nemoclaw 2>/dev/null
-sudo rm -f /usr/local/bin/nemoclaw 2>/dev/null
-sudo rm -rf /usr/local/lib/nemoclaw 2>/dev/null
+sudo -n rm -f /usr/local/bin/nemoclaw 2>/dev/null || true
+sudo -n rm -rf /usr/local/lib/nemoclaw 2>/dev/null || true
 for port in 8080 18789 9119; do fuser -k -n tcp $port 2>/dev/null || true; done
 true
 SCRIPT
@@ -250,6 +250,8 @@ SCRIPT
 ```
 
 Idempotent — fails silently when there's nothing to clean. Run via `brev exec "$INSTANCE_NAME" "$RESET"` before 8a's install and again before 8d's install.
+
+**Sudo precondition.** All `sudo` invocations use `sudo -n` (non-interactive) so they fail fast instead of hanging on a password prompt. The skill assumes the Brev image's default user has passwordless sudo configured — Brev's stock images do; custom images may not. If `sudo -n` fails, the binary cleanup is best-effort and a stale `/usr/local/bin/nemoclaw` may persist. The user-local install path (`~/.nemoclaw`) is fully reset regardless.
 
 ### Step 8a: Install reported version
 
@@ -282,14 +284,20 @@ brev copy ./reproducer.sh "$INSTANCE_NAME":~/reproducer.sh
 brev exec "$INSTANCE_NAME" "bash ~/reproducer.sh" 2>&1 | tee ./baseline-transcript.log
 ```
 
-**Match rubric.** LLM compares `baseline-transcript.log` to the issue's "Actual result" / error description. Match criteria:
+**Match rubric.** LLM compares `baseline-transcript.log` to the issue's "Actual result" / error description. Match criteria, in order:
 
 1. **Exit code agrees** with what the issue describes (non-zero if issue describes a failure, zero if issue describes a wrong-output bug). Necessary but not sufficient.
 2. **Symptom phrase match:** transcript contains a key error phrase from the issue (e.g., issue says `Permission denied on generate-openclaw-config.py`, transcript says `EACCES: permission denied, open '...generate-openclaw-config.py'` — semantic equivalence counts).
 3. **Distinguish bug from infra noise:** generic network / DNS / auth errors don't count as a match unless the issue itself describes them. A bug about config parsing that fails at "could not resolve nvidia.com" is an infra failure, not a reproduction.
 
+**Fallback for issues without an explicit "Actual result" section.** Many bug reports describe a *behavioral* problem rather than a runtime error — e.g., "should default to a stable released version" (#1242), "configuration is not persisted across rebuilds" (#3030). These have no comparable error string. In that case:
+
+1. Use the issue's **full title + description** as the symptom signal.
+2. Match if the reproducer's outcome **contradicts the issue's stated expected behavior** (or matches the stated wrong behavior). E.g., issue says "expected: stable release; actual: nightly", reproducer prints `nightly-build-2026.04.x` → that's a match.
+3. If neither error string nor expected-behavior contradiction can be identified, route the script to Step 8c (synth-repro) — let the LLM produce a more diagnostic script that emits something testable.
+
 - **Match** → reproducer validated. Proceed to 8d.
-- **No match** (silent pass, wrong error, or infra noise): script has gaps. Proceed to 8c.
+- **No match** (silent pass, wrong error, infra noise, or no testable outcome): script has gaps. Proceed to 8c.
 
 ### Step 8c: Synth-repro and retry on baseline
 
@@ -333,12 +341,54 @@ Start at 0. Apply each rule that fires.
 | Signal | Delta |
 |---|---|
 | Reproducer ran cleanly on **latest** (8d), exit 0, no bug symptom observed | +50 |
-| Commits between reported version and `$LATEST` touch the implicated component (`git log v<reported>..$LATEST -- <path>`) | +25 |
-| A merged PR mentions this issue number or its symptom | +25 |
+| Commits between reported version and `$LATEST` touch the implicated component (see "Path extraction" below) | +25 |
+| A merged PR mentions this issue number or its symptom (see "PR search" below) | +25 |
 | Reproducer was LLM-synthesized at any point (Step 8b synth or Step 8c retry) | −30 |
 | Any partial error, warning, or flaky behavior in the latest run (8d) | −50 |
 
 Total is clamped to `[0, 100]`.
+
+### Path extraction (for the +25 commits signal)
+
+The skill needs to know *which* path to `git log v<reported>..$LATEST -- <path>` against. Apply in order, stop at the first that yields a non-empty path:
+
+1. **Stack trace / file path mentions in the issue body.** Grep the body for absolute paths under known install roots, then map to repo paths:
+   - `/usr/local/lib/nemoclaw/<rel>` → `<rel>` in repo (e.g., `scripts/generate-openclaw-config.py`)
+   - `/usr/local/bin/nemoclaw*` → `bin/`
+   - `~/.nemoclaw/<rel>` → most often runtime state, drop unless the bug is config-related → `src/lib/config/`
+   - In-repo paths (e.g., `bin/lib/policies.js` mentioned literally) → use as-is
+2. **Component-label-to-directory map.** Pick the first match:
+   - `NemoClaw CLI` → `bin/`, `src/`
+   - `Sandbox` → `src/lib/sandbox/`, `nemoclaw/sandbox/`
+   - `OpenShell` → `nemoclaw/openshell/`, `src/lib/openshell/`
+   - `Docker` → `Dockerfile`, `scripts/install-openshell.sh`
+   - `Getting Started` → `docs/`, `install.sh`
+   - `Integration: <X>` (when not in skip list) → `src/lib/integrations/<x>/`
+3. **Title keywords.** "TUI" → `src/tui/`, "policy" → `src/lib/policy/`, "inference" → `src/lib/inference/`.
+
+If none of the above produces a path, **skip the +25 signal entirely** rather than guessing. Floating the +25 on every issue would inflate scores meaninglessly.
+
+### PR search (for the +25 PR signal)
+
+```bash
+# Direct issue-number reference (covers most cases — "fixes #2861" etc.)
+DIRECT_REF=$(gh pr list --repo NVIDIA/NemoClaw --state merged \
+  --search "$ISSUE_NUMBER" \
+  --json number,title,mergedAt,body \
+  -q "[.[] | select((.body + \" \" + .title) | test(\"#$ISSUE_NUMBER\\\\b\"))]")
+
+# Symptom-phrase fallback (only if direct reference returns nothing)
+if [ -z "$DIRECT_REF" ] || [ "$DIRECT_REF" = "[]" ]; then
+  SYMPTOM=$(extract first key error/symptom phrase from issue body, ~3-6 words)
+  SYMPTOM_REF=$(gh pr list --repo NVIDIA/NemoClaw --state merged \
+    --search "\"$SYMPTOM\"" \
+    --json number,title,mergedAt)
+fi
+```
+
+Apply +25 if either query returns at least one PR with `mergedAt` strictly after the tag date of `$REPORTED_VERSION` (look up via `git log -1 --format=%cI v$REPORTED_VERSION`). PRs merged before the reporter even filed the issue can't have fixed it.
+
+If neither query returns anything, **skip the +25 signal**.
 
 **Baseline-validation gating.** The +50 weight assumes the reproducer was *validated* — i.e., it produced the bug symptom on baseline (Step 8b/8c match). If `BASELINE_INSTALL_FAILED=1` (Step 8a fall-through, baseline pass skipped), the +50 still applies but **cap the total at 84** unless commits-touched-area or merged-PR-mention also fires. Without baseline AND without corroborating evidence, the cleanest landing is the 60–84 band where the reporter is asked to confirm — we don't have enough on our own to claim ≥85.
 
@@ -365,11 +415,25 @@ The skill **never closes issues** in any branch. A maintainer pulls that trigger
 
 ## Step 10: Compose and Post the Comment
 
-**Redaction pass before posting.** Strip from any text quoted out of the issue body:
+**Redaction pass before posting.** Run on **every** chunk of text quoted in the comment — issue body excerpts, baseline transcript, latest transcript, synth-repro scripts. Replace each match with `[REDACTED]`. The transcripts especially leak — they include full stdout/stderr from real installs and runs.
 
-- Anything matching `(?i)(token|secret|password|api[_-]?key|bearer)[^\n]*[:=][^\n]*`
-- URLs containing `@` (basic-auth credentials).
-- File paths under the reporter's home directory (replace with `~/`).
+| Pattern | Targets |
+|---|---|
+| `(?i)(token\|secret\|password\|api[_-]?key\|bearer)[^\n]*[:=][^\n]*` | Inline credentials in env/config/log output |
+| `(?i)authorization:\s*\S+` | HTTP auth headers (often Bearer + JWT) |
+| `eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}` | JWT tokens |
+| `gh[pousr]_[A-Za-z0-9]{36,}` | GitHub PATs / install tokens |
+| `AKIA[0-9A-Z]{16}` | AWS access key IDs |
+| `(?i)aws_secret_access_key\s*=\s*\S+` | AWS secret keys |
+| `(?i)nvapi-[A-Za-z0-9_-]{20,}` | NVIDIA API keys (NIM / build.nvidia.com) |
+| URLs containing `@` before the host (e.g., `https://user:pw@host/...`) | Basic-auth credentials in URLs |
+| `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` | Email addresses (PII) |
+| `\b[A-Za-z0-9+/]{60,}={0,2}\b` | Long base64 blobs (likely keys/sessions; tune length to taste — too short hits legit data) |
+| `\b\w+\.(nvidia\.internal\|nv-internal\.com\|nvidia\.dev)\b` | Internal hostnames (extend list per team) |
+
+**File paths under the reporter's home directory** (`/Users/<name>/`, `/home/<name>/`) → replace with `~/`. Catches incidental username PII.
+
+**Order matters.** Run the longest, most-specific patterns first (JWT, AWS, NVIDIA-API) before the generic base64 catchall, otherwise the catchall masks the specific match and you lose the fact that *what* was redacted was a JWT vs a session blob.
 
 **Comment template (fixed / inconclusive — bug not reproduced on latest):**
 
