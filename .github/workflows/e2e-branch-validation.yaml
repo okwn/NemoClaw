@@ -265,7 +265,6 @@ jobs:
           BREV_CREATE_TIMEOUT_SECONDS: ${{ inputs.brev_create_timeout_seconds || vars.BREV_CREATE_TIMEOUT_SECONDS || '' }}
           NEMOCLAW_GPU_E2E_MODEL: ${{ vars.NEMOCLAW_GPU_E2E_MODEL || 'qwen2.5:7b' }}
           KEEP_ALIVE: ${{ inputs.keep_alive }}
-          NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/e2e-branch-validation
         run: npx vitest run --project e2e-branch-validation --silent=false --reporter=default
 
       - name: Update check run (completed)

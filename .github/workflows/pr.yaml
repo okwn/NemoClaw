@@ -41,8 +41,6 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/pr-checks
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -53,20 +51,11 @@ jobs:
       - name: Verify platform matrix is in sync
         run: python3 scripts/generate-platform-docs.py --check
 
-      - name: Upload NemoClaw profiling traces
-        if: always()
-        uses: ./.github/actions/upload-nemoclaw-traces
-        with:
-          name: nemoclaw-traces-pr-checks
-          path: /tmp/nemoclaw-traces/pr-checks
-
   test-e2e-ollama-proxy:
     needs: [checks, changes]
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/pr-ollama-proxy
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -76,13 +65,6 @@ jobs:
           node-version: "22"
       - name: Run Ollama auth proxy E2E tests
         run: bash test/e2e-ollama-proxy.sh
-
-      - name: Upload NemoClaw profiling traces
-        if: always()
-        uses: ./.github/actions/upload-nemoclaw-traces
-        with:
-          name: nemoclaw-traces-pr-ollama-proxy
-          path: /tmp/nemoclaw-traces/pr-ollama-proxy
 
   # Sandbox image builds and E2E tests have moved to pr-self-hosted.yaml,
   # which runs on NVIDIA self-hosted runners via copy-pr-bot.

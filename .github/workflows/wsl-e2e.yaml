@@ -35,7 +35,6 @@ jobs:
       NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
       NEMOCLAW_RECREATE_SANDBOX: "1"
       NEMOCLAW_SANDBOX_NAME: "e2e-wsl"
-      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/wsl-e2e
     steps:
       - name: Force LF line endings for checkout
         shell: powershell
@@ -235,8 +234,6 @@ jobs:
           # tests that legitimately consume their full budget aren't killed.
           export NEMOCLAW_EXEC_TIMEOUT=60000
           export NEMOCLAW_TEST_TIMEOUT=60000
-          export NEMOCLAW_TRACE_DIR='$env:NEMOCLAW_TRACE_DIR'
-          mkdir -p "\$NEMOCLAW_TRACE_DIR"
           npx vitest run --testTimeout 60000
           "@
           $tmp = "$env:RUNNER_TEMP\wsl-step.sh"
@@ -260,7 +257,7 @@ jobs:
           export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE='$env:NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE'
           export NEMOCLAW_RECREATE_SANDBOX='$env:NEMOCLAW_RECREATE_SANDBOX'
           export NEMOCLAW_SANDBOX_NAME='$env:NEMOCLAW_SANDBOX_NAME'
-          export NEMOCLAW_TRACE_DIR='$env:NEMOCLAW_TRACE_DIR'
+          export NEMOCLAW_TRACE_DIR='/tmp/nemoclaw-traces/wsl-e2e'
           mkdir -p "\$NEMOCLAW_TRACE_DIR"
           bash test/e2e/test-full-e2e.sh
           "@
@@ -283,8 +280,8 @@ jobs:
           $script = @"
           set -euo pipefail
           mkdir -p '$env:WSL_WORKDIR/_nemoclaw-traces'
-          if [ -d '$env:NEMOCLAW_TRACE_DIR' ]; then
-            cp -a '$env:NEMOCLAW_TRACE_DIR'/.' '$env:WSL_WORKDIR/_nemoclaw-traces/'
+          if [ -d '/tmp/nemoclaw-traces/wsl-e2e' ]; then
+            cp -a '/tmp/nemoclaw-traces/wsl-e2e'/.' '$env:WSL_WORKDIR/_nemoclaw-traces/'
           fi
           "@
           $tmp = "$env:RUNNER_TEMP\wsl-step.sh"
