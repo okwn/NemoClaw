@@ -265,6 +265,7 @@ jobs:
           BREV_CREATE_TIMEOUT_SECONDS: ${{ inputs.brev_create_timeout_seconds || vars.BREV_CREATE_TIMEOUT_SECONDS || '' }}
           NEMOCLAW_GPU_E2E_MODEL: ${{ vars.NEMOCLAW_GPU_E2E_MODEL || 'qwen2.5:7b' }}
           KEEP_ALIVE: ${{ inputs.keep_alive }}
+          NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/e2e-branch-validation
         run: npx vitest run --project e2e-branch-validation --silent=false --reporter=default
 
       - name: Update check run (completed)
@@ -322,6 +323,7 @@ jobs:
               'set +e
                mkdir -p /tmp/nc-debug
                cp /tmp/nemoclaw-onboard.log /tmp/nc-debug/ 2>/dev/null || true
+               cp -a /tmp/nemoclaw-traces /tmp/nc-debug/ 2>/dev/null || true
                timeout 15s openshell sandbox list  > /tmp/nc-debug/sandbox-list.txt 2>&1
                timeout 15s openshell gateway status > /tmp/nc-debug/gateway-status.txt 2>&1
                timeout 15s docker ps -a             > /tmp/nc-debug/docker-ps.txt 2>&1
@@ -330,6 +332,31 @@ jobs:
           scp -o StrictHostKeyChecking=no -o LogLevel=ERROR \
               "${INSTANCE}:/tmp/nc-debug.tar.gz" brev-debug-bundle/ 2>/dev/null || true
           ls -la brev-debug-bundle/ || true
+
+      - name: Collect Brev profiling traces
+        if: always()
+        continue-on-error: true
+        run: |
+          INSTANCE="e2e-pr-${{ inputs.pr_number || github.run_id }}"
+          mkdir -p brev-traces
+          brev refresh >/dev/null 2>&1 || true
+          ssh -o StrictHostKeyChecking=no -o LogLevel=ERROR \
+              -o ConnectTimeout=10 "${INSTANCE}" \
+              'test -d /tmp/nemoclaw-traces && tar -C /tmp -czf /tmp/nemoclaw-traces.tar.gz nemoclaw-traces || true' || true
+          scp -o StrictHostKeyChecking=no -o LogLevel=ERROR \
+              "${INSTANCE}:/tmp/nemoclaw-traces.tar.gz" brev-traces/ 2>/dev/null || true
+          if [ -f brev-traces/nemoclaw-traces.tar.gz ]; then
+            tar -C brev-traces -xzf brev-traces/nemoclaw-traces.tar.gz
+          fi
+
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nemoclaw-traces-e2e-branch-validation
+          path: brev-traces/nemoclaw-traces
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Brev debug bundle on failure
         if: failure()

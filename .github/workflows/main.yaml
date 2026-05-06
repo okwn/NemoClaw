@@ -24,12 +24,21 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/main-checks
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run basic checks
         uses: ./.github/actions/basic-checks
+
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-main-checks
+          path: /tmp/nemoclaw-traces/main-checks
 
   sandbox-images-and-e2e:
     needs: checks

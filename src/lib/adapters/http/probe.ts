@@ -12,6 +12,7 @@ import path from "node:path";
 import { isErrnoException } from "../../core/errno";
 import { compactText } from "../../core/url-utils";
 import type { ProbeResult } from "../../onboard/types";
+import { startSpan } from "../../profiling";
 import { ROOT } from "../../state/paths";
 
 export type CurlProbeResult = ProbeResult;
@@ -66,6 +67,20 @@ function cleanupTempDir(filePath: string, expectedPrefix: string): void {
 
 export function getCurlTimingArgs(): string[] {
   return ["--connect-timeout", "10", "--max-time", "60"];
+}
+
+function getCurlSpanArgs(argv: string[], opts: CurlProbeOptions = {}): Record<string, unknown> {
+  const url = argv[argv.length - 1];
+  let endpointHost: string | undefined;
+  try {
+    endpointHost = new URL(String(url)).hostname;
+  } catch {
+    endpointHost = undefined;
+  }
+  return {
+    endpointHost,
+    timeoutMs: opts.timeoutMs ?? 30_000,
+  };
 }
 
 export function summarizeCurlFailure(curlStatus = 0, stderr = "", body = ""): string {
@@ -131,6 +146,7 @@ export function summarizeProbeFailure(body = "", status = 0, curlStatus = 0, std
 
 export function runCurlProbe(argv: string[], opts: CurlProbeOptions = {}): CurlProbeResult {
   const bodyFile = secureTempFile("nemoclaw-curl-probe", ".json");
+  const span = startSpan("http_probe.curl", getCurlSpanArgs(argv, opts));
   try {
     const args = [...argv];
     const url = args.pop();
@@ -154,7 +170,7 @@ export function runCurlProbe(argv: string[], opts: CurlProbeOptions = {}): CurlP
       const errorMessage = compactText(
         `${result.error.message || String(result.error)} ${String(result.stderr || "")}`,
       );
-      return {
+      const failure = {
         ok: false,
         httpStatus: 0,
         curlStatus: errorCode,
@@ -162,9 +178,11 @@ export function runCurlProbe(argv: string[], opts: CurlProbeOptions = {}): CurlP
         stderr: errorMessage,
         message: summarizeProbeFailure(body, 0, errorCode, errorMessage),
       };
+      span.end({ ok: false, httpStatus: 0, curlStatus: errorCode });
+      return failure;
     }
     const status = Number(String(result.stdout || "").trim());
-    return {
+    const probeResult = {
       ok: result.status === 0 && status >= 200 && status < 300,
       httpStatus: Number.isFinite(status) ? status : 0,
       curlStatus: result.status || 0,
@@ -177,19 +195,24 @@ export function runCurlProbe(argv: string[], opts: CurlProbeOptions = {}): CurlP
         String(result.stderr || ""),
       ),
     };
+    span.end({
+      ok: probeResult.ok,
+      httpStatus: probeResult.httpStatus,
+      curlStatus: probeResult.curlStatus,
+    });
+    return probeResult;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    const curlStatus =
+      typeof error === "object" && error && "status" in error ? Number(error.status) || 1 : 1;
+    span.end({ ok: false, httpStatus: 0, curlStatus, error: detail });
     return {
       ok: false,
       httpStatus: 0,
-      curlStatus:
-        typeof error === "object" && error && "status" in error ? Number(error.status) || 1 : 1,
+      curlStatus,
       body: "",
       stderr: detail,
-      message: summarizeCurlFailure(
-        typeof error === "object" && error && "status" in error ? Number(error.status) || 1 : 1,
-        detail,
-      ),
+      message: summarizeCurlFailure(curlStatus, detail),
     };
   } finally {
     cleanupTempDir(bodyFile, "nemoclaw-curl-probe");
@@ -220,6 +243,11 @@ export function runChatCompletionsStreamingProbe(
   opts: CurlProbeOptions = {},
 ): CurlProbeResult {
   const bodyFile = secureTempFile("nemoclaw-chat-streaming-probe", ".sse");
+  const span = startSpan("http_probe.curl", {
+    ...getCurlSpanArgs(argv, opts),
+    streaming: true,
+    api: "chat-completions",
+  });
   try {
     const args = [...argv];
     const url = args.pop();
@@ -247,7 +275,7 @@ export function runChatCompletionsStreamingProbe(
       const errorMessage = compactText(
         `${result.error.message || String(result.error)} ${String(result.stderr || "")}`,
       );
-      return {
+      const failure = {
         ok: false,
         httpStatus: 0,
         curlStatus: errorCode,
@@ -255,6 +283,8 @@ export function runChatCompletionsStreamingProbe(
         stderr: errorMessage,
         message: summarizeProbeFailure(body, 0, errorCode, errorMessage),
       };
+      span.end({ ok: false, httpStatus: 0, curlStatus: errorCode });
+      return failure;
     }
 
     const status = Number(String(result.stdout || "").trim());
@@ -262,7 +292,7 @@ export function runChatCompletionsStreamingProbe(
     const hasStreamingData = hasChatCompletionsStreamingData(body);
     const httpOk = Number.isFinite(status) && status >= 200 && status < 300;
     if (httpOk && hasStreamingData && (curlStatus === 0 || curlStatus === 28)) {
-      return {
+      const success = {
         ok: true,
         httpStatus: status,
         curlStatus,
@@ -270,13 +300,15 @@ export function runChatCompletionsStreamingProbe(
         stderr: String(result.stderr || ""),
         message: `HTTP ${status}: chat completions stream returned SSE data`,
       };
+      span.end({ ok: true, httpStatus: status, curlStatus });
+      return success;
     }
 
     const message =
       httpOk && !hasStreamingData
         ? `HTTP ${status}: chat completions stream did not return SSE data`
         : summarizeProbeFailure(body, status || 0, curlStatus, String(result.stderr || ""));
-    return {
+    const failure = {
       ok: false,
       httpStatus: Number.isFinite(status) ? status : 0,
       curlStatus,
@@ -284,19 +316,20 @@ export function runChatCompletionsStreamingProbe(
       stderr: String(result.stderr || ""),
       message,
     };
+    span.end({ ok: false, httpStatus: failure.httpStatus, curlStatus });
+    return failure;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    const curlStatus =
+      typeof error === "object" && error && "status" in error ? Number(error.status) || 1 : 1;
+    span.end({ ok: false, httpStatus: 0, curlStatus, error: detail });
     return {
       ok: false,
       httpStatus: 0,
-      curlStatus:
-        typeof error === "object" && error && "status" in error ? Number(error.status) || 1 : 1,
+      curlStatus,
       body: "",
       stderr: detail,
-      message: summarizeCurlFailure(
-        typeof error === "object" && error && "status" in error ? Number(error.status) || 1 : 1,
-        detail,
-      ),
+      message: summarizeCurlFailure(curlStatus, detail),
     };
   } finally {
     cleanupTempDir(bodyFile, "nemoclaw-chat-streaming-probe");
@@ -325,6 +358,11 @@ export function runStreamingEventProbe(
   opts: CurlProbeOptions = {},
 ): StreamingProbeResult {
   const bodyFile = secureTempFile("nemoclaw-streaming-probe", ".sse");
+  const span = startSpan("http_probe.curl", {
+    ...getCurlSpanArgs(argv, opts),
+    streaming: true,
+    api: "responses",
+  });
   try {
     const args = [...argv];
     const url = args.pop();
@@ -347,11 +385,13 @@ export function runStreamingEventProbe(
       const detail = result.error
         ? String(result.error.message || result.error)
         : String(result.stderr || "");
-      return {
+      const failure = {
         ok: false,
         missingEvents: REQUIRED_STREAMING_EVENTS,
         message: `Streaming probe failed: ${compactText(detail).slice(0, 200)}`,
       };
+      span.end({ ok: false, missingEvents: REQUIRED_STREAMING_EVENTS.length });
+      return failure;
     }
 
     // Parse SSE event types from the raw output.
@@ -366,18 +406,22 @@ export function runStreamingEventProbe(
 
     const missing = REQUIRED_STREAMING_EVENTS.filter((e) => !eventTypes.has(e));
     if (missing.length > 0) {
-      return {
+      const failure = {
         ok: false,
         missingEvents: missing,
         message:
           `Responses API streaming is missing required events: ${missing.join(", ")}. ` +
           "Falling back to chat completions API.",
       };
+      span.end({ ok: false, missingEvents: missing.length });
+      return failure;
     }
 
+    span.end({ ok: true, missingEvents: 0 });
     return { ok: true, missingEvents: [], message: "" };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
+    span.end({ ok: false, missingEvents: REQUIRED_STREAMING_EVENTS.length, error: detail });
     return {
       ok: false,
       missingEvents: REQUIRED_STREAMING_EVENTS,

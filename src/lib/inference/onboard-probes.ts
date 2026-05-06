@@ -8,6 +8,7 @@
 const { getCredential, normalizeCredentialValue, resolveProviderCredential } = require("../credentials/store");
 const { isWsl } = require("../platform");
 const httpProbe = require("../adapters/http/probe");
+const { withSpan } = require("../profiling");
 const {
   isNvcfFunctionNotFoundForAccount,
   nvcfFunctionNotFoundMessage,
@@ -29,6 +30,14 @@ const {
 // verification we still skip these endpoints, but strict tool-call validation
 // must fail closed unless the host is probeable from the onboard process.
 const SANDBOX_INTERNAL_HOSTS = ["host.openshell.internal", "host.docker.internal"];
+
+function getEndpointHost(endpointUrl) {
+  try {
+    return new URL(String(endpointUrl)).hostname;
+  } catch {
+    return undefined;
+  }
+}
 
 function isSandboxInternalUrl(url) {
   try {
@@ -252,35 +261,40 @@ function probeResponsesToolCalling(endpointUrl, model, apiKey, options = {}) {
     useQueryParam && normalizedKey
       ? `${baseUrl}/responses?key=${encodeURIComponent(normalizedKey)}`
       : `${baseUrl}/responses`;
-  const result = runCurlProbe([
-    "-sS",
-    ...getValidationProbeCurlArgs(),
-    "-H",
-    "Content-Type: application/json",
-    ...authHeader,
-    "-d",
-    JSON.stringify({
-      model,
-      input: "Call the emit_ok function with value OK. Do not answer with plain text.",
-      tool_choice: "required",
-      tools: [
-        {
-          type: "function",
-          name: "emit_ok",
-          description: "Returns the probe value for validation.",
-          parameters: {
-            type: "object",
-            properties: {
-              value: { type: "string" },
+  const result = withSpan(
+    "inference.probe.responses.request",
+    () =>
+      runCurlProbe([
+        "-sS",
+        ...getValidationProbeCurlArgs(),
+        "-H",
+        "Content-Type: application/json",
+        ...authHeader,
+        "-d",
+        JSON.stringify({
+          model,
+          input: "Call the emit_ok function with value OK. Do not answer with plain text.",
+          tool_choice: "required",
+          tools: [
+            {
+              type: "function",
+              name: "emit_ok",
+              description: "Returns the probe value for validation.",
+              parameters: {
+                type: "object",
+                properties: {
+                  value: { type: "string" },
+                },
+                required: ["value"],
+                additionalProperties: false,
+              },
             },
-            required: ["value"],
-            additionalProperties: false,
-          },
-        },
-      ],
-    }),
-    url,
-  ]);
+          ],
+        }),
+        url,
+      ]),
+    { api: "responses", endpointHost: getEndpointHost(endpointUrl) },
+  );
 
   if (!result.ok) {
     return result;
@@ -475,12 +489,18 @@ function runChatCompletionsProbe({ authHeader, model, url, isWsl: isWslOverride 
     url,
     isWsl: isWslOverride,
   });
-  if (isDeepSeekV4ProModel(model)) {
-    return runChatCompletionsStreamingProbe(args, {
-      timeoutMs: getProbeProcessTimeoutMs(args),
-    });
-  }
-  return runCurlProbe(args);
+  return withSpan(
+    "inference.probe.chat_completions.request",
+    () => {
+      if (isDeepSeekV4ProModel(model)) {
+        return runChatCompletionsStreamingProbe(args, {
+          timeoutMs: getProbeProcessTimeoutMs(args),
+        });
+      }
+      return runCurlProbe(args);
+    },
+    { api: "chat-completions", endpointHost: getEndpointHost(url) },
+  );
 }
 
 function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
@@ -533,19 +553,24 @@ function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
           name: "Responses API",
           api: "openai-responses",
           execute: () =>
-            runCurlProbe([
-              "-sS",
-              ...getValidationProbeCurlArgs(),
-              "-H",
-              "Content-Type: application/json",
-              ...authHeader,
-              "-d",
-              JSON.stringify({
-                model,
-                input: "Reply with exactly: OK",
-              }),
-              appendKey("/responses"),
-            ]),
+            withSpan(
+              "inference.probe.responses.request",
+              () =>
+                runCurlProbe([
+                  "-sS",
+                  ...getValidationProbeCurlArgs(),
+                  "-H",
+                  "Content-Type: application/json",
+                  ...authHeader,
+                  "-d",
+                  JSON.stringify({
+                    model,
+                    input: "Reply with exactly: OK",
+                  }),
+                  appendKey("/responses"),
+                ]),
+              { api: "responses", endpointHost: getEndpointHost(endpointUrl) },
+            ),
         };
 
   const chatCompletionsProbe = {
@@ -580,20 +605,25 @@ function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
       // streaming mode. Only run for /responses probes on custom endpoints
       // where probeStreaming was requested.
       if (probe.api === "openai-responses" && options.probeStreaming === true) {
-        const streamResult = runStreamingEventProbe([
-          "-sS",
-          ...getValidationProbeCurlArgs(),
-          "-H",
-          "Content-Type: application/json",
-          ...authHeader,
-          "-d",
-          JSON.stringify({
-            model,
-            input: "Reply with exactly: OK",
-            stream: true,
-          }),
-          appendKey("/responses"),
-        ]);
+        const streamResult = withSpan(
+          "inference.probe.streaming.request",
+          () =>
+            runStreamingEventProbe([
+              "-sS",
+              ...getValidationProbeCurlArgs(),
+              "-H",
+              "Content-Type: application/json",
+              ...authHeader,
+              "-d",
+              JSON.stringify({
+                model,
+                input: "Reply with exactly: OK",
+                stream: true,
+              }),
+              appendKey("/responses"),
+            ]),
+          { api: "responses", endpointHost: getEndpointHost(endpointUrl) },
+        );
         if (!streamResult.ok && streamResult.missingEvents.length > 0) {
           // Backend responds but lacks required streaming events — fall back
           // to /chat/completions silently.
@@ -690,7 +720,15 @@ function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
             timingArgs: doubledArgs,
           })
         : runCurlProbe(buildRetryArgs());
-    let retryResult = runRetryProbe();
+    let retryResult = withSpan(
+      "inference.probe.retry.request",
+      runRetryProbe,
+      {
+        api: "chat-completions",
+        endpointHost: getEndpointHost(endpointUrl),
+        toolCalling: options.requireChatCompletionsToolCalling === true,
+      },
+    );
     if (retryResult.ok) {
       return { ok: true, api: "openai-completions", label: "Chat Completions API" };
     }
@@ -703,7 +741,15 @@ function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
         `  Chat Completions API validation ${reason}; retrying in ${Math.round(delayMs / 1000)}s...`,
       );
       sleepSync(delayMs);
-      retryResult = runRetryProbe();
+      retryResult = withSpan(
+        "inference.probe.retry.request",
+        runRetryProbe,
+        {
+          api: "chat-completions",
+          endpointHost: getEndpointHost(endpointUrl),
+          toolCalling: options.requireChatCompletionsToolCalling === true,
+        },
+      );
       if (retryResult.ok) {
         return { ok: true, api: "openai-completions", label: "Chat Completions API" };
       }
@@ -751,23 +797,28 @@ function probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options = {}) {
 // ── Anthropic probe ──────────────────────────────────────────────
 
 function probeAnthropicEndpoint(endpointUrl, model, apiKey) {
-  const result = runCurlProbe([
-    "-sS",
-    ...getCurlTimingArgs(),
-    "-H",
-    `x-api-key: ${normalizeCredentialValue(apiKey)}`,
-    "-H",
-    "anthropic-version: 2023-06-01",
-    "-H",
-    "content-type: application/json",
-    "-d",
-    JSON.stringify({
-      model,
-      max_tokens: 16,
-      messages: [{ role: "user", content: "Reply with exactly: OK" }],
-    }),
-    `${String(endpointUrl).replace(/\/+$/, "")}/v1/messages`,
-  ]);
+  const result = withSpan(
+    "inference.probe.anthropic.request",
+    () =>
+      runCurlProbe([
+        "-sS",
+        ...getCurlTimingArgs(),
+        "-H",
+        `x-api-key: ${normalizeCredentialValue(apiKey)}`,
+        "-H",
+        "anthropic-version: 2023-06-01",
+        "-H",
+        "content-type: application/json",
+        "-d",
+        JSON.stringify({
+          model,
+          max_tokens: 16,
+          messages: [{ role: "user", content: "Reply with exactly: OK" }],
+        }),
+        `${String(endpointUrl).replace(/\/+$/, "")}/v1/messages`,
+      ]),
+    { api: "anthropic-messages", endpointHost: getEndpointHost(endpointUrl) },
+  );
   if (result.ok) {
     return { ok: true, api: "anthropic-messages", label: "Anthropic Messages API" };
   }

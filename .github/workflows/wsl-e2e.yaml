@@ -35,6 +35,7 @@ jobs:
       NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
       NEMOCLAW_RECREATE_SANDBOX: "1"
       NEMOCLAW_SANDBOX_NAME: "e2e-wsl"
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/wsl-e2e
     steps:
       - name: Force LF line endings for checkout
         shell: powershell
@@ -223,6 +224,26 @@ jobs:
             Write-Host 'Docker is not available in WSL; full E2E will be skipped'
           }
 
+      - name: Run WSL compatibility test suite
+        shell: powershell
+        run: |
+          $script = @"
+          set -euo pipefail
+          cd '$env:WSL_WORKDIR'
+          # WSL process-spawn overhead pushes CLI runtime close to the test
+          # budget; keep exec timeout aligned with the vitest test timeout so
+          # tests that legitimately consume their full budget aren't killed.
+          export NEMOCLAW_EXEC_TIMEOUT=60000
+          export NEMOCLAW_TEST_TIMEOUT=60000
+          export NEMOCLAW_TRACE_DIR='$env:NEMOCLAW_TRACE_DIR'
+          mkdir -p "\$NEMOCLAW_TRACE_DIR"
+          npx vitest run --testTimeout 60000
+          "@
+          $tmp = "$env:RUNNER_TEMP\wsl-step.sh"
+          [IO.File]::WriteAllText($tmp, ($script -replace "`r",""), (New-Object System.Text.UTF8Encoding $false))
+          $wslTmp = wsl -d $env:WSL_DISTRO -- wslpath -u ($tmp -replace '\\','/')
+          wsl -d $env:WSL_DISTRO -- bash -l $wslTmp
+
       - name: Run WSL full E2E
         if: steps.docker.outputs.docker_ok == 'true'
         shell: powershell
@@ -239,6 +260,8 @@ jobs:
           export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE='$env:NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE'
           export NEMOCLAW_RECREATE_SANDBOX='$env:NEMOCLAW_RECREATE_SANDBOX'
           export NEMOCLAW_SANDBOX_NAME='$env:NEMOCLAW_SANDBOX_NAME'
+          export NEMOCLAW_TRACE_DIR='$env:NEMOCLAW_TRACE_DIR'
+          mkdir -p "\$NEMOCLAW_TRACE_DIR"
           bash test/e2e/test-full-e2e.sh
           "@
           $tmp = "$env:RUNNER_TEMP\wsl-step.sh"
@@ -252,6 +275,31 @@ jobs:
         run: |
           Write-Host 'Skipping WSL full E2E because Docker is unavailable on this runner.'
           Write-Host 'The workflow still validated the NemoClaw build flow inside Ubuntu WSL.'
+
+      - name: Copy WSL profiling traces to Windows workspace
+        if: always()
+        shell: powershell
+        run: |
+          $script = @"
+          set -euo pipefail
+          mkdir -p '$env:WSL_WORKDIR/_nemoclaw-traces'
+          if [ -d '$env:NEMOCLAW_TRACE_DIR' ]; then
+            cp -a '$env:NEMOCLAW_TRACE_DIR'/.' '$env:WSL_WORKDIR/_nemoclaw-traces/'
+          fi
+          "@
+          $tmp = "$env:RUNNER_TEMP\wsl-step.sh"
+          [IO.File]::WriteAllText($tmp, ($script -replace "`r",""), (New-Object System.Text.UTF8Encoding $false))
+          $wslTmp = wsl -d $env:WSL_DISTRO -- wslpath -u ($tmp -replace '\\','/')
+          wsl -d $env:WSL_DISTRO -- bash -l $wslTmp
+
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nemoclaw-traces-wsl-e2e
+          path: ${{ env.WSL_WORKDIR }}/_nemoclaw-traces
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload install log on failure
         if: failure()

@@ -19,6 +19,8 @@ jobs:
   build-sandbox-images:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -57,9 +59,18 @@ jobs:
           path: /tmp/isolation-image.tar.gz
           retention-days: 1
 
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-${{ github.job }}
+          path: /tmp/nemoclaw-traces/${{ github.job }}
+
   build-hermes-sandbox-image:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -84,10 +95,19 @@ jobs:
           docker run --rm --user sandbox nemoclaw-hermes-production \
             test -x /usr/local/bin/nemoclaw-start
 
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-${{ github.job }}
+          path: /tmp/nemoclaw-traces/${{ github.job }}
+
   build-sandbox-images-arm64:
     if: inputs.run_arm64
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -101,10 +121,19 @@ jobs:
       - name: Build sandbox test image on arm64
         run: docker build -f test/Dockerfile.sandbox --build-arg BASE_IMAGE=nemoclaw-production-arm64 -t nemoclaw-sandbox-test-arm64 .
 
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-${{ github.job }}
+          path: /tmp/nemoclaw-traces/${{ github.job }}
+
   test-e2e-sandbox:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: build-sandbox-images
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -121,10 +150,19 @@ jobs:
       - name: Run sandbox E2E tests
         run: docker run --rm -v "${{ github.workspace }}/test:/opt/test" nemoclaw-sandbox-test /opt/test/e2e-test.sh
 
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-${{ github.job }}
+          path: /tmp/nemoclaw-traces/${{ github.job }}
+
   test-e2e-gateway-isolation:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: build-sandbox-images
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -141,10 +179,19 @@ jobs:
       - name: Run gateway isolation E2E tests
         run: NEMOCLAW_TEST_IMAGE=nemoclaw-production bash test/e2e-gateway-isolation.sh
 
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-${{ github.job }}
+          path: /tmp/nemoclaw-traces/${{ github.job }}
+
   test-e2e-port-overrides:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: build-sandbox-images
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -160,3 +207,10 @@ jobs:
 
       - name: Run port override E2E tests
         run: NEMOCLAW_TEST_IMAGE=nemoclaw-production bash test/e2e-port-overrides.sh
+
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-${{ github.job }}
+          path: /tmp/nemoclaw-traces/${{ github.job }}

@@ -38,6 +38,8 @@ jobs:
   macos-e2e:
     runs-on: macos-26
     timeout-minutes: 30
+    env:
+      NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/macos-e2e
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -91,6 +93,7 @@ jobs:
           NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
           NEMOCLAW_RECREATE_SANDBOX: "1"
           NEMOCLAW_SANDBOX_NAME: "e2e-macos"
+          NEMOCLAW_TRACE_DIR: /tmp/nemoclaw-traces/macos-e2e
         run: bash test/e2e/test-full-e2e.sh
 
       - name: Explain skipped full E2E
@@ -98,6 +101,13 @@ jobs:
         run: |
           echo 'Skipping macOS full E2E because Docker is unavailable on this runner.'
           echo 'The workflow still validated the NemoClaw build on macOS (Apple Silicon).'
+
+      - name: Upload NemoClaw profiling traces
+        if: always()
+        uses: ./.github/actions/upload-nemoclaw-traces
+        with:
+          name: nemoclaw-traces-macos-e2e
+          path: /tmp/nemoclaw-traces/macos-e2e
 
       - name: Upload logs on failure
         if: failure()
