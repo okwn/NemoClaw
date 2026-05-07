@@ -438,7 +438,7 @@ else
   pass "Raw Discord token absent from sandbox filesystem"
 fi
 
-section "Phase 6: Discord placeholder egress"
+section "Phase 6: Discord REST placeholder egress"
 
 dc_api=$(sandbox_exec 'NODE_NO_WARNINGS=1 node -e "
 const fs = require(\"fs\");
@@ -487,7 +487,7 @@ except Exception:
 if [ "$dc_status" = "200" ]; then
   pass "Discord users/@me returned 200 with configured token"
 elif [ "$dc_status" = "401" ]; then
-  pass "Discord users/@me returned 401 - fake token reached Discord through the placeholder/proxy path"
+  pass "Discord users/@me returned 401 - REST path reached Discord; this is not gateway IDENTIFY auth proof"
 elif [ "$dc_error" = "timeout" ]; then
   skip "Discord API timed out"
 elif [ -n "$dc_error" ]; then
@@ -496,7 +496,18 @@ else
   fail "Unexpected Discord API response: ${dc_api:0:300}"
 fi
 
-section "Phase 7: Cleanup"
+section "Phase 7: Discord gateway auth boundary"
+
+gateway_auth_log=$(sandbox_exec "grep -E 'Connected as ' /tmp/gateway.log 2>/dev/null | tail -1 || true")
+if [ -n "$gateway_auth_log" ]; then
+  pass "Hermes Discord gateway authenticated; combined with leak checks, this proves IDENTIFY did not require a sandbox secret"
+elif [ "${HERMES_DISCORD_REQUIRE_GATEWAY_AUTH:-}" = "1" ]; then
+  fail "Hermes Discord gateway did not authenticate; REST/proxy plumbing is not proof of IDENTIFY token rewriting"
+else
+  skip "Hermes Discord gateway auth not proven in this run; fake-token runs validate only REST/proxy plumbing and token isolation"
+fi
+
+section "Phase 8: Cleanup"
 
 if [[ "${NEMOCLAW_E2E_KEEP_SANDBOX:-}" != "1" ]]; then
   nemoclaw "$SANDBOX_NAME" destroy --yes 2>&1 | tail -3 || true
