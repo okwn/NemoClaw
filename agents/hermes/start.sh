@@ -258,7 +258,8 @@ start_socat_forwarder() {
 # Python HTTP clients (httpx) URL-encode colons in paths, breaking
 # OpenShell's openshell:resolve:env: placeholder pattern. This proxy
 # sits between the Hermes process and the OpenShell proxy, URL-decoding
-# paths so the L7 proxy recognizes the placeholders.
+# request targets so the L7 proxy recognizes REST placeholders. It relays
+# upgraded WebSocket bytes unchanged and does not rewrite Discord IDENTIFY.
 DECODE_PROXY_PID=""
 DECODE_PROXY_PORT=3129
 start_decode_proxy() {

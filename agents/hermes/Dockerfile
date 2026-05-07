@@ -30,10 +30,11 @@ RUN (apt-get remove --purge -y gcc gcc-12 g++ g++-12 cpp cpp-12 make \
 
 # Hermes v2026.4.13+ auto-detects HTTPS_PROXY and skips fallback-IP
 # transport when a proxy is present. The sandbox proxy chain
-# (decode-proxy → OpenShell L7 proxy) handles credential placeholder
+# (decode-proxy -> OpenShell L7 proxy) handles REST credential placeholder
 # rewriting and hostname-based policy enforcement. Hermes v2026.4.23's
-# Discord adapter reads DISCORD_PROXY and passes it to discord.py, which
-# threads it into aiohttp.ws_connect(proxy=...) for the gateway WebSocket.
+# Discord adapter reads DISCORD_PROXY and passes it to discord.py for REST and
+# WebSocket proxy connection setup. This does not rewrite Discord gateway
+# IDENTIFY payloads; gateway auth needs separate proof.
 ENV HERMES_TELEGRAM_DISABLE_FALLBACK_IPS=1
 
 # Copy NemoClaw plugin for Hermes (Python-based)
