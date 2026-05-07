@@ -87,7 +87,7 @@ import { OPENSHELL_PROBE_TIMEOUT_MS } from "./lib/adapters/openshell/timeouts";
 import { renderPublicOclifHelp } from "./lib/cli/public-oclif-help";
 import {
   resolveGlobalOclifDispatch,
-  resolveSandboxOclifDispatch,
+  resolveLegacySandboxDispatch,
   type DispatchResult,
 } from "./lib/cli/oclif-dispatch";
 
@@ -137,10 +137,6 @@ async function runOclif(commandId: string, args: string[] = []): Promise<void> {
     error: console.error,
     exit: (code: number) => process.exit(code),
   });
-}
-
-function printSandboxActionUsage(action: string): void {
-  console.log(`  Usage: ${CLI_NAME} <name> ${action}`);
 }
 
 // ── Pre-upgrade backup ───────────────────────────────────────────
@@ -196,11 +192,7 @@ async function runDispatchResult(
       await runOclif(result.commandId, result.args);
       return;
     case "help":
-      if (result.commandId) {
-        renderPublicOclifHelp(result.commandId, `<name> ${result.usage}`);
-      } else {
-        printSandboxActionUsage(result.usage);
-      }
+      renderPublicOclifHelp(result.commandId, result.publicUsage);
       return;
     case "usageError":
       printDispatchUsageError(result, opts.sandboxName);
@@ -231,7 +223,7 @@ async function runDispatchResult(
 
 // eslint-disable-next-line complexity
 async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
-  if (argv[0] === "internal") {
+  if (argv[0] === "internal" || argv[0] === "sandbox") {
     await runOclifArgv(argv, {
       rootDir: ROOT,
       error: console.error,
@@ -322,7 +314,7 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
     if (action === "connect") {
       parseSandboxConnectArgs(cmd, actionArgs);
     }
-    await runDispatchResult(resolveSandboxOclifDispatch(cmd, action, actionArgs), {
+    await runDispatchResult(resolveLegacySandboxDispatch(cmd, action, actionArgs), {
       sandboxName: cmd,
       actionArgs,
     });

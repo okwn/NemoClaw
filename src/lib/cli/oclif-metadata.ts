@@ -4,6 +4,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import type { CommandDisplayEntry } from "./command-display";
+
 export type OclifCommandMetadata = {
   args?: Record<string, unknown>;
   baseFlags?: Record<string, unknown>;
@@ -15,6 +17,7 @@ export type OclifCommandMetadata = {
   strict?: boolean;
   summary?: string;
   usage?: string[];
+  display?: readonly CommandDisplayEntry[];
 };
 
 type CommandExport = {
@@ -83,28 +86,18 @@ function loadPatternDiscoveredCommands(): Record<string, OclifCommandMetadata> |
   return Object.keys(commands).length > 0 ? commands : null;
 }
 
-function loadCompatibilityCommandIndex(): Record<string, OclifCommandMetadata> | null {
-  for (const modulePath of ["../commands", "../commands/index.js"]) {
-    try {
-      const registry = require(modulePath) as {
-        default?: Record<string, OclifCommandMetadata>;
-      };
-      if (registry.default) return registry.default;
-    } catch {
-      /* try the next runtime shape */
-    }
-  }
-  return null;
+function loadOclifCommands(): Record<string, OclifCommandMetadata> | null {
+  return loadPatternDiscoveredCommands();
 }
 
-function loadOclifCommands(): Record<string, OclifCommandMetadata> | null {
-  return loadPatternDiscoveredCommands() ?? loadCompatibilityCommandIndex();
+export function getRegisteredOclifCommandsMetadata(): Record<string, OclifCommandMetadata> {
+  return loadOclifCommands() ?? {};
 }
 
 export function getRegisteredOclifCommandMetadata(
   commandId: string,
 ): OclifCommandMetadata | null {
-  return loadOclifCommands()?.[commandId] ?? null;
+  return getRegisteredOclifCommandsMetadata()[commandId] ?? null;
 }
 
 export function getRegisteredOclifCommandSummary(commandId: string): string | null {

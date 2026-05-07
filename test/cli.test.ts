@@ -1485,6 +1485,28 @@ describe("CLI dispatch", () => {
     expect(start.out).toContain("Channel 'telegram' is already enabled for 'alpha'. Nothing to do.");
   });
 
+  it("supports oclif-native sandbox command forms", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-native-sandbox-"));
+    writeSandboxRegistry(home);
+
+    const statusHelp = runWithEnv("sandbox status alpha --help", { HOME: home });
+    expect(statusHelp.code).toBe(0);
+    expect(statusHelp.out).toContain("$ nemoclaw sandbox status <name>");
+    expect(statusHelp.out).not.toContain("Sandbox 'sandbox' does not exist");
+
+    const policy = runWithEnv("sandbox policy add alpha github --dry-run", { HOME: home });
+    expect(policy.code).toBe(0);
+    expect(policy.out).toContain("--dry-run: no changes applied.");
+
+    const channels = runWithEnv("sandbox channels add alpha telegram --dry-run", { HOME: home });
+    expect(channels.code).toBe(0);
+    expect(channels.out).toContain("--dry-run: would enable channel 'telegram' for 'alpha'.");
+
+    const snapshots = runWithEnv("sandbox snapshot list alpha", { HOME: home });
+    expect(snapshots.code).toBe(0);
+    expect(snapshots.out).toContain("No snapshots found for 'alpha'.");
+  });
+
   it("policy and channel mutations reject missing parser-owned values before dispatch", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-mutation-missing-values-"));
     writeSandboxRegistry(home);
@@ -2598,7 +2620,7 @@ describe("CLI dispatch", () => {
         "      echo 'GATEWAY_PID=123'",
         "      exit 42",
         "      ;;",
-        "    *'curl -sf'*)",
+        "    *'curl -so'*)",
         "      echo '__NEMOCLAW_SANDBOX_EXEC_STARTED__'",
         '      if [ "$(cat "$state_file")" = recovered ]; then echo RUNNING; else echo STOPPED; fi',
         "      exit 0",
@@ -2661,7 +2683,7 @@ describe("CLI dispatch", () => {
         "      echo 'GATEWAY_PID=123'",
         "      exit 0",
         "      ;;",
-        "    *'curl -sf'*)",
+        "    *'curl -so'*)",
         "      echo '__NEMOCLAW_SANDBOX_EXEC_STARTED__'",
         '      if [ "$(cat "$state_file")" != recovered ]; then echo STOPPED; exit 0; fi',
         '      count=$(cat "$ready_count_file" 2>/dev/null || echo 0)',
@@ -2716,7 +2738,7 @@ describe("CLI dispatch", () => {
         "fi",
         'if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$3" = "--name" ] && [ "$4" = "alpha" ]; then',
         '  cmd="$8"',
-        '  if [[ "$cmd" == *"curl -sf"* ]]; then echo "__NEMOCLAW_SANDBOX_EXEC_STARTED__"; echo RUNNING; exit 0; fi',
+        '  if [[ "$cmd" == *"curl -so"* ]]; then echo "__NEMOCLAW_SANDBOX_EXEC_STARTED__"; echo RUNNING; exit 0; fi',
         '  if [[ "$cmd" == *"OPENCLAW="* ]]; then echo "__NEMOCLAW_SANDBOX_EXEC_STARTED__"; echo UNEXPECTED_RECOVERY; exit 1; fi',
         "fi",
         "exit 0",
@@ -2765,7 +2787,7 @@ describe("CLI dispatch", () => {
         'if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$3" = "--name" ] && [ "$4" = "alpha" ]; then',
         '  cmd="$8"',
         '  if [[ "$cmd" == *"OPENCLAW="* ]]; then echo "__NEMOCLAW_SANDBOX_EXEC_STARTED__"; echo RECOVERY_FAILED >&2; exit 42; fi',
-        '  if [[ "$cmd" == *"curl -sf"* ]]; then echo "__NEMOCLAW_SANDBOX_EXEC_STARTED__"; echo STOPPED; exit 0; fi',
+        '  if [[ "$cmd" == *"curl -so"* ]]; then echo "__NEMOCLAW_SANDBOX_EXEC_STARTED__"; echo STOPPED; exit 0; fi',
         "fi",
         'if [ "$1" = "sandbox" ] && [ "$2" = "ssh-config" ]; then',
         "  echo 'Host openshell-alpha'",
@@ -2844,7 +2866,7 @@ describe("CLI dispatch", () => {
         "  echo 'GATEWAY_PID=456'",
         "  exit 0",
         "fi",
-        'if [[ "$cmd" == *"curl -sf"* ]]; then',
+        'if [[ "$cmd" == *"curl -so"* ]]; then',
         '  if [ "$(cat "$state_file")" = recovered ]; then echo RUNNING; else echo STOPPED; fi',
         "  exit 0",
         "fi",
@@ -2923,7 +2945,7 @@ describe("CLI dispatch", () => {
         "  echo 'GATEWAY_PID=789'",
         "  exit 0",
         "fi",
-        'if [[ "$cmd" == *"curl -sf"* ]]; then',
+        'if [[ "$cmd" == *"curl -so"* ]]; then',
         '  if [ "$(cat "$state_file")" = recovered ]; then echo RUNNING; else echo STOPPED; fi',
         "  exit 0",
         "fi",
@@ -2974,7 +2996,7 @@ describe("CLI dispatch", () => {
         "fi",
         'if [ "$1" = "sandbox" ] && [ "$2" = "exec" ] && [ "$3" = "--name" ] && [ "$4" = "alpha" ]; then',
         '  cmd="$8"',
-        '  if [[ "$cmd" == *"curl -sf"* ]]; then',
+        '  if [[ "$cmd" == *"curl -so"* ]]; then',
         "    echo '__NEMOCLAW_SANDBOX_EXEC_STARTED__'",
         '    if [ "$(cat "$state_file")" = recovered ]; then echo RUNNING; else echo STOPPED; fi',
         "    exit 0",

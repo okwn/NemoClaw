@@ -13,7 +13,7 @@ describe("oclif metadata lookup", () => {
     expect(getRegisteredOclifCommandSummary("sandbox:logs")).toBe("Stream sandbox logs");
   });
 
-  it("looks up internal commands that are not in the compatibility command index", () => {
+  it("looks up internal commands from pattern discovery", () => {
     expect(getRegisteredOclifCommandSummary("internal:uninstall:plan")).toBe(
       "Internal: build the NemoClaw uninstall plan",
     );

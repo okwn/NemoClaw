@@ -29,10 +29,16 @@ function expectedCommandIdsFromSourceCommands(dir = COMMANDS_ROOT, prefix = ""):
 }
 
 describe("oclif pattern command discovery", () => {
-  it("discovers every command id from src/commands without the compatibility command index", async () => {
+  it("discovers every command id from src/commands", async () => {
     const config = await OclifConfig.load(process.cwd());
     const discoveredIds = config.commands.map((command) => command.id).sort();
 
     expect(discoveredIds).toEqual(expectedCommandIdsFromSourceCommands());
+  });
+
+  it("does not rely on the removed compatibility command index", () => {
+    expect(fs.existsSync(path.join(process.cwd(), "src", "lib", "commands", "index.ts"))).toBe(
+      false,
+    );
   });
 });
