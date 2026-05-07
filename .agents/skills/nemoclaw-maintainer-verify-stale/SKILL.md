@@ -24,10 +24,12 @@ gh issue view <number> --repo NVIDIA/NemoClaw \
   --json number,title,body,labels,url,author,createdAt,comments
 ```
 
-**Batch mode** — user says "batch", "weekly", or provides no number. Cap at 20 issues per run.
+**Batch mode** — user says "batch", "weekly", or provides no number. Cap at 20 issues for *processing* per run (enforced after Step 3/4 filters narrow the pool).
+
+The discovery query needs to see the entire open-bug pool — the per-run processing cap is downstream. Use `--limit 1000` so the skill doesn't silently drop issues beyond the page (the candidate triage run found 129 open bugs; an earlier `--limit 100` would have missed 29 of them).
 
 ```bash
-gh issue list --repo NVIDIA/NemoClaw --state open --limit 100 \
+gh issue list --repo NVIDIA/NemoClaw --state open --limit 1000 \
   --label bug \
   --json number,title,body,labels,url,author,createdAt,comments
 ```
@@ -73,6 +75,31 @@ Apply these rules in order. Drop any issue that fails a rule.
 
 - The issue carries a `fixed-on-latest` or `verify-inconclusive` label. (Cleared by the release sweep in `nemoclaw-maintainer-cut-release-tag` so the issue re-opens on each release.) The by-design path uses the existing repo `status: wont-fix` label, which is already covered by the issue-type skip rule above — no separate idempotency clause needed for that path.
 - A comment matching `<!-- nemoclaw-verify-stale v\d+ YYYY-MM-DD -->` was posted **within the last 7 days**. The regex matches any marker version (`v1`, `v2`, …) so future skill versions can re-verify older-marked issues by tightening the regex (e.g. require a specific marker version). The marker carries a date so the candidate filter can apply a TTL — useful for the still-reproduces case (Step 9), where no label is applied and we want next week's run to re-verify rather than skip forever.
+
+Implementation — match the marker against each comment's `createdAt`. Use `gh issue view --json comments` (single-issue mode already fetches this; batch mode's `gh issue list` also returns the comment array per issue):
+
+```bash
+# Cutoff for the 7-day TTL. macOS and Linux date(1) syntax differ; try both.
+SEVEN_DAYS_AGO=$(date -u -v-7d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+  || date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+# Returns the timestamp of the most recent marker comment within the TTL, or empty.
+RECENT_MARKER=$(gh issue view "$ISSUE_NUMBER" --repo NVIDIA/NemoClaw --json comments \
+  --jq --arg cutoff "$SEVEN_DAYS_AGO" '
+    .comments[]
+    | select(.body | test("<!-- nemoclaw-verify-stale v\\d+ \\d{4}-\\d{2}-\\d{2} -->"))
+    | select(.createdAt > $cutoff)
+    | .createdAt' \
+  | head -1)
+
+if [ -n "$RECENT_MARKER" ]; then
+  echo "Skip: marker posted $RECENT_MARKER (within 7-day TTL)"
+  # In single-issue mode: exit 0 with a friendly message.
+  # In batch mode: continue to the next candidate.
+fi
+```
+
+Run this check for every candidate that survived the label-based filters above; drop those whose `RECENT_MARKER` is non-empty.
 
 **Candidate rule:** keep the issue if **either**:
 
@@ -194,6 +221,17 @@ Confirm CLI dependencies are available, `brev` is authenticated, and the install
 for cmd in gh brev jq python3 curl; do
   command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: missing required dependency: $cmd"; exit 1; }
 done
+
+# gh identity — every comment posted by Step 10 lands under whatever account `gh` is currently
+# authenticated as. Surface that explicitly so the maintainer notices before a public comment
+# lands under the wrong handle (this matters when `gh` is multi-token, after a recent re-auth,
+# or when running under a service-account hostname).
+GH_IDENTITY=$(gh api user --jq .login 2>/dev/null)
+if [ -z "$GH_IDENTITY" ]; then
+  echo "ERROR: gh CLI is not authenticated. Run: gh auth login   # then re-run this skill"
+  exit 1
+fi
+echo "gh identity: @$GH_IDENTITY — comments posted by this run will appear under this handle"
 
 # Brev auth — short-circuit only after the auth check, not before.
 # When auth fails, give the user a directive recipe (the browser-flow path is
@@ -866,6 +904,10 @@ Transcripts and synth-repro scripts are already plain text and skip the pre-pass
 
 **Mandatory cap caveat.** When the score is capped (Step 9 baseline-validation gating, or any Step 11 degraded-mode path), the rendered Verdict section must include a one-line caveat naming the cap and the reason. Example: `Capped at 84 because Step 9's baseline-validation gate did not run (sandbox-build rot on v0.0.18: Dockerfile symlink layer removed by #2227).` Don't make readers reverse-engineer why the score didn't go higher — name it.
 
+**Mandatory `Verification mode` header line.** All three templates below include a `**Verification mode:**` line in the metadata block, naming what we did and didn't actually run (e.g., "runtime reproduction on Brev <SKU>; baseline + latest both installed and run" for the standard template; "static analysis at the verified-on tag — no runtime reproduction" for the by-design template; "runtime reproduction on Brev <SKU>; bug confirmed live on latest" for still-reproduces). Reader should never have to guess whether the verdict came from real install logs or from static analysis.
+
+**Link-pass self-verification (all templates).** Same rule as Step 8.5d's link pass, applied to every template. Resolve at least one rendered markdown link from each section that has them (`What's structurally fixed` / `Vestigial references` / `Existing CI coverage` for by-design; `Relevant changes since` / transcript code-anchor citations for the standard template) via `gh api repos/NVIDIA/NemoClaw/contents/<path>?ref=<tag>` (returns 200 + base64 if path exists at tag, 404 otherwise) or `curl -fsI <blob-url>`. A 404 on a citation in the rendered comment is worse than no citation — it advertises verification work that didn't actually happen. If any link fails to resolve, fix it or bail to `verify-inconclusive`.
+
 **Mandatory closing block — reporter @-mention with confirmation language.** Every template below ends with an explicit @-mention of the original reporter using this exact shape:
 
 > @\<reporter\> — please confirm the symptom is gone on a recent build (≥ v0.0.\<Z\>) and reopen with a fresh reproducer if you observe otherwise.
@@ -879,6 +921,7 @@ The skill cannot independently confirm a closed-as-fixed verdict — only the re
 
 **Reported on:** v0.0.31
 **Verified on:** v0.0.34 (commit abc1234)
+**Verification mode:** runtime reproduction on Brev `<instance-class>` — baseline (v0.0.31) and latest (v0.0.34) both installed and run; comparison made on the captured transcripts. (Or: "runtime reproduction on Brev `<instance-class>` — baseline-install-skipped (`.openclaw-data` rot, see Step 11), latest-only run; verdict capped at 84.")
 **Environment:** Brev <instance-class> (<instance-type>) / Ubuntu 22.04 / <CUDA version if GPU>
 
 ### Baseline (reported version)
@@ -931,6 +974,7 @@ The skill cannot independently confirm a closed-as-fixed verdict — only the re
 
 **Reported on:** v0.0.31
 **Verified on:** v0.0.34 (commit abc1234)
+**Verification mode:** runtime reproduction on Brev `<instance-class>` — baseline confirmed the symptom matches the issue; latest (v0.0.34) also produced the symptom. Bug is still live.
 **Environment:** Brev <instance-class> (<instance-type>) / Ubuntu 22.04
 
 The skill ran the reported reproducer on v0.0.34 and observed the same bug symptom described in this issue. The bug is still live.
