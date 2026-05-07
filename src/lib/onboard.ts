@@ -1526,11 +1526,14 @@ function prepareInitialSandboxCreatePolicy(
   if (basePolicyNames === null) {
     return { policyPath: basePolicyPath, appliedPresets: [] };
   }
+  const existingCreateTimePresets = requestedCreateTimePresets.filter((preset) =>
+    basePolicyNames.has(preset),
+  );
   const createTimePresets = requestedCreateTimePresets.filter(
     (preset) => !basePolicyNames.has(preset),
   );
   if (createTimePresets.length === 0) {
-    return { policyPath: basePolicyPath, appliedPresets: [] };
+    return { policyPath: basePolicyPath, appliedPresets: existingCreateTimePresets };
   }
 
   const mergedPolicy = policies.mergePresetNamesIntoPolicy(basePolicy, createTimePresets);
@@ -1545,7 +1548,7 @@ function prepareInitialSandboxCreatePolicy(
 
   return {
     policyPath,
-    appliedPresets: mergedPolicy.appliedPresets,
+    appliedPresets: [...existingCreateTimePresets, ...mergedPolicy.appliedPresets],
     cleanup: () => {
       try {
         cleanupTempDir(policyPath, "nemoclaw-initial-policy");
@@ -5428,6 +5431,7 @@ async function createSandbox(
     imageTag: resolvedImageTag,
     providerCredentialHashes:
       Object.keys(providerCredentialHashes).length > 0 ? providerCredentialHashes : undefined,
+    policies: initialSandboxPolicy.appliedPresets,
     messagingChannels: activeMessagingChannels,
     messagingChannelConfig: messagingChannelConfig || undefined,
     disabledChannels: disabledChannels.length > 0 ? [...disabledChannels] : undefined,

@@ -4167,6 +4167,7 @@ const YAML = require(${yamlPath});
 const { loadAgent } = require(${agentDefsPath});
 
 const commands = [];
+let registeredSandbox = null;
 runner.run = (command, opts = {}) => {
   const normalized = _n(command);
   commands.push({ command: normalized, env: opts.env || null });
@@ -4180,7 +4181,10 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
   return "";
 };
-registry.registerSandbox = () => true;
+registry.registerSandbox = (entry) => {
+  registeredSandbox = entry;
+  return true;
+};
 registry.updateSandbox = () => true;
 registry.setDefault = () => true;
 registry.removeSandbox = () => true;
@@ -4238,6 +4242,7 @@ const { createSandbox } = require(${onboardPath});
       policyPath: createCommand?.policyPath || "",
       policyReadError: createCommand?.policyReadError || null,
     },
+    registeredPolicies: registeredSandbox?.policies || [],
     slackBinaryPaths: (slack.binaries || []).map((entry) => entry.path),
     slackEndpointHosts: (slack.endpoints || []).map((entry) => entry.host),
   }));
@@ -4274,6 +4279,7 @@ const { createSandbox } = require(${onboardPath});
       assert.match(payload.createCommand.command, /--provider my-assistant-slack-app/);
       assert.doesNotMatch(payload.createCommand.policyPath, /nemoclaw-initial-policy/);
       assert.equal(payload.createCommand.policyReadError, null);
+      assert.deepEqual(payload.registeredPolicies, ["slack"]);
       assert.deepEqual(payload.slackBinaryPaths, [
         "/usr/local/bin/hermes",
         "/usr/bin/python3.11",
