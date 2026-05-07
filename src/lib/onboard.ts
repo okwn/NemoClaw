@@ -3245,7 +3245,36 @@ function waitForSandboxReady(sandboxName: string, attempts = 10, delaySeconds = 
 
 // ── Step 1: Preflight ────────────────────────────────────────────
 
-async function preflight(): Promise<ReturnType<typeof nim.detectGpu>> {
+// CDI spec gap (#3152). When Docker is configured for CDI device injection
+// (CDISpecDirs is set) but no nvidia.com/gpu spec is present, OpenShell's
+// `gateway start --gpu` fails minutes later with `unresolvable CDI devices
+// nvidia.com/gpu=all`. Block now and surface `nvidia-ctk cdi generate`. The
+// check is a no-op when the user opts out of GPU passthrough (--no-gpu),
+// since the legacy nvidia runtime does not need a CDI spec.
+//
+// Extracted so the same guard runs on the `--resume` branch, where preflight()
+// itself is skipped via the cached session.
+function assertCdiNvidiaGpuSpecPresent(
+  host: ReturnType<typeof assessHost>,
+  optedOutGpuPassthrough: boolean,
+): void {
+  if (!host.cdiNvidiaGpuSpecMissing || optedOutGpuPassthrough) return;
+  console.error(
+    "  Docker is configured for CDI device injection (CDISpecDirs is set), but no",
+  );
+  console.error(
+    "  nvidia.com/gpu CDI spec was found on the host. OpenShell's gateway start will",
+  );
+  console.error(
+    "  fail with `unresolvable CDI devices nvidia.com/gpu=all` (issue #3152).",
+  );
+  printRemediationActions(planHostRemediation(host));
+  process.exit(1);
+}
+
+async function preflight(
+  preflightOpts: { optedOutGpuPassthrough?: boolean } = {},
+): Promise<ReturnType<typeof nim.detectGpu>> {
   step(1, 8, "Preflight checks");
 
   const host = assessHost();
@@ -3257,6 +3286,8 @@ async function preflight(): Promise<ReturnType<typeof nim.detectGpu>> {
     process.exit(1);
   }
   console.log("  ✓ Docker is running");
+
+  assertCdiNvidiaGpuSpecPresent(host, preflightOpts.optedOutGpuPassthrough === true);
 
   // DNS resolution from inside containers (#2101). A corp firewall that
   // blocks outbound UDP:53 to public resolvers leaves the sandbox build
@@ -9389,9 +9420,20 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     if (resumePreflight) {
       skippedStepMessage("preflight", "cached");
       gpu = nim.detectGpu();
+      // Re-check the CDI spec gap on resume (#3152). The cached preflight
+      // result does not capture host CDI state, and the original onboard
+      // attempt that wrote the cache likely aborted at gateway-start with
+      // exactly this CDI failure — so resuming without re-checking would
+      // walk into the same wall. Honour persisted `gpuPassthrough: false`
+      // from the prior session as an opt-out, since the resume invocation
+      // does not need to re-pass `--no-gpu` to keep that intent (the same
+      // resolution is replayed a few lines below for `gpuPassthrough`).
+      const resumeOptedOutGpuPassthrough =
+        opts.noGpu === true || (opts.gpu !== true && session?.gpuPassthrough === false);
+      assertCdiNvidiaGpuSpecPresent(assessHost(), resumeOptedOutGpuPassthrough);
     } else {
       startRecordedStep("preflight");
-      gpu = await preflight();
+      gpu = await preflight({ optedOutGpuPassthrough: opts.noGpu === true });
       onboardSession.markStepComplete("preflight");
     }
 
