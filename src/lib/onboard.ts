@@ -1486,7 +1486,7 @@ const CREATE_TIME_POLICY_PRESETS_BY_CHANNEL: Record<string, string[]> = {
   slack: ["slack"],
 };
 
-function getNetworkPolicyNames(policyContent: string): Set<string> {
+function getNetworkPolicyNames(policyContent: string): Set<string> | null {
   try {
     // Lazy require: yaml is already a dependency via the policy helpers.
     const YAML = require("yaml");
@@ -1501,7 +1501,7 @@ function getNetworkPolicyNames(policyContent: string): Set<string> {
     }
     return new Set(Object.keys(networkPolicies));
   } catch {
-    return new Set();
+    return null;
   }
 }
 
@@ -1523,6 +1523,9 @@ function prepareInitialSandboxCreatePolicy(
 
   const basePolicy = fs.readFileSync(basePolicyPath, "utf-8");
   const basePolicyNames = getNetworkPolicyNames(basePolicy);
+  if (basePolicyNames === null) {
+    return { policyPath: basePolicyPath, appliedPresets: [] };
+  }
   const createTimePresets = requestedCreateTimePresets.filter(
     (preset) => !basePolicyNames.has(preset),
   );
