@@ -381,9 +381,20 @@ write_openclaw_config_baseline() {
     return 0
   fi
 
-  # Refuse to capture content that doesn't parse as JSON — keeps the
-  # baseline a known-good restore target.
-  if ! python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$config_file" 2>/dev/null; then
+  # Refuse to capture content that doesn't parse as JSON5 — keeps the
+  # baseline a known-good restore target. openclaw.json is JSON5 (comments,
+  # trailing commas) everywhere else in the stack — OpenClaw uses
+  # JSON5.parse / parseJsonWithJson5Fallback, and migration-state.ts uses
+  # JSON5.parse — so the validator here matches that contract instead of
+  # rejecting JSON5 features as the strict json.load would.
+  if ! python3 - "$config_file" 2>/dev/null <<'PY_VALIDATE'; then
+import json, re, sys
+src = open(sys.argv[1]).read()
+src = re.sub(r'//[^\n]*', '', src)              # line comments
+src = re.sub(r'/\*[\s\S]*?\*/', '', src)        # block comments
+src = re.sub(r',(\s*[}\]])', r'\1', src)        # trailing commas
+json.loads(src)
+PY_VALIDATE
     return 0
   fi
 
@@ -439,14 +450,20 @@ recover_openclaw_config_if_empty() {
     source="$baseline_file"
   fi
 
+  # Recovery failures must be loud, not silent. In mutable-default mode the
+  # downstream verify_config_integrity_if_locked is intentionally a no-op,
+  # so a soft-fail here would let startup continue with an empty (or
+  # restored-but-unhashed) config and crash much later in a less obvious
+  # place. Return non-zero so `set -e` aborts startup with the diagnostic
+  # already on stderr.
   if [ -z "$source" ]; then
-    printf '[config] WARNING: openclaw.json is empty (%s). No baseline available; restart cannot recover. See issue #3118.\n' "$config_file" >&2
-    return 0
+    printf '[config] ERROR: openclaw.json is empty (%s). No baseline available; restart cannot recover. See issue #3118.\n' "$config_file" >&2
+    return 1
   fi
 
   if ! cp "$source" "$config_file" 2>/dev/null; then
-    printf '[config] WARNING: Failed to restore openclaw.json from %s (see #3118)\n' "$source" >&2
-    return 0
+    printf '[config] ERROR: Failed to restore openclaw.json from %s (see #3118)\n' "$source" >&2
+    return 1
   fi
   chown sandbox:sandbox "$config_file" 2>/dev/null || true
   chmod 660 "$config_file" 2>/dev/null || true
@@ -454,6 +471,9 @@ recover_openclaw_config_if_empty() {
   if (cd "$config_dir" && sha256sum openclaw.json >".config-hash") 2>/dev/null; then
     chown sandbox:sandbox "$hash_file" 2>/dev/null || true
     chmod 660 "$hash_file" 2>/dev/null || true
+  else
+    printf '[config] ERROR: Restored openclaw.json from %s but failed to recompute %s (see #3118)\n' "$source" "$hash_file" >&2
+    return 1
   fi
 
   printf '[config] openclaw.json restored from %s (was empty — see #3118)\n' "$source" >&2

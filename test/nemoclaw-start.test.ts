@@ -1940,6 +1940,10 @@ describe("openclaw.json baseline + recovery (#3118)", () => {
     /** Owner returned by stat — "sandbox" = mutable mode, "root" = shields-up */
     dirOwner?: "sandbox" | "root";
     asRoot?: boolean;
+    /** Stub cp to fail with non-zero exit. */
+    failCp?: boolean;
+    /** Stub sha256sum to fail with non-zero exit. */
+    failSha256sum?: boolean;
   };
 
   function runRecoverIfEmpty(fixture: RecoveryFixture) {
@@ -1976,10 +1980,12 @@ describe("openclaw.json baseline + recovery (#3118)", () => {
       `id() { echo ${uid}; }`,
       "chown() { return 0; }",
       `stat() { if [ "$1" = "-c" ] && [ "$2" = "%U" ] && [ "$3" = ${JSON.stringify(openclawDir)} ]; then echo ${owner}; return 0; fi; command stat "$@"; }`,
+      fixture.failCp ? "cp() { return 1; }" : "",
+      fixture.failSha256sum ? "sha256sum() { return 1; }" : "",
       helperFns,
       fn,
       "recover_openclaw_config_if_empty",
-    ].join("\n");
+    ].filter(Boolean).join("\n");
     const script = path.join(root, "run.sh");
     fs.writeFileSync(script, wrapper, { mode: 0o700 });
     const result = spawnSync("bash", [script], { encoding: "utf-8" });
@@ -2033,11 +2039,36 @@ describe("openclaw.json baseline + recovery (#3118)", () => {
     expect(config).toBe(original);
   });
 
-  it("logs a warning and leaves file empty when no recovery source exists", () => {
+  it("fails loudly and leaves file empty when no recovery source exists", () => {
+    // Mutable mode + empty config + no baseline = recovery cannot proceed.
+    // Soft-fail would let startup continue with the still-empty file and
+    // crash later in a less obvious place; recover_openclaw_config_if_empty
+    // returns non-zero so `set -e` aborts the entrypoint here.
     const { result, config } = runRecoverIfEmpty({ configContent: "" });
-    expect(result.status).toBe(0);
+    expect(result.status).not.toBe(0);
     expect(config).toBe("");
-    expect(`${result.stdout}${result.stderr}`).toContain("#3118");
+    expect(result.stderr).toContain("#3118");
+    expect(result.stderr).toContain("No baseline available");
+  });
+
+  it("fails loudly when cp from baseline fails", () => {
+    const { result } = runRecoverIfEmpty({
+      configContent: "",
+      baselineContent: JSON.stringify({ ok: true }),
+      failCp: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("Failed to restore");
+  });
+
+  it("fails loudly when sha256sum cannot recompute the hash after restore", () => {
+    const { result } = runRecoverIfEmpty({
+      configContent: "",
+      baselineContent: JSON.stringify({ ok: true }),
+      failSha256sum: true,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("failed to recompute");
   });
 
   it("skips recovery in shields-up mode (config dir owned by root)", () => {
@@ -2151,6 +2182,27 @@ describe("openclaw.json baseline + recovery (#3118)", () => {
     const { result, baselineExists } = runWriteBaseline({ configContent: "not json" });
     expect(result.status).toBe(0);
     expect(baselineExists).toBe(false);
+  });
+
+  // openclaw.json is JSON5 throughout the stack (OpenClaw's JSON5.parse,
+  // migration-state.ts's JSON5.parse). The baseline validator must match
+  // that contract — strict json.load would reject these and disarm the
+  // restart-recovery path for users with JSON5-flavored configs.
+  it("captures a JSON5-flavored config (comments + trailing commas) as baseline", () => {
+    const config = [
+      "{",
+      '  // primary model',
+      '  "agents": { "defaults": { "model": { "primary": "x" } } },',
+      "  /* trailing comma below is JSON5-only */",
+      '  "models": { "providers": { "inference": {} } },',
+      "}",
+    ].join("\n");
+    const { result, baselineExists, baselineContent } = runWriteBaseline({
+      configContent: config,
+    });
+    expect(result.status).toBe(0);
+    expect(baselineExists).toBe(true);
+    expect(baselineContent).toBe(config);
   });
 
   it("skips baseline write in shields-up mode (config dir owned by root)", () => {
