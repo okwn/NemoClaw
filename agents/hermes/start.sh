@@ -262,6 +262,8 @@ start_socat_forwarder() {
 # upgraded WebSocket bytes unchanged and does not rewrite Discord IDENTIFY.
 DECODE_PROXY_PID=""
 DECODE_PROXY_PORT=3129
+DISCORD_FACADE_PID=""
+DISCORD_FACADE_PORT=3130
 start_decode_proxy() {
   nohup python3 /usr/local/bin/nemoclaw-decode-proxy >/dev/null 2>&1 &
   DECODE_PROXY_PID=$!
@@ -276,6 +278,34 @@ start_decode_proxy() {
     attempts=$((attempts + 1))
   done
   echo "[gateway] decode-proxy failed to start — placeholder rewriting may not work" >&2
+}
+
+start_discord_facade() {
+  local facade_url="http://127.0.0.1:${DISCORD_FACADE_PORT}"
+  local proxy_url="http://127.0.0.1:${DECODE_PROXY_PORT}"
+  local launch_env=(
+    "DISCORD_PROXY=${proxy_url}"
+    "HTTPS_PROXY=${proxy_url}"
+    "HTTP_PROXY=${proxy_url}"
+    "NEMOCLAW_DISCORD_FACADE_PORT=${DISCORD_FACADE_PORT}"
+  )
+
+  if [ "$(id -u)" -eq 0 ] && command -v gosu >/dev/null 2>&1 && id gateway >/dev/null 2>&1; then
+    nohup env -u NEMOCLAW_DISCORD_FACADE_URL -u PYTHONPATH "${launch_env[@]}" gosu gateway python3 /usr/local/bin/nemoclaw-discord-facade >/tmp/discord-facade.log 2>&1 &
+  else
+    nohup env -u NEMOCLAW_DISCORD_FACADE_URL -u PYTHONPATH "${launch_env[@]}" python3 /usr/local/bin/nemoclaw-discord-facade >/tmp/discord-facade.log 2>&1 &
+  fi
+  DISCORD_FACADE_PID=$!
+  local attempts=0
+  while [ "$attempts" -lt 10 ]; do
+    if ss -tln 2>/dev/null | grep -q "127.0.0.1:${DISCORD_FACADE_PORT}"; then
+      echo "[gateway] discord facade listening on ${facade_url} (pid $DISCORD_FACADE_PID)" >&2
+      return
+    fi
+    sleep 0.5
+    attempts=$((attempts + 1))
+  done
+  echo "[gateway] discord facade failed to start — Hermes Discord gateway emulation may not work" >&2
 }
 
 # cleanup_on_signal is provided by sandbox-init.sh. It reads
@@ -294,6 +324,8 @@ export NO_PROXY="$_NO_PROXY_VAL"
 export http_proxy="$_PROXY_URL"
 export https_proxy="$_PROXY_URL"
 export no_proxy="$_NO_PROXY_VAL"
+export NEMOCLAW_DISCORD_FACADE_URL="http://127.0.0.1:${DISCORD_FACADE_PORT}"
+export PYTHONPATH="/opt/nemoclaw-hermes-discord-preload${PYTHONPATH:+:${PYTHONPATH}}"
 
 # Resolve sandbox home dir early — used by proxy-env writing and
 # install_configure_guard before the non-root/root branch below.
@@ -321,6 +353,8 @@ export https_proxy="$_PROXY_URL"
 export no_proxy="$_NO_PROXY_VAL"
 export HERMES_HOME="${HERMES_DIR}"
 export DISCORD_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}"
+export NEMOCLAW_DISCORD_FACADE_URL="http://127.0.0.1:${DISCORD_FACADE_PORT}"
+export PYTHONPATH="/opt/nemoclaw-hermes-discord-preload\${PYTHONPATH:+:\${PYTHONPATH}}"
 PROXYEOF
 } | emit_sandbox_sourced_file "$_PROXY_ENV_FILE"
 
@@ -507,9 +541,12 @@ if [ "$(id -u)" -ne 0 ]; then
 
   # Start decode proxy and Hermes gateway
   start_decode_proxy
+  start_discord_facade
   umask 0007
   HERMES_HOME="${HERMES_DIR}" \
     DISCORD_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}" \
+    NEMOCLAW_DISCORD_FACADE_URL="http://127.0.0.1:${DISCORD_FACADE_PORT}" \
+    PYTHONPATH="/opt/nemoclaw-hermes-discord-preload${PYTHONPATH:+:${PYTHONPATH}}" \
     HTTPS_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}" \
     HTTP_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}" \
     https_proxy="http://127.0.0.1:${DECODE_PROXY_PORT}" \
@@ -523,6 +560,7 @@ if [ "$(id -u)" -ne 0 ]; then
   # the shared-library refactor). Acceptable for entrypoint-level cleanup.
   SANDBOX_CHILD_PIDS=("$GATEWAY_PID")
   [ -n "${DECODE_PROXY_PID:-}" ] && SANDBOX_CHILD_PIDS+=("$DECODE_PROXY_PID")
+  [ -n "${DISCORD_FACADE_PID:-}" ] && SANDBOX_CHILD_PIDS+=("$DISCORD_FACADE_PID")
   [ -n "${GATEWAY_LOG_TAIL_PID:-}" ] && SANDBOX_CHILD_PIDS+=("$GATEWAY_LOG_TAIL_PID")
   # shellcheck disable=SC2034  # read by cleanup_on_signal from sandbox-init.sh
   SANDBOX_WAIT_PID="$GATEWAY_PID"
@@ -554,8 +592,11 @@ validate_tmp_permissions
 
 # Start decode proxy and gateway
 start_decode_proxy
+start_discord_facade
 HERMES_HOME="${HERMES_DIR}" \
   DISCORD_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}" \
+  NEMOCLAW_DISCORD_FACADE_URL="http://127.0.0.1:${DISCORD_FACADE_PORT}" \
+  PYTHONPATH="/opt/nemoclaw-hermes-discord-preload${PYTHONPATH:+:${PYTHONPATH}}" \
   HTTPS_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}" \
   HTTP_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}" \
   https_proxy="http://127.0.0.1:${DECODE_PROXY_PORT}" \
@@ -569,6 +610,7 @@ start_gateway_log_stream
 # the shared-library refactor). Acceptable for entrypoint-level cleanup.
 SANDBOX_CHILD_PIDS=("$GATEWAY_PID")
 [ -n "${DECODE_PROXY_PID:-}" ] && SANDBOX_CHILD_PIDS+=("$DECODE_PROXY_PID")
+[ -n "${DISCORD_FACADE_PID:-}" ] && SANDBOX_CHILD_PIDS+=("$DISCORD_FACADE_PID")
 [ -n "${GATEWAY_LOG_TAIL_PID:-}" ] && SANDBOX_CHILD_PIDS+=("$GATEWAY_LOG_TAIL_PID")
 # shellcheck disable=SC2034  # read by cleanup_on_signal from sandbox-init.sh
 SANDBOX_WAIT_PID="$GATEWAY_PID"

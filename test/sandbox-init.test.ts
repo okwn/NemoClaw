@@ -581,6 +581,9 @@ EOF
       const src = readFileSync(join(import.meta.dirname, "../agents/hermes/start.sh"), "utf-8");
       expect(src).toContain('export DISCORD_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}"');
       expect(src).toContain('DISCORD_PROXY="http://127.0.0.1:${DECODE_PROXY_PORT}"');
+      expect(src).toContain("start_discord_facade");
+      expect(src).toContain('NEMOCLAW_DISCORD_FACADE_URL="http://127.0.0.1:${DISCORD_FACADE_PORT}"');
+      expect(src).toContain("nemoclaw-discord-facade");
     });
 
     it("hermes start.sh calls validate_tmp_permissions", () => {

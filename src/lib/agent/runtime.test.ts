@@ -97,8 +97,11 @@ describe("buildRecoveryScript", () => {
     expect(script).toContain("export HERMES_HOME=/sandbox/.hermes");
     expect(script).toContain("HERMES_HOME=/sandbox/.hermes");
     expect(script).toContain("DISCORD_PROXY=http://127.0.0.1:3129");
+    expect(script).toContain("NEMOCLAW_DISCORD_FACADE_URL=http://127.0.0.1:3130");
+    expect(script).toContain("PYTHONPATH=/opt/nemoclaw-hermes-discord-preload");
     expect(script).toContain("HTTPS_PROXY=http://127.0.0.1:3129");
     expect(script).toContain("nemoclaw-decode-proxy");
+    expect(script).toContain("nemoclaw-discord-facade");
     expect(script).toContain('"$AGENT_BIN" gateway run');
     expect(script).not.toContain('"$AGENT_BIN" gateway run --port 8642');
     expect(script).not.toContain("hermes gateway run --port 8642");
@@ -318,8 +321,11 @@ describe("buildManualRecoveryCommand (#2426)", () => {
     const cmd = buildManualRecoveryCommand(hermesAgent, 8642);
     expect(cmd).toContain("HERMES_HOME=/sandbox/.hermes");
     expect(cmd).toContain("DISCORD_PROXY=http://127.0.0.1:3129");
+    expect(cmd).toContain("NEMOCLAW_DISCORD_FACADE_URL=http://127.0.0.1:3130");
+    expect(cmd).toContain("PYTHONPATH=/opt/nemoclaw-hermes-discord-preload");
     expect(cmd).toContain("HTTPS_PROXY=http://127.0.0.1:3129");
     expect(cmd).toContain("nemoclaw-decode-proxy");
+    expect(cmd).toContain("nemoclaw-discord-facade");
     expect(cmd).toContain("nohup hermes gateway run");
     expect(cmd).not.toContain("--port 8642");
     expect(cmd).not.toContain("/sandbox/.hermes-data");

@@ -93,9 +93,10 @@ dump_hermes_discord_diagnostics() {
   diag_script+='; echo "== hermes health =="; curl -sf http://localhost:8642/health 2>&1 || true'
   diag_script+='; echo "== hermes-related processes =="'
   # shellcheck disable=SC2016  # script is intentionally evaluated inside the sandbox
-  diag_script+='; for p in /proc/[0-9]*; do cmd=$(tr "\000" " " < "$p/cmdline" 2>/dev/null || true); case "$cmd" in *hermes*|*socat*|*nemoclaw-decode-proxy*) echo "$(basename "$p") $cmd" ;; esac; done'
+  diag_script+='; for p in /proc/[0-9]*; do cmd=$(tr "\000" " " < "$p/cmdline" 2>/dev/null || true); case "$cmd" in *hermes*|*socat*|*nemoclaw-decode-proxy*|*nemoclaw-discord-facade*) echo "$(basename "$p") $cmd" ;; esac; done'
   diag_script+='; echo "== /tmp/nemoclaw-start.log tail =="; tail -n 80 /tmp/nemoclaw-start.log 2>&1 || true'
   diag_script+='; echo "== /tmp/gateway.log tail =="; tail -n 120 /tmp/gateway.log 2>&1 || true'
+  diag_script+='; echo "== /tmp/discord-facade.log tail =="; tail -n 120 /tmp/discord-facade.log 2>&1 || true'
   diag_output=$(openshell sandbox exec -n "$SANDBOX_NAME" -- sh -lc "$diag_script" 2>&1 || true)
 
   echo "$diag_output" | while IFS= read -r line; do
@@ -320,6 +321,7 @@ if [ "$DISCORD_REQUIRE_MENTION" = "0" ]; then
   expected_require_mention="false"
 fi
 expected_allowed_users="${DISCORD_ALLOWED_IDS// /}"
+expected_guild_ids="${DISCORD_SERVER_IDS// /}"
 
 config_probe=$(
   sandbox_exec_stdin "EXPECTED_REQUIRE_MENTION=$expected_require_mention python3 -" <<'PY'
@@ -367,7 +369,7 @@ else
 fi
 
 env_probe=$(
-  sandbox_exec_stdin "EXPECTED_ALLOWED_USERS=$expected_allowed_users python3 -" <<'PY'
+  sandbox_exec_stdin "EXPECTED_ALLOWED_USERS=$expected_allowed_users EXPECTED_GUILD_IDS=$expected_guild_ids python3 -" <<'PY'
 import os
 from pathlib import Path
 text = Path("/sandbox/.hermes/.env").read_text(encoding="utf-8")
@@ -375,6 +377,8 @@ errors = []
 required = [
     "DISCORD_BOT_TOKEN=openshell:resolve:env:DISCORD_BOT_TOKEN",
     "DISCORD_PROXY=http://127.0.0.1:3129",
+    "NEMOCLAW_DISCORD_FACADE_URL=http://127.0.0.1:3130",
+    f"NEMOCLAW_DISCORD_GUILD_IDS={os.environ['EXPECTED_GUILD_IDS']}",
     f"DISCORD_ALLOWED_USERS={os.environ['EXPECTED_ALLOWED_USERS']}",
 ]
 for line in required:
@@ -402,6 +406,13 @@ else
   fail "Hermes gateway log did not show DISCORD_PROXY bridge activation"
 fi
 
+facade_health=$(sandbox_exec "curl -sf http://127.0.0.1:3130/health 2>/dev/null || true")
+if echo "$facade_health" | grep -qi '"ok":true'; then
+  pass "Hermes fake Discord facade is healthy inside the sandbox"
+else
+  fail "Hermes fake Discord facade did not answer health probe: ${facade_health:0:200}"
+fi
+
 token_file_hits=$(printf '%s' "$DISCORD_TOKEN" | sandbox_exec_stdin 'grep -Fq -f - /sandbox/.hermes/config.yaml /sandbox/.hermes/.env 2>/dev/null && echo LEAK || echo OK')
 if [ "$token_file_hits" = "OK" ]; then
   pass "Raw Discord token absent from Hermes config.yaml and .env"
@@ -418,8 +429,10 @@ elif echo "$sandbox_env_all" | grep -qF "$DISCORD_TOKEN"; then
   fail "Raw Discord token found in sandbox environment"
 elif ! echo "$sandbox_env_all" | grep -qx "DISCORD_PROXY=http://127.0.0.1:3129"; then
   fail "Sandbox environment missing DISCORD_PROXY bridge setting"
+elif ! echo "$sandbox_env_all" | grep -qx "NEMOCLAW_DISCORD_FACADE_URL=http://127.0.0.1:3130"; then
+  fail "Sandbox environment missing fake Discord facade setting"
 else
-  pass "Raw Discord token absent from sandbox environment and DISCORD_PROXY bridge is present"
+  pass "Raw Discord token absent from sandbox environment; Discord proxy and facade settings are present"
 fi
 
 sandbox_ps=$(sandbox_exec 'cat /proc/[0-9]*/cmdline 2>/dev/null | tr "\0" "\n"')
@@ -500,11 +513,9 @@ section "Phase 7: Discord gateway auth boundary"
 
 gateway_auth_log=$(sandbox_exec "grep -E 'Connected as ' /tmp/gateway.log 2>/dev/null | tail -1 || true")
 if [ -n "$gateway_auth_log" ]; then
-  pass "Hermes Discord gateway authenticated; combined with leak checks, this proves IDENTIFY did not require a sandbox secret"
-elif [ "${HERMES_DISCORD_REQUIRE_GATEWAY_AUTH:-}" = "1" ]; then
-  fail "Hermes Discord gateway did not authenticate; REST/proxy plumbing is not proof of IDENTIFY token rewriting"
+  pass "Hermes Discord gateway reached READY through the fake local Gateway"
 else
-  skip "Hermes Discord gateway auth not proven in this run; fake-token runs validate only REST/proxy plumbing and token isolation"
+  fail "Hermes Discord gateway did not reach READY through the fake local Gateway"
 fi
 
 section "Phase 8: Cleanup"
