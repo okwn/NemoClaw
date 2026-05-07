@@ -828,6 +828,21 @@ const ROUTER_HEALTH_INTERVAL_MS = 2000;
 const ROUTER_HEALTH_TIMEOUT_MS = 3000;
 const MODEL_ROUTER_RELATIVE_DIR = path.join("nemoclaw-blueprint", "router", "llm-router");
 const MODEL_ROUTER_VENV_DIR = path.join(os.homedir(), ".nemoclaw", "model-router-venv");
+const MODEL_ROUTER_FINGERPRINT_FILE = ".nemoclaw-source-fingerprint";
+const MODEL_ROUTER_FINGERPRINT_IGNORED_NAMES = new Set([
+  ".git",
+  ".hg",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".svn",
+  ".venv",
+  "__pycache__",
+  "build",
+  "dist",
+  "node_modules",
+  "venv",
+]);
 const DEFAULT_MODEL_ROUTER_CREDENTIAL_ENV = "NVIDIA_API_KEY";
 
 async function isRouterHealthy(port: number, timeoutMs = ROUTER_HEALTH_TIMEOUT_MS): Promise<boolean> {
@@ -894,9 +909,125 @@ function modelRouterPackageDir(): string {
   return path.join(ROOT, MODEL_ROUTER_RELATIVE_DIR);
 }
 
+function modelRouterVenvDir(): string {
+  return process.env.NEMOCLAW_MODEL_ROUTER_VENV || MODEL_ROUTER_VENV_DIR;
+}
+
+function modelRouterCommandPath(venvDir = modelRouterVenvDir()): string {
+  return path.join(venvDir, "bin", "model-router");
+}
+
+function modelRouterFingerprintPath(venvDir = modelRouterVenvDir()): string {
+  return path.join(venvDir, MODEL_ROUTER_FINGERPRINT_FILE);
+}
+
+function isExecutableFile(filePath: string): boolean {
+  try {
+    fs.accessSync(filePath, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isModelRouterPackageReady(routerDir = modelRouterPackageDir()): boolean {
   return fs.existsSync(path.join(routerDir, "pyproject.toml")) ||
     fs.existsSync(path.join(routerDir, "setup.py"));
+}
+
+function shouldSkipModelRouterFingerprintEntry(name: string): boolean {
+  return MODEL_ROUTER_FINGERPRINT_IGNORED_NAMES.has(name) || name.endsWith(".egg-info");
+}
+
+function hashModelRouterSourceTree(routerDir = modelRouterPackageDir()): string | null {
+  const sourceHash = crypto.createHash("sha256");
+
+  const hashDirectory = (currentDir: string): boolean => {
+    let entries: import("fs").Dirent[];
+    try {
+      entries = fs
+        .readdirSync(currentDir, { withFileTypes: true })
+        .sort((left: import("fs").Dirent, right: import("fs").Dirent) =>
+          left.name.localeCompare(right.name),
+        );
+    } catch {
+      return false;
+    }
+
+    let hashedSourceFile = false;
+    for (const entry of entries) {
+      if (shouldSkipModelRouterFingerprintEntry(entry.name)) continue;
+      if (entry.name.endsWith(".pyc") || entry.name.endsWith(".pyo")) continue;
+
+      const entryPath = path.join(currentDir, entry.name);
+      const relativePath = path.relative(routerDir, entryPath).split(path.sep).join("/");
+      if (entry.isDirectory()) {
+        hashedSourceFile = hashDirectory(entryPath) || hashedSourceFile;
+        continue;
+      }
+      if (entry.isSymbolicLink()) {
+        try {
+          sourceHash.update(`link:${relativePath}\0`);
+          sourceHash.update(fs.readlinkSync(entryPath));
+          sourceHash.update("\0");
+          hashedSourceFile = true;
+        } catch {
+          // Ignore unreadable links; the install step will fail if they are required.
+        }
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      sourceHash.update(`file:${relativePath}\0`);
+      sourceHash.update(fs.readFileSync(entryPath));
+      sourceHash.update("\0");
+      hashedSourceFile = true;
+    }
+    return hashedSourceFile;
+  };
+
+  return hashDirectory(routerDir) ? `files:${sourceHash.digest("hex")}` : null;
+}
+
+function getModelRouterSourceFingerprint(routerDir = modelRouterPackageDir()): string | null {
+  const gitHead = runCapture(["git", "-C", routerDir, "rev-parse", "HEAD"], {
+    ignoreError: true,
+  }).trim();
+  if (/^[0-9a-f]{40}$/i.test(gitHead)) return `git:${gitHead}`;
+
+  const gitLink = runCapture(["git", "-C", ROOT, "rev-parse", `HEAD:${MODEL_ROUTER_RELATIVE_DIR}`], {
+    ignoreError: true,
+  }).trim();
+  if (/^[0-9a-f]{40}$/i.test(gitLink)) return `gitlink:${gitLink}`;
+
+  return hashModelRouterSourceTree(routerDir);
+}
+
+function readModelRouterInstalledFingerprint(venvDir = modelRouterVenvDir()): string | null {
+  try {
+    const fingerprint = fs.readFileSync(modelRouterFingerprintPath(venvDir), "utf8").trim();
+    return fingerprint || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeModelRouterInstalledFingerprint(
+  fingerprint: string | null,
+  venvDir = modelRouterVenvDir(),
+): void {
+  if (!fingerprint) return;
+  fs.writeFileSync(modelRouterFingerprintPath(venvDir), `${fingerprint}\n`, { mode: 0o600 });
+}
+
+function isManagedModelRouterCurrent(
+  routerDir = modelRouterPackageDir(),
+  venvDir = modelRouterVenvDir(),
+): boolean {
+  if (!isExecutableFile(modelRouterCommandPath(venvDir))) return false;
+  const sourceFingerprint = getModelRouterSourceFingerprint(routerDir);
+  return Boolean(
+    sourceFingerprint && readModelRouterInstalledFingerprint(venvDir) === sourceFingerprint,
+  );
 }
 
 function initializeModelRouterSubmodule(routerDir = modelRouterPackageDir()): void {
@@ -923,9 +1054,10 @@ function installModelRouterCommand(routerDir = modelRouterPackageDir()): string 
     throw new Error("python3 is required to prepare Model Router.");
   }
 
-  const venvDir = process.env.NEMOCLAW_MODEL_ROUTER_VENV || MODEL_ROUTER_VENV_DIR;
+  const venvDir = modelRouterVenvDir();
   const venvPython = path.join(venvDir, "bin", "python");
-  const routerCommand = path.join(venvDir, "bin", "model-router");
+  const routerCommand = modelRouterCommandPath(venvDir);
+  const sourceFingerprint = getModelRouterSourceFingerprint(routerDir);
 
   fs.mkdirSync(path.dirname(venvDir), { recursive: true });
   console.log(`  Preparing Model Router environment: ${venvDir}`);
@@ -947,21 +1079,32 @@ function installModelRouterCommand(routerDir = modelRouterPackageDir()): string 
   if (installResult.status !== 0) {
     throw new Error("Failed to install Model Router dependencies.");
   }
-  if (!fs.existsSync(routerCommand)) {
+  if (!isExecutableFile(routerCommand)) {
     throw new Error("Model Router install did not produce the model-router command.");
   }
+  writeModelRouterInstalledFingerprint(sourceFingerprint, venvDir);
   return routerCommand;
 }
 
 function ensureModelRouterCommand(): string {
-  const venvDir = process.env.NEMOCLAW_MODEL_ROUTER_VENV || MODEL_ROUTER_VENV_DIR;
-  const managedCommand = path.join(venvDir, "bin", "model-router");
-  try {
-    fs.accessSync(managedCommand, fs.constants.X_OK);
+  const routerDir = modelRouterPackageDir();
+  const venvDir = modelRouterVenvDir();
+  const managedCommand = modelRouterCommandPath(venvDir);
+
+  if (isModelRouterPackageReady(routerDir) && isManagedModelRouterCurrent(routerDir, venvDir)) {
     return managedCommand;
-  } catch {
-    // Fall through to PATH or install.
   }
+
+  if (!isModelRouterPackageReady(routerDir)) {
+    initializeModelRouterSubmodule(routerDir);
+  }
+
+  if (isModelRouterPackageReady(routerDir)) {
+    if (isManagedModelRouterCurrent(routerDir, venvDir)) return managedCommand;
+    return installModelRouterCommand(routerDir);
+  }
+
+  if (isExecutableFile(managedCommand)) return managedCommand;
   return resolveHostCommandPath("model-router") || installModelRouterCommand();
 }
 
