@@ -3245,7 +3245,9 @@ function waitForSandboxReady(sandboxName: string, attempts = 10, delaySeconds = 
 
 // ── Step 1: Preflight ────────────────────────────────────────────
 
-async function preflight(): Promise<ReturnType<typeof nim.detectGpu>> {
+async function preflight(
+  preflightOpts: { optedOutGpuPassthrough?: boolean } = {},
+): Promise<ReturnType<typeof nim.detectGpu>> {
   step(1, 8, "Preflight checks");
 
   const host = assessHost();
@@ -3257,6 +3259,25 @@ async function preflight(): Promise<ReturnType<typeof nim.detectGpu>> {
     process.exit(1);
   }
   console.log("  ✓ Docker is running");
+
+  // CDI spec gap (#3152). Docker is configured for CDI device injection but
+  // no nvidia.com/gpu spec is present, so OpenShell's `gateway start --gpu`
+  // will fail with `unresolvable CDI devices nvidia.com/gpu=all`. Block now
+  // — only when the user has not explicitly opted out of GPU passthrough,
+  // since the legacy runtime path does not need a CDI spec.
+  if (host.cdiNvidiaGpuSpecMissing && !preflightOpts.optedOutGpuPassthrough) {
+    console.error(
+      "  Docker is configured for CDI device injection (CDISpecDirs is set), but no",
+    );
+    console.error(
+      "  nvidia.com/gpu CDI spec was found on the host. OpenShell's gateway start will",
+    );
+    console.error(
+      "  fail with `unresolvable CDI devices nvidia.com/gpu=all` (issue #3152).",
+    );
+    printRemediationActions(planHostRemediation(host));
+    process.exit(1);
+  }
 
   // DNS resolution from inside containers (#2101). A corp firewall that
   // blocks outbound UDP:53 to public resolvers leaves the sandbox build
@@ -9391,7 +9412,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       gpu = nim.detectGpu();
     } else {
       startRecordedStep("preflight");
-      gpu = await preflight();
+      gpu = await preflight({ optedOutGpuPassthrough: opts.noGpu === true });
       onboardSession.markStepComplete("preflight");
     }
 
