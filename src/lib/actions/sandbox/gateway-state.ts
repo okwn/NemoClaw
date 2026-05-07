@@ -56,6 +56,7 @@ export function mergeLivePolicyIntoSandboxOutput(
 
   const before = rawLines.slice(0, policyLineIdx + 1).join("\n");
   const delimIdx = livePolicyOutput.search(/^---\s*$/m);
+  const metadataPart = delimIdx !== -1 ? livePolicyOutput.slice(0, delimIdx) : "";
   const yamlPart =
     delimIdx !== -1
       ? livePolicyOutput.slice(delimIdx).replace(/^---\s*[\r\n]+/, "")
@@ -66,7 +67,13 @@ export function mergeLivePolicyIntoSandboxOutput(
     return output;
   }
 
-  const indented = trimmedYaml
+  const activeMatch = stripAnsi(metadataPart).match(/^Active:\s*(\d+)\s*$/m);
+  const rewrittenYaml =
+    activeMatch && /^version:\s*\d+/m.test(trimmedYaml)
+      ? trimmedYaml.replace(/^version:\s*\d+/m, `version: ${activeMatch[1]}`)
+      : trimmedYaml;
+
+  const indented = rewrittenYaml
     .split("\n")
     .map((line: string) => (line ? `  ${line}` : line))
     .join("\n");

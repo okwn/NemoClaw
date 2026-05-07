@@ -15,6 +15,7 @@ import {
   getReportedGatewayName,
   parseSandboxPhase,
 } from "../src/lib/state/gateway.js";
+import { mergeLivePolicyIntoSandboxOutput } from "../dist/lib/actions/sandbox/gateway-state.js";
 
 // Realistic CLI outputs
 const STATUS_CONNECTED = `
@@ -243,5 +244,40 @@ describe("getGatewayReuseState", () => {
 
   it("returns 'missing' when all outputs are empty", () => {
     expect(getGatewayReuseState("", "", "")).toBe("missing");
+  });
+});
+
+describe("mergeLivePolicyIntoSandboxOutput (#1961)", () => {
+  const sandboxOutput = "Sandbox:\n  Id: abc\n  Phase: Ready\n\nPolicy:\n  schema-stub";
+
+  it("rewrites the YAML version line to the gateway active version", () => {
+    const livePolicy = [
+      "Version:      6",
+      "Hash:         738a54c8520a",
+      "Status:       Loaded",
+      "Active:       6",
+      "---",
+      "version: 1",
+      "filesystem_policy:",
+      "  include_workdir: false",
+    ].join("\n");
+
+    const merged = mergeLivePolicyIntoSandboxOutput(sandboxOutput, livePolicy);
+    expect(merged).toContain("  version: 6");
+    expect(merged).not.toContain("  version: 1");
+  });
+
+  it("leaves the YAML untouched when no Active metadata is provided", () => {
+    const livePolicy = ["---", "version: 1", "filesystem_policy:", "  include_workdir: false"].join(
+      "\n",
+    );
+
+    const merged = mergeLivePolicyIntoSandboxOutput(sandboxOutput, livePolicy);
+    expect(merged).toContain("  version: 1");
+  });
+
+  it("returns the original output when livePolicy is an error string", () => {
+    const merged = mergeLivePolicyIntoSandboxOutput(sandboxOutput, "Error: not found");
+    expect(merged).toBe(sandboxOutput);
   });
 });
