@@ -45,8 +45,8 @@ const policies = require("./lib/policies");
 const { probeProviderHealth } = require("./lib/inference/health");
 const { buildStatusCommandDeps } = require("./lib/status-command-deps");
 const { help, version } = require("./lib/actions/root-help");
-const onboardSession = require("./lib/onboard-session");
-import type { Session } from "./lib/onboard-session";
+const onboardSession = require("./lib/state/onboard-session");
+import type { Session } from "./lib/state/onboard-session";
 const { stripAnsi } = require("./lib/adapters/openshell/client");
 const {
   getInstalledOpenshellVersionOrNull,

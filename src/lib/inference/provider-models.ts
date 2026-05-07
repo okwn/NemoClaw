@@ -3,7 +3,7 @@
 
 import type { CurlProbeResult } from "../http-probe";
 import { getCurlTimingArgs, runCurlProbe } from "../http-probe";
-import type { ModelCatalogFetchResult, ModelValidationResult } from "../onboard-types";
+import type { ModelCatalogFetchResult, ModelValidationResult } from "../onboard/types";
 
 // credentials.ts still uses CommonJS-style exports.
 const { normalizeCredentialValue } = require("../credentials/store");

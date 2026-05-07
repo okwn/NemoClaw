@@ -11,8 +11,8 @@ import {
   type DestroySandboxOptions,
   normalizeDestroySandboxOptions,
 } from "../../domain/lifecycle/options";
-import * as onboardSession from "../../onboard-session";
-import type { Session } from "../../onboard-session";
+import * as onboardSession from "../../state/onboard-session";
+import type { Session } from "../../state/onboard-session";
 import { OPENSHELL_PROBE_TIMEOUT_MS } from "../../adapters/openshell/timeouts";
 import { DASHBOARD_PORT } from "../../core/ports";
 import * as registry from "../../state/registry";

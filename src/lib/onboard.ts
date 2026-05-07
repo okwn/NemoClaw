@@ -147,7 +147,7 @@ const {
   parseGatewayInference,
 } = inferenceConfig;
 
-const onboardProviders = require("./onboard-providers");
+const onboardProviders = require("./onboard/providers");
 
 const CUSTOM_BUILD_CONTEXT_WARN_BYTES = 100_000_000;
 const CUSTOM_BUILD_CONTEXT_IGNORES = new Set([
@@ -274,12 +274,12 @@ const {
 const { hashCredential }: typeof import("./security/credential-hash") = require("./security/credential-hash");
 const registry: typeof import("./state/registry") = require("./state/registry");
 const nim: typeof import("./inference/nim") = require("./inference/nim");
-const onboardSession: typeof import("./onboard-session") = require("./onboard-session");
+const onboardSession: typeof import("./state/onboard-session") = require("./state/onboard-session");
 const policies: typeof import("./policies") = require("./policies");
 const shields = require("./shields");
 const tiers: typeof import("./tiers") = require("./tiers");
-const { ensureUsageNoticeConsent } = require("./usage-notice");
-const preflightUtils: typeof import("./preflight") = require("./preflight");
+const { ensureUsageNoticeConsent } = require("./onboard/usage-notice");
+const preflightUtils: typeof import("./onboard/preflight") = require("./onboard/preflight");
 const clusterImagePatch: typeof import("./cluster-image-patch") = require("./cluster-image-patch");
 const {
   assessHost,
@@ -312,13 +312,13 @@ import type { GatewayInference, ProviderSelectionConfig } from "./inference/conf
 import type { GpuInfo, ValidationResult } from "./inference/local";
 import type { ContainerRuntime } from "./platform";
 import type { SandboxEntry } from "./state/registry";
-import type { Session, SessionUpdates } from "./onboard-session";
+import type { Session, SessionUpdates } from "./state/onboard-session";
 import type {
   ModelCatalogFetchResult,
   ModelValidationResult,
   ProbeResult,
   ValidationFailureLike,
-} from "./onboard-types";
+} from "./onboard/types";
 import { listChannels } from "./sandbox-channels";
 import type { StreamSandboxCreateResult } from "./sandbox-create-stream";
 import type { BackupResult } from "./state/sandbox";
