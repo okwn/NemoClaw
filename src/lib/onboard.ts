@@ -5982,7 +5982,7 @@ async function setupNim(
   // Model Router: complexity-based routing via blueprint config.
   const blueprintRouterCfg = loadBlueprintProfile("routed");
   if (blueprintRouterCfg && blueprintRouterCfg.router?.enabled === true) {
-    options.push({ key: "routed", label: "Model Router (complexity-based routing)" });
+    options.push({ key: "routed", label: "Model Router (experimental)" });
   }
 
   function checkOllamaPortsOrWarn(): boolean {
