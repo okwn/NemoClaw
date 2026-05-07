@@ -129,16 +129,17 @@ export function getGatewayReuseState(
   const connected = isGatewayConnected(statusOutput);
   const activeGatewayName =
     getReportedGatewayName(statusOutput) || getReportedGatewayName(activeGatewayInfoOutput);
+  const activeInfo = hasActiveGatewayInfo(activeGatewayInfoOutput);
   if (connected && activeGatewayName === GATEWAY_NAME) {
     return "active-unnamed";
   }
-  if (connected && activeGatewayName && activeGatewayName !== GATEWAY_NAME) {
+  if ((connected || activeInfo) && activeGatewayName && activeGatewayName !== GATEWAY_NAME) {
     return "foreign-active";
   }
   if (hasStaleGateway(gwInfoOutput)) {
     return "stale";
   }
-  if (hasActiveGatewayInfo(activeGatewayInfoOutput)) {
+  if (activeInfo) {
     return "active-unnamed";
   }
   return "missing";

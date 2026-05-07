@@ -54,6 +54,13 @@ Gateway Info
 Gateway endpoint: https://127.0.0.1:8080/
 `;
 
+const GW_INFO_FOREIGN_ACTIVE = `
+Gateway Info
+
+Gateway: other-gw
+Gateway endpoint: https://127.0.0.1:9090/
+`;
+
 // Status output with a foreign (non-nemoclaw) gateway name
 const STATUS_FOREIGN = `
 Server Status
@@ -232,6 +239,12 @@ describe("getGatewayReuseState", () => {
     expect(getGatewayReuseState(STATUS_FOREIGN, "", "")).toBe("foreign-active");
   });
 
+  it("returns 'foreign-active' when status is empty but active gateway info is foreign", () => {
+    expect(getGatewayReuseState("", GW_INFO_NAMED, GW_INFO_FOREIGN_ACTIVE)).toBe(
+      "foreign-active",
+    );
+  });
+
   it("returns 'stale' when named gateway exists but no active endpoint", () => {
     // gwInfo has "Gateway: nemoclaw" but activeGatewayInfo is empty — no live endpoint
     expect(getGatewayReuseState("", GW_INFO_NAMED, "")).toBe("stale");
@@ -252,6 +265,12 @@ describe("shouldSelectNamedGatewayForReuse", () => {
     expect(shouldSelectNamedGatewayForReuse(STATUS_FOREIGN, GW_INFO_NAMED, "")).toBe(true);
   });
 
+  it("returns true when status is empty but active gateway info is foreign", () => {
+    expect(shouldSelectNamedGatewayForReuse("", GW_INFO_NAMED, GW_INFO_FOREIGN_ACTIVE)).toBe(
+      true,
+    );
+  });
+
   it("returns false when the named NemoClaw gateway is already active", () => {
     expect(shouldSelectNamedGatewayForReuse(STATUS_CONNECTED, GW_INFO_NAMED, GW_INFO_ACTIVE)).toBe(
       false,
@@ -260,5 +279,11 @@ describe("shouldSelectNamedGatewayForReuse", () => {
 
   it("returns false when no named NemoClaw gateway metadata exists", () => {
     expect(shouldSelectNamedGatewayForReuse(STATUS_FOREIGN, GW_INFO_MISSING, "")).toBe(false);
+  });
+
+  it("returns false when active gateway info is foreign but named metadata is missing", () => {
+    expect(shouldSelectNamedGatewayForReuse("", GW_INFO_MISSING, GW_INFO_FOREIGN_ACTIVE)).toBe(
+      false,
+    );
   });
 });
