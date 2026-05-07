@@ -4134,6 +4134,7 @@ const { createSandbox } = require(${onboardPath});
     async () => {
       const repoRoot = path.join(import.meta.dirname, "..");
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-hermes-slack-"));
+      try {
       const fakeBin = path.join(tmpDir, "bin");
       const customBuildDir = path.join(tmpDir, "custom-build");
       const customDockerfilePath = path.join(customBuildDir, "Dockerfile");
@@ -4167,6 +4168,18 @@ const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const YAML = require(${yamlPath});
 const { loadAgent } = require(${agentDefsPath});
+
+const nonSlackMessagingEnvKeys = [
+  "DISCORD_BOT_TOKEN",
+  "DISCORD_SERVER_ID",
+  "DISCORD_SERVER_IDS",
+  "DISCORD_ALLOWED_IDS",
+  "DISCORD_USER_ID",
+  "DISCORD_REQUIRE_MENTION",
+  "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_ALLOWED_IDS",
+  "TELEGRAM_REQUIRE_MENTION",
+];
 
 const commands = [];
 let registeredSandbox = null;
@@ -4219,6 +4232,7 @@ childProcess.spawn = (...args) => {
 const { createSandbox } = require(${onboardPath});
 
 (async () => {
+  for (const key of nonSlackMessagingEnvKeys) delete process.env[key];
   process.env.OPENSHELL_GATEWAY = "nemoclaw";
   process.env.NEMOCLAW_AGENT = "hermes";
   process.env.SLACK_BOT_TOKEN = "xoxb-test-slack-token-value";
@@ -4293,6 +4307,9 @@ const { createSandbox } = require(${onboardPath});
       );
       assert.ok(payload.slackEndpointHosts.includes("wss-primary.slack.com"));
       assert.ok(payload.slackEndpointHosts.includes("wss-backup.slack.com"));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     },
   );
 
