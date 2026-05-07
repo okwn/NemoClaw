@@ -927,7 +927,7 @@ Verify the toolkit is configured by running `docker run --rm --runtime=nvidia --
 
 ### `unresolvable CDI devices nvidia.com/gpu=all` during gateway start
 
-Recent NVIDIA Container Toolkit installs configure the Docker daemon for [Container Device Interface (CDI)](https://github.com/cncf-tags/container-device-interface) device injection, which OpenShell's `gateway start --gpu` then auto-selects.
+Recent NVIDIA Container Toolkit installs configure the Docker daemon for Container Device Interface (CDI) device injection, which OpenShell's `gateway start --gpu` then auto-selects.
 If no `nvidia.com/gpu` CDI spec has been generated on the host yet, gateway start fails with `Docker responded with status code 500: CDI device injection failed: unresolvable CDI devices nvidia.com/gpu=all`.
 `nemoclaw onboard` now detects this gap during preflight and prints the remediation up front, but the underlying fix is the same on any Docker host whose `docker info` advertises a non-empty `CDISpecDirs`.
 

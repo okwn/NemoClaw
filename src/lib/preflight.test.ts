@@ -873,6 +873,8 @@ describe("planHostRemediation", () => {
     expect(action?.commands[0]).toBe(
       "sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml",
     );
+    expect(action?.commands[1]).toContain("nvidia-ctk cdi list");
+    expect(action?.commands[2]).toContain("nemoclaw onboard");
     expect(action?.reason).toContain("nvidia.com/gpu");
   });
 });

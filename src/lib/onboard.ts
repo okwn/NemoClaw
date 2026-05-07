@@ -9424,8 +9424,13 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       // result does not capture host CDI state, and the original onboard
       // attempt that wrote the cache likely aborted at gateway-start with
       // exactly this CDI failure — so resuming without re-checking would
-      // walk into the same wall.
-      assertCdiNvidiaGpuSpecPresent(assessHost(), opts.noGpu === true);
+      // walk into the same wall. Honour persisted `gpuPassthrough: false`
+      // from the prior session as an opt-out, since the resume invocation
+      // does not need to re-pass `--no-gpu` to keep that intent (the same
+      // resolution is replayed a few lines below for `gpuPassthrough`).
+      const resumeOptedOutGpuPassthrough =
+        opts.noGpu === true || (opts.gpu !== true && session?.gpuPassthrough === false);
+      assertCdiNvidiaGpuSpecPresent(assessHost(), resumeOptedOutGpuPassthrough);
     } else {
       startRecordedStep("preflight");
       gpu = await preflight({ optedOutGpuPassthrough: opts.noGpu === true });
