@@ -239,11 +239,16 @@ function hasNvidiaCdiSpec(
   readdirImpl: (dir: string) => string[],
   readFileImpl: (filePath: string, encoding: BufferEncoding) => string,
 ): boolean {
-  // YAML keys are unquoted; JSON quotes the kind value. Match both, anchored
-  // to the device class string so a comment that merely mentions
-  // `nvidia.com/gpu` does not produce a false positive.
-  const kindRe = /(^|\n)\s*kind\s*:\s*["']?nvidia\.com\/gpu["']?/i;
-  const jsonRe = /"kind"\s*:\s*"nvidia\.com\/gpu"/i;
+  // YAML keys are unquoted; JSON quotes the kind value. Anchor both patterns
+  // to the *exact* device-class string `nvidia.com/gpu` and require a value
+  // terminator (end of line, whitespace + comment, or whitespace + EOL) so a
+  // sibling spec like `nvidia.com/gpu-extra` does not silently satisfy the
+  // check and suppress the preflight warning. A comment that merely mentions
+  // `nvidia.com/gpu` is also rejected because `kindRe` only matches when the
+  // *whole* scalar value is the device class.
+  const kindRe =
+    /^[ \t]*kind[ \t]*:[ \t]*(?:"nvidia\.com\/gpu"|'nvidia\.com\/gpu'|nvidia\.com\/gpu)[ \t]*(?:#.*)?$/im;
+  const jsonRe = /"kind"\s*:\s*"nvidia\.com\/gpu"/;
   for (const dir of specDirs) {
     let entries: string[];
     try {
