@@ -66,7 +66,8 @@ on:
           onboard-repair-e2e, onboard-resume-e2e, runtime-overrides-e2e,
           credential-sanitization-e2e, telegram-injection-e2e,
           overlayfs-autofix-e2e, device-auth-health-e2e,
-          launchable-smoke-e2e, gpu-e2e, gpu-double-onboard-e2e
+          launchable-smoke-e2e, gpu-e2e, gpu-double-onboard-e2e,
+          brave-search-e2e (manual-dispatch only; needs secrets.BRAVE_API_KEY)
         required: false
         type: string
         default: ""
@@ -314,6 +315,57 @@ jobs:
         with:
           name: install-log-messaging-compatible-endpoint
           path: /tmp/nemoclaw-e2e-messaging-compatible-endpoint-install.log
+          if-no-files-found: ignore
+
+  # ── Brave Search E2E (#2687) ─────────────────────────────────
+  # Validates the full Brave Search path with a real BRAVE_API_KEY:
+  # non-interactive onboard auto-enables web search, the brave network
+  # policy preset is applied, the real key never lands in the sandbox-
+  # readable openclaw.json (placeholder only), and the openclaw agent's
+  # web-search tool returns real Brave results through OpenShell's L7
+  # placeholder substitution.
+  #
+  # Manual-dispatch only — never runs on the nightly schedule. This is
+  # deliberate so:
+  #   1. We don't burn paid Brave API quota every night, and
+  #   2. The test only fires when a maintainer explicitly opts in via
+  #      `gh workflow run nightly-e2e.yaml --ref <branch> -f jobs=brave-search-e2e`.
+  # The script also self-skips gracefully if BRAVE_API_KEY is empty
+  # (acceptance criterion #3 in the issue), so enabling the secret
+  # later does not require a code change.
+  brave-search-e2e:
+    if: >-
+      github.repository == 'NVIDIA/NemoClaw' &&
+      github.event_name == 'workflow_dispatch' &&
+      contains(format(',{0},', inputs.jobs), ',brave-search-e2e,')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run Brave Search E2E test
+        env:
+          # secrets.BRAVE_API_KEY is the only place the real key appears
+          # in this file. GitHub auto-masks any string matching it in
+          # workflow logs; the script also pipes diagnostic output
+          # through redact_stream "$BRAVE_API_KEY" as defence in depth.
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NEMOCLAW_NON_INTERACTIVE: "1"
+          NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE: "1"
+          NEMOCLAW_SANDBOX_NAME: "e2e-brave-search"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash test/e2e/test-brave-search-e2e.sh
+
+      - name: Upload onboard log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log-brave-search
+          # The script scrubs $BRAVE_API_KEY from this log in place
+          # before the artifact is uploaded.
+          path: /tmp/nemoclaw-e2e-brave-search-onboard.log
           if-no-files-found: ignore
 
   # ── Kimi inference compatibility regression (#2620) ───────────
