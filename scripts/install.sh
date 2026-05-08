@@ -155,6 +155,27 @@ error() {
 }
 ok() { printf "  ${C_GREEN}✓${C_RESET}  %s\n" "$*"; }
 
+# Common TTY-required error message for the third-party software notice.
+# Used by both show_usage_notice() and preflight_usage_notice_prompt() so
+# the recovery hint stays in sync (#3058).
+tty_required_error_message() {
+  cat <<'EOF'
+Interactive third-party software acceptance requires a TTY.
+
+  Three ways to proceed (#3058):
+    1. Re-run in a terminal:
+         bash <(curl -fsSL https://www.nvidia.com/nemoclaw.sh)
+
+    2. Accept upfront in the curl|bash pipe:
+         curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
+
+    3. Pass the flag through to the installer:
+         curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash -s -- --yes-i-accept-third-party-software
+
+  See docs/reference/commands.md for the full non-interactive install reference.
+EOF
+}
+
 verify_downloaded_script() {
   local file="$1" label="${2:-script}" expected_hash="${3:-}"
   if [ ! -s "$file" ]; then
@@ -575,19 +596,7 @@ show_usage_notice() {
     exec 3<&-
     return "$status"
   else
-    error "Interactive third-party software acceptance requires a TTY.
-
-  Three ways to proceed (#3058):
-    1. Re-run in a terminal:
-         bash <(curl -fsSL https://www.nvidia.com/nemoclaw.sh)
-
-    2. Accept upfront in the curl|bash pipe:
-         curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
-
-    3. Pass the flag through to the installer:
-         curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash -s -- --yes-i-accept-third-party-software
-
-  See docs/reference/commands.md for the full non-interactive install reference."
+    error "$(tty_required_error_message)"
   fi
 }
 
@@ -722,19 +731,7 @@ preflight_usage_notice_prompt() {
     return "$status"
   fi
 
-  error "Interactive third-party software acceptance requires a TTY.
-
-  Three ways to proceed (#3058):
-    1. Re-run in a terminal:
-         bash <(curl -fsSL https://www.nvidia.com/nemoclaw.sh)
-
-    2. Accept upfront in the curl|bash pipe:
-         curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
-
-    3. Pass the flag through to the installer:
-         curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash -s -- --yes-i-accept-third-party-software
-
-  See docs/reference/commands.md for the full non-interactive install reference."
+  error "$(tty_required_error_message)"
 }
 
 # spin "label" cmd [args...]
