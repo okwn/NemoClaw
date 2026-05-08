@@ -252,6 +252,10 @@
   
 
   
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
 </div>
 
     </header>
@@ -524,6 +528,12 @@
 </tbody>
 </table>
 </div>
+<section id="component-version-policy">
+<h2>Component Version Policy<a class="headerlink" href="#component-version-policy" title="Link to this heading">#</a></h2>
+<p>NemoClaw pins the OpenClaw version inside the sandbox at build time via <code class="docutils literal notranslate"><span class="pre">min_openclaw_version</span></code> in <code class="docutils literal notranslate"><span class="pre">nemoclaw-blueprint/blueprint.yaml</span></code>; existing sandboxes do not auto-upgrade.
+Run <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">status</span></code> to see the OpenClaw version currently running in a sandbox, and <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">rebuild</span></code> to pick up a newer pin from a NemoClaw upgrade.
+See <a class="reference internal" href="../reference/commands.html#checking-the-openclaw-version"><span class="std std-ref">Checking the OpenClaw version</span></a> for the full policy.</p>
+</section>
 </section>
 
 
@@ -561,9 +571,25 @@
             
             
 
-<div class="bd-sidebar-secondary"></div>
+
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
 
 
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#component-version-policy">Component Version Policy</a></li>
+</ul>
+  </nav></div>
+
+</div></div>
               
             
 
