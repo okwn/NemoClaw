@@ -27,8 +27,8 @@ export interface VersionOptions {
  *   3. `package.json` version             — hard-coded fallback
  */
 export function getVersion(opts: VersionOptions = {}): string {
-  // Compiled location: dist/lib/core/version.js → repo root is 2 levels up
-  const root = opts.rootDir ?? join(__dirname, "..", "..");
+  // Compiled location: dist/lib/core/version.js → repo root is 3 levels up
+  const root = opts.rootDir ?? join(__dirname, "..", "..", "..");
 
   // 1. Try git (available in dev clones and CI)
   try {
