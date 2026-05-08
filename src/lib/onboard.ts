@@ -16,6 +16,13 @@ const {
   cliName,
   setOnboardBrandingAgent,
 }: typeof import("./onboard/branding") = require("./onboard/branding");
+const {
+  cleanupTempDir,
+  secureTempFile,
+}: typeof import("./onboard/temp-files") = require("./onboard/temp-files");
+const {
+  prepareInitialSandboxCreatePolicy,
+}: typeof import("./onboard/initial-policy") = require("./onboard/initial-policy");
 const crypto = require("node:crypto");
 const fs = require("fs");
 const os = require("os");
@@ -313,28 +320,6 @@ import type { TierDefinition, TierPreset } from "./policy/tiers";
 import type { SandboxCreateFailure, ValidationClassification } from "./validation";
 import type { ProbeRecovery } from "./validation-recovery";
 import type { WebSearchConfig } from "./inference/web-search";
-
-/**
- * Create a temp file inside a directory with a cryptographically random name.
- * Uses fs.mkdtempSync (OS-level mkdtemp) to avoid predictable filenames that
- * could be exploited via symlink attacks on shared /tmp.
- * Ref: https://github.com/NVIDIA/NemoClaw/issues/1093
- */
-function secureTempFile(prefix: string, ext = ""): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
-  return path.join(dir, `${prefix}${ext}`);
-}
-
-/**
- * Safely remove a mkdtemp-created directory.  Guards against accidentally
- * deleting the system temp root if a caller passes os.tmpdir() itself.
- */
-function cleanupTempDir(filePath: string, expectedPrefix: string): void {
-  const parentDir = path.dirname(filePath);
-  if (parentDir !== os.tmpdir() && path.basename(parentDir).startsWith(`${expectedPrefix}-`)) {
-    fs.rmSync(parentDir, { recursive: true, force: true });
-  }
-}
 
 const EXPERIMENTAL = process.env.NEMOCLAW_EXPERIMENTAL === "1";
 const USE_COLOR = !process.env.NO_COLOR && !!process.stdout.isTTY;
@@ -1730,90 +1715,6 @@ type SelectionDrift = {
   existingModel: string | null;
   unknown: boolean;
 };
-
-type InitialSandboxPolicy = {
-  policyPath: string;
-  appliedPresets: string[];
-  cleanup?: () => boolean;
-};
-
-const CREATE_TIME_POLICY_PRESETS_BY_CHANNEL: Record<string, string[]> = {
-  slack: ["slack"],
-};
-
-function getNetworkPolicyNames(policyContent: string): Set<string> | null {
-  try {
-    // Lazy require: yaml is already a dependency via the policy helpers.
-    const YAML = require("yaml");
-    const parsed = YAML.parse(policyContent);
-    const networkPolicies = parsed?.network_policies;
-    if (
-      !networkPolicies ||
-      typeof networkPolicies !== "object" ||
-      Array.isArray(networkPolicies)
-    ) {
-      return new Set();
-    }
-    return new Set(Object.keys(networkPolicies));
-  } catch {
-    return null;
-  }
-}
-
-function prepareInitialSandboxCreatePolicy(
-  basePolicyPath: string,
-  activeMessagingChannels: string[],
-): InitialSandboxPolicy {
-  const requestedCreateTimePresets = [
-    ...new Set(
-      activeMessagingChannels.flatMap(
-        (channel) => CREATE_TIME_POLICY_PRESETS_BY_CHANNEL[channel] || [],
-      ),
-    ),
-  ];
-
-  if (requestedCreateTimePresets.length === 0) {
-    return { policyPath: basePolicyPath, appliedPresets: [] };
-  }
-
-  const basePolicy = fs.readFileSync(basePolicyPath, "utf-8");
-  const basePolicyNames = getNetworkPolicyNames(basePolicy);
-  if (basePolicyNames === null) {
-    return { policyPath: basePolicyPath, appliedPresets: [] };
-  }
-  const existingCreateTimePresets = requestedCreateTimePresets.filter((preset) =>
-    basePolicyNames.has(preset),
-  );
-  const createTimePresets = requestedCreateTimePresets.filter(
-    (preset) => !basePolicyNames.has(preset),
-  );
-  if (createTimePresets.length === 0) {
-    return { policyPath: basePolicyPath, appliedPresets: existingCreateTimePresets };
-  }
-
-  const mergedPolicy = policies.mergePresetNamesIntoPolicy(basePolicy, createTimePresets);
-  if (mergedPolicy.missingPresets.length > 0) {
-    throw new Error(
-      `Cannot prepare sandbox create policy; missing policy preset(s): ${mergedPolicy.missingPresets.join(", ")}`,
-    );
-  }
-
-  const policyPath = secureTempFile("nemoclaw-initial-policy", ".yaml");
-  fs.writeFileSync(policyPath, mergedPolicy.policy, { encoding: "utf-8", mode: 0o600 });
-
-  return {
-    policyPath,
-    appliedPresets: [...existingCreateTimePresets, ...mergedPolicy.appliedPresets],
-    cleanup: () => {
-      try {
-        cleanupTempDir(policyPath, "nemoclaw-initial-policy");
-        return true;
-      } catch {
-        return false;
-      }
-    },
-  };
-}
 
 function upsertMessagingProviders(tokenDefs: MessagingTokenDef[]) {
   const upserted = onboardProviders.upsertMessagingProviders(tokenDefs, runOpenshell);
