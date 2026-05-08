@@ -109,11 +109,49 @@ function cleanupMarker(markerPath: string): void {
   }
 }
 
+function readTimerMarker(markerPath: string): UnknownRecord | null {
+  try {
+    if (!fs.existsSync(markerPath)) {
+      return null;
+    }
+    const parsed = JSON.parse(fs.readFileSync(markerPath, "utf-8"));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function markerMatchesCurrentTimer(args: TimerArgs): boolean {
+  const marker = readTimerMarker(args.markerPath);
+  if (!marker) return false;
+
+  const markerPid = marker.pid;
+  const markerSandboxName = marker.sandboxName;
+  const markerSnapshotPath = marker.snapshotPath;
+  const markerRestoreAt = marker.restoreAt;
+  const markerProcessToken = marker.processToken;
+
+  return (
+    markerPid === process.pid &&
+    markerSandboxName === args.sandboxName &&
+    markerSnapshotPath === args.snapshotPath &&
+    markerRestoreAt === args.restoreAtIso &&
+    markerProcessToken === args.processToken
+  );
+}
+
 function runRestoreTimer(args: TimerArgs): void {
   const now = new Date().toISOString();
   let exitCode = 0;
 
   try {
+    // Timer markers are the source of authority. If the marker was removed or
+    // replaced (e.g., destroy-time neutralization), this process must not
+    // restore policy or rewrite shields state.
+    if (!markerMatchesCurrentTimer(args)) {
+      return;
+    }
+
     if (!fs.existsSync(args.snapshotPath)) {
       appendAudit({
         action: "shields_up_failed",
@@ -263,3 +301,10 @@ function main(): void {
 if (require.main === module) {
   main();
 }
+
+export {
+  markerMatchesCurrentTimer,
+  parseTimerArgs,
+  readTimerMarker,
+  runRestoreTimer,
+};
