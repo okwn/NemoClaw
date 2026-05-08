@@ -631,56 +631,47 @@ async function prepareOllamaModel(model, installedModels = []) {
 /**
  * Unload all running Ollama models from GPU memory.
  * Best-effort operation: silently ignores errors if Ollama is not running.
+ *
+ * Uses `spawnSync` with `curl --max-time 3` rather than Node's
+ * `http.request`/`http.get` so the unload completes before
+ * `process.exit()`. The previous async version was fire-and-forget and got
+ * dropped by Node's event loop on fast CLI exit (e.g. `nemoclaw destroy`),
+ * leaving GPU memory reserved. Reverting to async HTTP would reintroduce
+ * that race; keep it synchronous.
  */
 function unloadOllamaModels() {
   try {
-    const req = http.get(
-      {
-        hostname: "localhost",
-        port: OLLAMA_PORT,
-        path: "/api/ps",
-        timeout: 3000,
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-        res.on("end", () => {
-          if (res.statusCode !== 200) return;
-          try {
-            const parsed = JSON.parse(data);
-            const models = parsed.models || [];
-            for (const entry of models) {
-              if (!entry.name) continue;
-              const unloadReq = http.request(
-                {
-                  hostname: "localhost",
-                  port: OLLAMA_PORT,
-                  path: "/api/generate",
-                  method: "POST",
-                  timeout: 3000,
-                  headers: { "Content-Type": "application/json" },
-                },
-                () => {
-                  /* ignore response */
-                },
-              );
-              unloadReq.on("error", () => {
-                /* best-effort */
-              });
-              unloadReq.write(JSON.stringify({ model: entry.name, keep_alive: 0 }));
-              unloadReq.end();
-            }
-          } catch {
-            /* best-effort */
-          }
-        });
-      },
+    const psResult = spawnSync(
+      "curl",
+      ["-sS", "--max-time", "3", `http://localhost:${OLLAMA_PORT}/api/ps`],
+      { encoding: "utf8" },
     );
-    req.on("error", () => {
-      /* best-effort */
-    });
+    if (psResult.status !== 0) return;
+
+    const parsed = JSON.parse(psResult.stdout || "{}");
+    const models = Array.isArray(parsed.models) ? parsed.models : [];
+
+    for (const entry of models) {
+      if (!entry?.name) continue;
+      spawnSync(
+        "curl",
+        [
+          "-sS",
+          "-o",
+          "/dev/null",
+          "--max-time",
+          "3",
+          "-X",
+          "POST",
+          "-H",
+          "Content-Type: application/json",
+          "-d",
+          JSON.stringify({ model: entry.name, keep_alive: 0 }),
+          `http://localhost:${OLLAMA_PORT}/api/generate`,
+        ],
+        { encoding: "utf8" },
+      );
+    }
   } catch {
     /* best-effort */
   }
