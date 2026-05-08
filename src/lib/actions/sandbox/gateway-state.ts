@@ -16,8 +16,8 @@ import {
 const { pruneKnownHostsEntries } = require("../../onboard") as {
   pruneKnownHostsEntries: (contents: string) => string;
 };
-import * as onboardSession from "../../onboard-session";
-import type { Session } from "../../onboard-session";
+import * as onboardSession from "../../state/onboard-session";
+import type { Session } from "../../state/onboard-session";
 import { stripAnsi } from "../../adapters/openshell/client";
 import {
   captureOpenshell,
