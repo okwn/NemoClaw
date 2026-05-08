@@ -30,6 +30,7 @@ import {
   getSandboxInventory,
   renderSandboxInventoryText,
 } from "../dist/lib/inventory-commands.js";
+import { recoverRegistryEntriesWithFallback } from "../dist/lib/list-command-deps.js";
 
 const CLI = path.join(import.meta.dirname, "..", "bin", "nemoclaw.js");
 
@@ -89,25 +90,50 @@ describe("#2666 — silent empty output regression", () => {
   });
 });
 
-describe("#2666 — list-command-deps resilience wrapper shape", () => {
-  it("wraps recoverRegistryEntries in a try/catch that falls back to the local registry", async () => {
-    // Mirror the exact wrapper shape used in src/lib/list-command-deps.ts
-    // so a future refactor breaking this behavior fails this test.
-    const fallbackList = vi.fn(() => ({
-      sandboxes: [{ name: "fallback", model: null, provider: null, gpuEnabled: false, policies: [] }],
-      defaultSandbox: null,
+describe("#2666 — list-command-deps resilience wrapper", () => {
+  // Exercises the actual exported `recoverRegistryEntriesWithFallback` from
+  // src/lib/list-command-deps.ts, not a parallel re-implementation. If the
+  // production wrapper regresses, these tests fail.
+
+  it("returns the primary result on the happy path", async () => {
+    const primary = vi.fn(async () => ({
+      sandboxes: [{ name: "happy", model: null, provider: null, gpuEnabled: false, policies: [] }],
+      defaultSandbox: "happy",
+      recoveredFromSession: true,
+      recoveredFromGateway: 2,
     }));
-    const wrapper = async () => {
-      try {
-        throw new Error("recovery threw");
-      } catch {
-        const fallback = fallbackList();
-        return { ...fallback, recoveredFromSession: false, recoveredFromGateway: 0 };
-      }
-    };
-    const result = await wrapper();
-    expect(fallbackList).toHaveBeenCalledOnce();
+    const fallback = vi.fn(() => ({ sandboxes: [], defaultSandbox: null }));
+
+    const result = await recoverRegistryEntriesWithFallback(primary, fallback);
+
+    expect(primary).toHaveBeenCalledOnce();
+    expect(fallback).not.toHaveBeenCalled();
+    expect(result.sandboxes).toEqual([
+      { name: "happy", model: null, provider: null, gpuEnabled: false, policies: [] },
+    ]);
+    expect(result.recoveredFromGateway).toBe(2);
+    expect(result.recoveredFromSession).toBe(true);
+  });
+
+  it("falls back to the registry-only listing when primary throws", async () => {
+    const primary = vi.fn(async () => {
+      throw new Error("simulated openshell hang");
+    });
+    const fallback = vi.fn(() => ({
+      sandboxes: [
+        { name: "my-assist", model: "test-model", provider: "test-provider", gpuEnabled: false, policies: [] },
+      ],
+      defaultSandbox: "my-assist",
+    }));
+
+    const result = await recoverRegistryEntriesWithFallback(primary, fallback);
+
+    expect(primary).toHaveBeenCalledOnce();
+    expect(fallback).toHaveBeenCalledOnce();
     expect(result.sandboxes).toHaveLength(1);
+    expect(result.sandboxes[0].name).toBe("my-assist");
+    // Fallback synthesizes recovery flags so downstream rendering treats the
+    // result as the registry-only state, not a partial recovery from gateway.
     expect(result.recoveredFromGateway).toBe(0);
     expect(result.recoveredFromSession).toBe(false);
   });
@@ -220,20 +246,26 @@ describe("#2666 — subprocess regression: simulated (container-stopped + foreig
   }
 
   it("nemoclaw list never produces silent empty output when openshell is broken", () => {
-    const { stdout, stderr } = runCli(["list"]);
+    const { code, stdout, stderr } = runCli(["list"]);
     const combined = `${stdout}\n${stderr}`;
     // The exact failure mode pre-fix was exit 0 + completely empty output.
     // The contract here is the negation of that — the user must see
     // SOMETHING that includes the sandbox they registered on disk.
     expect(combined.trim().length).toBeGreaterThan(0);
     expect(combined).toContain("my-assist");
+    // `list` succeeds even when the live gateway is unreachable: the
+    // registry-only listing is the documented fallback behavior (#2666).
+    expect(code).toBe(0);
   });
 
   it("nemoclaw <name> status never produces silent empty output when openshell is broken", () => {
-    const { stdout, stderr } = runCli(["my-assist", "status"]);
+    const { code, stdout, stderr } = runCli(["my-assist", "status"]);
     const combined = `${stdout}\n${stderr}`;
     // Must include the sandbox header AND an actionable hint.
     expect(combined.trim().length).toBeGreaterThan(0);
     expect(combined).toContain("my-assist");
+    // `status` must exit non-zero when the live gateway can't be verified
+    // — that's the contract a watchdog wrapping the command relies on.
+    expect(code).not.toBe(0);
   });
 });

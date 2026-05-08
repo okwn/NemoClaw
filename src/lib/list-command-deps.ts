@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-/* v8 ignore start -- runtime dependency adapter covered through CLI integration tests. */
-
 import * as onboardSession from "./state/onboard-session";
-import type { ListSandboxesCommandDeps } from "./inventory-commands";
+import type { ListSandboxesCommandDeps, SandboxEntry } from "./inventory-commands";
 import { parseGatewayInference } from "./inference/config";
 import { OPENSHELL_PROBE_TIMEOUT_MS } from "./adapters/openshell/timeouts";
 import { parseSshProcesses, createSystemDeps } from "./state/sandbox-session";
@@ -12,6 +10,40 @@ import { resolveOpenshell } from "./adapters/openshell/resolve";
 import { captureOpenshell } from "./adapters/openshell/runtime";
 import { recoverRegistryEntries } from "./registry-recovery-action";
 import * as registry from "./state/registry";
+
+interface RecoveredRegistry {
+  sandboxes: SandboxEntry[];
+  defaultSandbox?: string | null;
+  recoveredFromSession?: boolean;
+  recoveredFromGateway?: number;
+}
+
+interface RegistryFallback {
+  sandboxes: SandboxEntry[];
+  defaultSandbox?: string | null;
+}
+
+/**
+ * #2666 fallback wrapper: if the primary recovery throws (e.g. openshell
+ * hangs talking to a foreign port-holder), surface the registry-only
+ * listing instead of letting the throw propagate and silence output.
+ *
+ * Exported for direct unit testing — `buildListCommandDeps()` wires the
+ * real `recoverRegistryEntries` and `registry.listSandboxes` here.
+ */
+export async function recoverRegistryEntriesWithFallback(
+  primary: () => Promise<RecoveredRegistry>,
+  fallback: () => RegistryFallback,
+): Promise<RecoveredRegistry> {
+  try {
+    return await primary();
+  } catch {
+    const list = fallback();
+    return { ...list, recoveredFromSession: false, recoveredFromGateway: 0 };
+  }
+}
+
+/* v8 ignore start -- runtime dependency adapter covered through CLI integration tests. */
 
 export function buildListCommandDeps(): ListSandboxesCommandDeps {
   const opsBinList = resolveOpenshell();
@@ -36,14 +68,11 @@ export function buildListCommandDeps(): ListSandboxesCommandDeps {
     // openshell hanging on a foreign port-holder while its container is
     // stopped) suppress the registry-only listing. The registry lives on
     // disk and is independent of runtime state.
-    recoverRegistryEntries: async () => {
-      try {
-        return await recoverRegistryEntries();
-      } catch {
-        const fallback = registry.listSandboxes();
-        return { ...fallback, recoveredFromSession: false, recoveredFromGateway: 0 };
-      }
-    },
+    recoverRegistryEntries: () =>
+      recoverRegistryEntriesWithFallback(
+        () => recoverRegistryEntries(),
+        () => registry.listSandboxes(),
+      ),
     getLiveInference: () => {
       try {
         return parseGatewayInference(

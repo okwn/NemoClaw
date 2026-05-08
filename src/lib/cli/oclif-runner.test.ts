@@ -134,6 +134,24 @@ describe("runRegisteredOclifCommand", () => {
     );
   });
 
+  it("#2666: falls back to a generic line when the error message is empty", async () => {
+    // Closes the residual silent path: if a non-ExitError(0) carries an
+    // empty message (or one that trims to empty), still emit *something*
+    // so the user is never left looking at exit 0 + blank stdout/stderr.
+    class BlankError extends Error {
+      oclif = { exit: 0 };
+    }
+    runCommandMock.mockRejectedValue(new BlankError(""));
+    const errorLine = vi.fn();
+
+    await runRegisteredOclifCommand("status", ["my-assist"], { rootDir: "/repo", error: errorLine });
+
+    expect(process.exitCode).toBe(0);
+    expect(errorLine).toHaveBeenCalledOnce();
+    const [line] = errorLine.mock.calls[0];
+    expect(String(line).trim().length).toBeGreaterThan(0);
+  });
+
   it("rethrows non-parse command failures", async () => {
     const error = new Error("boom");
     runCommandMock.mockRejectedValue(error);
