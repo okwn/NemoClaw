@@ -510,7 +510,7 @@ if openshell sandbox ssh-config "$SANDBOX_NAME" >"$ssh_config" 2>/dev/null; then
     -o ConnectTimeout=10 \
     -o LogLevel=ERROR \
     "openshell-${SANDBOX_NAME}" \
-    "openclaw agent --agent main --json --session-id '${agent_session_id}' -m 'What is 6 multiplied by 7? Reply with only the integer, no extra words.'" \
+    "openclaw agent --agent main --json --thinking off --session-id '${agent_session_id}' -m 'What is 6 multiplied by 7? Reply with only the integer, no extra words.'" \
     2>/dev/null) || true
 fi
 rm -f "$ssh_config"
