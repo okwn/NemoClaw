@@ -20,6 +20,7 @@ import {
 } from "../../adapters/openshell/runtime";
 import * as registry from "../../state/registry";
 import { resolveOpenshell } from "../../adapters/openshell/resolve";
+import type { SandboxGatewayState } from "./gateway-state";
 import {
   getReconciledSandboxGatewayState,
   getSandboxGatewayStateForStatus,
@@ -57,15 +58,33 @@ export function getSandboxStatusInferenceHealth(
 // eslint-disable-next-line complexity
 export async function showSandboxStatus(sandboxName: string): Promise<void> {
   const sb = registry.getSandbox(sandboxName);
-  const lookup = await getReconciledSandboxGatewayState(sandboxName, {
-    getState: getSandboxGatewayStateForStatus,
-  });
-  const liveResult =
-    lookup.state === "present"
-      ? await captureOpenshellForStatus(["inference", "get"], {
-          ignoreError: true,
-        })
-      : null;
+  // #2666: never let an unexpected throw from the gateway probe (e.g. openshell
+  // hanging when its container is stopped and the published port is held by a
+  // foreign listener) suppress the sandbox header. The downstream switch
+  // handles `gateway_error` by printing an actionable block + exit(1), so a
+  // synthesized fallback keeps the user-visible contract intact.
+  let lookup: SandboxGatewayState;
+  try {
+    lookup = await getReconciledSandboxGatewayState(sandboxName, {
+      getState: getSandboxGatewayStateForStatus,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    lookup = {
+      state: "gateway_error",
+      output: `  Could not probe live gateway state: ${message}`,
+    };
+  }
+  let liveResult: Awaited<ReturnType<typeof captureOpenshellForStatus>> | null = null;
+  if (lookup.state === "present") {
+    try {
+      liveResult = await captureOpenshellForStatus(["inference", "get"], {
+        ignoreError: true,
+      });
+    } catch {
+      liveResult = null;
+    }
+  }
   const live =
     liveResult && !isCommandTimeout(liveResult) ? parseGatewayInference(liveResult.output) : null;
   const currentModel = (live && live.model) || (sb && sb.model) || "unknown";
