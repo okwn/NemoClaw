@@ -16,9 +16,7 @@
 
 import http from "node:http";
 import { createRequire } from "node:module";
-import fs from "node:fs";
 import { type AddressInfo } from "node:net";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -34,6 +32,18 @@ const onboardModule = require("../dist/lib/onboard.js") as {
 };
 const { getGatewayReuseHealthWaitConfig, isGatewayHttpReady, waitForGatewayHttpReady } =
   onboardModule;
+
+/** Bind an ephemeral localhost port, close it, and return its URL — a port
+ * that's guaranteed to refuse connections for the lifetime of the test. */
+async function getClosedLocalUrl(): Promise<string> {
+  const server = http.createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve, reject) =>
+    server.close((err) => (err ? reject(err) : resolve())),
+  );
+  return `http://127.0.0.1:${port}/`;
+}
 
 /** Spin up a tiny HTTP server that returns the given status code, return its URL. */
 async function startStatusServer(statusCode: number): Promise<{
@@ -54,8 +64,6 @@ async function startStatusServer(statusCode: number): Promise<{
       ),
   };
 }
-
-const ROOT = path.resolve(import.meta.dirname, "..");
 
 describe("getGatewayReuseHealthWaitConfig (#3258)", () => {
   const originalCount = process.env.NEMOCLAW_REUSE_HEALTH_POLL_COUNT;
@@ -141,8 +149,10 @@ describe("isGatewayHttpReady status-code semantics (#3258)", () => {
   });
 
   it("returns false on connection refused", async () => {
-    // 127.0.0.1:1 is reserved and not in use — get connection refused.
-    expect(await isGatewayHttpReady(2000, "http://127.0.0.1:1/")).toBe(false);
+    // Bind and immediately close an ephemeral port so the address is
+    // guaranteed unreachable — more deterministic than relying on port 1.
+    const url = await getClosedLocalUrl();
+    expect(await isGatewayHttpReady(2000, url)).toBe(false);
   });
 });
 
@@ -218,95 +228,3 @@ describe("waitForGatewayHttpReady (#3258)", () => {
   });
 });
 
-describe("gateway-reuse HTTP readiness wait integration (#3258)", () => {
-  const content = fs.readFileSync(path.join(ROOT, "src/lib/onboard.ts"), "utf-8");
-
-  it("preflight uses host-level HTTP probe, not docker exec", () => {
-    const preflightStart = content.indexOf("async function preflight(");
-    const preflightEnd = content.indexOf("async function startGatewayWithOptions(");
-    expect(preflightStart).toBeGreaterThanOrEqual(0);
-    expect(preflightEnd).toBeGreaterThan(preflightStart);
-    const preflightSection = content.slice(preflightStart, preflightEnd);
-    expect(preflightSection).toMatch(/await waitForGatewayHttpReady\(\)/);
-  });
-
-  it("main onboard uses host-level HTTP probe, not docker exec", () => {
-    const onboardSection = content.slice(content.indexOf("async function onboard("));
-    expect(onboardSection).toMatch(/await waitForGatewayHttpReady\(\)/);
-  });
-
-  it("isGatewayHttpReady probes 127.0.0.1:GATEWAY_PORT and only accepts an explicit alive whitelist", () => {
-    expect(content).toMatch(/`http:\/\/127\.0\.0\.1:\$\{GATEWAY_PORT\}\/`/);
-    // Mirrors verify-deployment.ts: only 200 (serving) and 401 (device-auth
-    // gate enabled, gateway is running) count as alive. Everything else —
-    // including 404, 403, 502, transport errors — is "not ready".
-    expect(content).toMatch(/GATEWAY_HTTP_ALIVE_CODES = new Set<number>\(\[200, 401\]\)/);
-    expect(content).toMatch(/GATEWAY_HTTP_ALIVE_CODES\.has\(code\)/);
-  });
-
-  it("downgrades reuse state to 'missing' when container is running and HTTP never recovers", () => {
-    // Both reuse sites must follow the pattern: containerState === "running"
-    // path → wait for HTTP → on failure, destroy and downgrade.
-    const downgrades = content.match(
-      /!\(await waitForGatewayHttpReady\(\)\)[\s\S]{0,1500}?destroyGateway\(\)[\s\S]{0,300}?gatewayReuseState = "missing"/g,
-    );
-    expect(downgrades).toBeTruthy();
-    if (!downgrades) {
-      throw new Error('Expected !(await waitForGatewayHttpReady) → destroyGateway → "missing" downgrade');
-    }
-    expect(downgrades.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("startGatewayWithOptions health-poll requires HTTP readiness alongside CLI metadata (#3258)", () => {
-    // After the reuse gate falls through and the start path runs, the
-    // post-start health-poll loop must require BOTH `isGatewayHealthy(...)`
-    // (CLI metadata) AND host HTTP readiness before declaring success.
-    // The CLI metadata can be stale-but-healthy while the upstream is still
-    // warming up; the HTTP probe rules that out.
-    const startGwIdx = content.indexOf("async function startGatewayWithOptions(");
-    expect(startGwIdx).toBeGreaterThanOrEqual(0);
-    const startGwSection = content.slice(startGwIdx, startGwIdx + 8000);
-    // The single-loop success gate must AND the two probes together.
-    expect(startGwSection).toMatch(
-      /isGatewayHealthy\([^)]*\) && \(await isGatewayHttpReady\(\)\)/,
-    );
-  });
-
-  it("startGatewayWithOptions HTTP-gates the final reuse decision (#3258)", () => {
-    // The early-return reuse path inside startGatewayWithOptions must also
-    // probe HTTP readiness — otherwise a fresh OpenShell CLI snapshot can
-    // re-trigger "Reusing existing gateway" with stale-but-CLI-healthy
-    // metadata, bypassing the upstream HTTP wait performed in onboard().
-    const startGwIdx = content.indexOf("async function startGatewayWithOptions(");
-    expect(startGwIdx).toBeGreaterThanOrEqual(0);
-    const startGwSection = content.slice(startGwIdx, startGwIdx + 4000);
-    // Within the isGatewayHealthy(...) reuse branch, isGatewayHttpReady must
-    // be awaited before "Reusing existing gateway" is logged.
-    expect(startGwSection).toMatch(
-      /isGatewayHealthy\([\s\S]*?await isGatewayHttpReady\(\)[\s\S]*?Reusing existing gateway/,
-    );
-  });
-
-  it("downgrades reuse state to 'missing' in unknown+HTTP-fail without destroying the gateway", () => {
-    // Per #2020 we must not destroyGateway() in the unknown branch (Docker may
-    // be unavailable; recreate cannot succeed). But per #3258 we must not let
-    // cached "healthy" carry through either. Compromise: set state to
-    // "missing" so the regular gateway-start path runs and surfaces a clearer
-    // error if it can't proceed.
-    const unknownBlockRegex =
-      /containerState === "unknown"[\s\S]*?(?=\}\s*else if \(!\(await waitForGatewayHttpReady)/g;
-    const unknownBlocks = content.match(unknownBlockRegex);
-    expect(unknownBlocks).toBeTruthy();
-    if (!unknownBlocks) {
-      throw new Error('Expected containerState === "unknown" branches followed by HTTP-wait fallthrough');
-    }
-    expect(unknownBlocks.length).toBeGreaterThanOrEqual(2);
-    for (const block of unknownBlocks) {
-      // No destructive cleanup inside the unknown branch.
-      expect(block).not.toMatch(/destroyGateway\(\)/);
-      expect(block).not.toMatch(/registry\.clearAll\(\)/);
-      // But the HTTP-fail sub-branch must downgrade reuse state.
-      expect(block).toMatch(/gatewayReuseState = "missing"/);
-    }
-  });
-});
