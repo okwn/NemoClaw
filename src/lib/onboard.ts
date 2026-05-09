@@ -39,6 +39,7 @@ const {
   agentSupportsWebSearch,
 }: typeof import("./onboard/web-search-support") = require("./onboard/web-search-support");
 const dashboardAccess: typeof import("./onboard/dashboard-access") = require("./onboard/dashboard-access");
+const dashboardForward: typeof import("./onboard/dashboard-forward") = require("./onboard/dashboard-forward");
 const {
   createWebSearchConfigHelpers,
 }: typeof import("./onboard/web-search-config") = require("./onboard/web-search-config");
@@ -7870,259 +7871,26 @@ const CONTROL_UI_PORT = DASHBOARD_PORT;
 // Dashboard helpers — delegated to src/lib/dashboard/contract.ts
 const { buildChain, buildControlUiUrls } = dashboardContract;
 
-// Parses `openshell forward list` output and returns the sandbox currently
-// owning `portToStop`, or null. Exported for unit testing — see #2169.
-// Columns: SANDBOX  BIND  PORT  PID  STATUS (whitespace-separated).
-function findDashboardForwardOwner(
-  forwardListOutput: string | null | undefined,
-  portToStop: string,
-): string | null {
-  if (!forwardListOutput) return null;
-  const portLine = forwardListOutput
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => {
-      const parts = l.split(/\s+/);
-      return parts[2] === portToStop;
-    });
-  return portLine ? (portLine.split(/\s+/)[0] ?? null) : null;
-}
+const dashboardForwardHelpers = dashboardForward.createDashboardForwardHelpers({
+  getDashboardForwardPort,
+  getDashboardForwardTarget,
+  runCapture,
+  runCaptureOpenshell,
+  runOpenshell,
+  cliName,
+});
 
-function findForwardEntry(
-  forwardListOutput: string | null | undefined,
-  port: string,
-): { sandboxName: string; status: string } | null {
-  if (!forwardListOutput) return null;
-  for (const line of forwardListOutput.split("\n")) {
-    if (/^\s*SANDBOX\s/i.test(line)) continue;
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 3 || parts[2] !== port) continue;
-    return {
-      sandboxName: parts[0] || "",
-      status: (parts[4] || "").toLowerCase(),
-    };
-  }
-  return null;
-}
-
-function isLiveForwardStatus(status: string): boolean {
-  return status === "running" || status === "active";
-}
-
-function getRunningForwardPorts(forwardListOutput: string | null | undefined): string[] {
-  const ports = new Set<string>();
-  if (!forwardListOutput) return [];
-  for (const line of forwardListOutput.split("\n")) {
-    if (/^\s*SANDBOX\s/i.test(line)) continue;
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 5 || !/^\d+$/.test(parts[2])) continue;
-    const status = (parts[4] || "").toLowerCase();
-    if (isLiveForwardStatus(status)) {
-      ports.add(parts[2]);
-    }
-  }
-  return [...ports];
-}
-
-function stopAllDashboardForwards(): void {
-  const forwardList = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-  for (const port of getRunningForwardPorts(forwardList)) {
-    runOpenshell(["forward", "stop", port], { ignoreError: true });
-  }
-}
-
-/**
- * Parse `openshell forward list` output into a Map<port, sandboxName>.
- * Only includes running forwards — stopped/stale entries are ignored so
- * they don't block port allocation or cause false "range exhausted" errors.
- *
- * Output format (columns separated by whitespace):
- *   SANDBOX  BIND  PORT  PID  STATUS
- */
-function getOccupiedPorts(forwardListOutput: string | null): Map<string, string> {
-  const occupied = new Map();
-  if (!forwardListOutput) return occupied;
-  for (const line of forwardListOutput.split("\n")) {
-    if (/^\s*SANDBOX\s/i.test(line)) continue;
-    const parts = line.trim().split(/\s+/);
-    // parts: [sandbox, bind, port, pid, status...]
-    if (parts.length < 3 || !/^\d+$/.test(parts[2])) continue;
-    const status = (parts[4] || "").toLowerCase();
-    if (!isLiveForwardStatus(status)) continue;
-    occupied.set(parts[2], parts[0]);
-  }
-  return occupied;
-}
-
-/**
- * Quick synchronous check whether a TCP port has an active listener on the host.
- * Uses lsof when available; returns false (optimistic) if lsof is missing.
- */
-function isPortBoundOnHost(port: number): boolean {
-  try {
-    const out = runCapture(["lsof", "-i", `:${port}`, "-sTCP:LISTEN", "-P", "-n"], {
-      ignoreError: true,
-    });
-    return !!out && out.trim().length > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Find the next available dashboard port for the given sandbox.
- * Returns the preferred port if free or already owned by this sandbox,
- * otherwise scans DASHBOARD_PORT_RANGE_START..END for a free port.
- * Validates host-port availability (via lsof) so ports bound by
- * non-OpenShell processes are skipped.
- * Throws if the entire range is exhausted.
- */
-function findAvailableDashboardPort(
-  sandboxName: string,
-  preferredPort: number,
-  forwardListOutput: string | null,
-): number {
-  const occupied = getOccupiedPorts(forwardListOutput);
-  const preferredStr = String(preferredPort);
-  const owner = occupied.get(preferredStr) ?? null;
-  // If this sandbox already owns the forward, keep it.
-  if (owner === sandboxName) return preferredPort;
-  // If no forward claims the port, also check the host so we don't collide
-  // with non-OpenShell processes.
-  if (owner === null && !isPortBoundOnHost(preferredPort)) return preferredPort;
-
-  for (let p = DASHBOARD_PORT_RANGE_START; p <= DASHBOARD_PORT_RANGE_END; p++) {
-    const pStr = String(p);
-    const pOwner = occupied.get(pStr) ?? null;
-    if (pOwner === sandboxName) return p;
-    if (pOwner === null && !isPortBoundOnHost(p)) return p;
-  }
-
-  const owners = [...occupied.entries()]
-    .filter(
-      ([p]) => Number(p) >= DASHBOARD_PORT_RANGE_START && Number(p) <= DASHBOARD_PORT_RANGE_END,
-    )
-    .map(([p, s]) => `  ${p} → ${s}`)
-    .join("\n");
-  throw new Error(
-    `All dashboard ports in range ${DASHBOARD_PORT_RANGE_START}-${DASHBOARD_PORT_RANGE_END} are occupied:\n${owners}\n` +
-      `Free a sandbox or use --control-ui-port <N> with a port outside this range.`,
-  );
-}
-
-/**
- * Build the actionable error lines printed when the just-created openshell
- * sandbox is rolled back after a dashboard port-allocation failure. Pure
- * function over (sandboxName, alloc-error, delete-result) so the rollback path
- * is testable without spawning subprocesses or exiting the process (#2174).
- */
-function buildOrphanedSandboxRollbackMessage(
-  sandboxName: string,
-  err: unknown,
-  deleteSucceeded: boolean,
-): string[] {
-  const lines = [
-    "",
-    `  Could not allocate a dashboard port for '${sandboxName}'.`,
-    `  ${err instanceof Error ? err.message : String(err)}`,
-  ];
-  if (deleteSucceeded) {
-    lines.push("  The orphaned sandbox has been removed — you can safely retry.");
-  } else {
-    lines.push("  Could not remove the orphaned sandbox. Manual cleanup:");
-    lines.push(`    openshell sandbox delete "${sandboxName}"`);
-  }
-  return lines;
-}
-
-/**
- * Set up the dashboard forward for a sandbox. Auto-allocates the next free
- * port if the preferred port is taken by a different sandbox (Fixes #2174).
- * Returns the actual port number used.
- *
- * When `rollbackSandboxOnFailure` is true, deletes the just-created openshell
- * sandbox before exiting on unrecoverable port-allocation failure. This keeps
- * `openshell sandbox list` and the NemoClaw registry from drifting when the
- * range is exhausted between sandbox-create and forward-setup ("leaks ghost
- * sandbox" half of #2174). Mirrors the not-ready rollback pattern in
- * createSandbox.
- */
-function ensureDashboardForward(
-  sandboxName: string,
-  chatUiUrl = `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: { rollbackSandboxOnFailure?: boolean } = {},
-): number {
-  const { rollbackSandboxOnFailure = false } = options;
-  const preferredPort = Number(getDashboardForwardPort(chatUiUrl));
-  let existingForwards = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-  const preferredEntry = findForwardEntry(existingForwards, String(preferredPort));
-  if (
-    preferredEntry &&
-    (preferredEntry.sandboxName === sandboxName || !isLiveForwardStatus(preferredEntry.status))
-  ) {
-    runOpenshell(["forward", "stop", String(preferredPort)], { ignoreError: true });
-    existingForwards = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-  }
-  let actualPort: number;
-  try {
-    actualPort = findAvailableDashboardPort(sandboxName, preferredPort, existingForwards);
-  } catch (err) {
-    if (!rollbackSandboxOnFailure) throw err;
-    const delResult = runOpenshell(["sandbox", "delete", sandboxName], { ignoreError: true });
-    for (const line of buildOrphanedSandboxRollbackMessage(
-      sandboxName,
-      err,
-      delResult.status === 0,
-    )) {
-      console.error(line);
-    }
-    process.exit(1);
-  }
-
-  if (actualPort !== preferredPort) {
-    console.warn(`  ! Port ${preferredPort} is taken. Using port ${actualPort} instead.`);
-  }
-
-  // Clean up any stale forwards owned by this sandbox on other ports so we
-  // don't leak forwards across port changes and exhaust the range over time.
-  const occupied = getOccupiedPorts(existingForwards);
-  for (const [port, owner] of occupied.entries()) {
-    if (owner === sandboxName && Number(port) !== actualPort) {
-      runOpenshell(["forward", "stop", port], { ignoreError: true });
-    }
-  }
-
-  // Preserve the original URL's hostname (loopback vs remote) but swap to the actual port.
-  const parsedUrl = new URL(chatUiUrl.includes("://") ? chatUiUrl : `http://${chatUiUrl}`);
-  parsedUrl.port = String(actualPort);
-  const actualTarget = getDashboardForwardTarget(parsedUrl.toString());
-  runOpenshell(["forward", "stop", String(actualPort)], { ignoreError: true });
-  const fwdResult = runOpenshell(["forward", "start", "--background", actualTarget, sandboxName], {
-    ignoreError: true,
-    stdio: ["ignore", "ignore", "ignore"],
-  });
-  if (fwdResult && fwdResult.status !== 0) {
-    console.warn(
-      `! Port ${actualPort} forward did not start — port may be in use by another process.`,
-    );
-    console.warn(
-      `  Check: docker ps --format 'table {{.Names}}\\t{{.Ports}}' | grep ${actualPort}`,
-    );
-    console.warn(`  Free the port, then reconnect: ${cliName()} ${sandboxName} connect`);
-  }
-  return actualPort;
-}
-
-function ensureAgentDashboardForward(
-  sandboxName: string,
-  agent: { forwardPort?: number | null },
-): number {
-  const agentDashboardPort = agent.forwardPort ?? CONTROL_UI_PORT;
-  const agentDashboardUrl = `http://127.0.0.1:${agentDashboardPort}`;
-  const actualAgentDashboardPort = ensureDashboardForward(sandboxName, agentDashboardUrl);
-  process.env.CHAT_UI_URL = `http://127.0.0.1:${actualAgentDashboardPort}`;
-  return actualAgentDashboardPort;
-}
+const {
+  findDashboardForwardOwner,
+  buildOrphanedSandboxRollbackMessage,
+} = dashboardForward;
+const {
+  stopAllDashboardForwards,
+  isPortBoundOnHost,
+  findAvailableDashboardPort,
+  ensureDashboardForward,
+  ensureAgentDashboardForward,
+} = dashboardForwardHelpers;
 
 function findOpenclawJsonPath(dir: string): string | null {
   if (!fs.existsSync(dir)) return null;
