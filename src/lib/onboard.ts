@@ -3582,9 +3582,13 @@ async function waitForGatewayHttpReady(
   const sleeper = opts.sleeper ?? sleep;
   const config = getGatewayReuseHealthWaitConfig();
   // Always probe at least once, even if the caller passed a non-positive
-  // maxAttempts. Negative or non-finite intervals fall back to no sleep.
-  const maxAttempts = Math.max(1, opts.maxAttempts ?? config.count);
-  const intervalSeconds = Math.max(0, opts.intervalSeconds ?? config.interval);
+  // maxAttempts. Non-finite (NaN, Infinity) values fall back to safe defaults
+  // — Math.max alone would let Infinity through and hang the loop, and NaN
+  // would propagate into sleeper().
+  const rawAttempts = opts.maxAttempts ?? config.count;
+  const maxAttempts = Number.isFinite(rawAttempts) ? Math.max(1, Math.round(rawAttempts)) : 1;
+  const rawInterval = opts.intervalSeconds ?? config.interval;
+  const intervalSeconds = Number.isFinite(rawInterval) ? Math.max(0, rawInterval) : 0;
 
   if (await probe()) return true;
   for (let attempt = 1; attempt < maxAttempts; attempt++) {
@@ -4088,24 +4092,22 @@ async function preflight(
       // HTTP probe — it doesn't depend on Docker, so it can confirm the gateway
       // is genuinely serving even when the daemon is flaky.
       //
-      // Per #2020 the "unknown" state must remain non-destructive: if Docker is
-      // unavailable, destroying and recreating cannot succeed anyway. Just warn
-      // and let the caller surface the failure later.
+      // Per #2020 the "unknown" state must stay non-destructive end-to-end:
+      // we cannot downgrade to "missing" in preflight even when HTTP probe
+      // fails. Doing so would feed the orphan-cleanup block below, and a
+      // transient `docker inspect` failure plus an HTTP warm-up miss would
+      // delete a live gateway. The main onboard's "unknown" branch (which
+      // does not orphan-cleanup) handles the actual reuse decision, and
+      // `startGatewayWithOptions` HTTP-gates the final reuse so a stale-but-
+      // CLI-healthy gateway still cannot slip through.
       if (await waitForGatewayHttpReady()) {
         console.log(
           "  Warning: could not verify gateway container state (Docker may be unavailable), but the gateway is responding on HTTP. Proceeding with reuse.",
         );
       } else {
-        // Per #2020 we must not tear the gateway down in the unknown branch
-        // (if Docker is unavailable, recreate cannot succeed either). But
-        // continuing to trust cached "healthy" leads to the #3258 step-4
-        // "Connection refused" failure. Compromise: downgrade reuse state so
-        // the regular gateway-start path takes over and surfaces a clearer
-        // error if it cannot proceed.
         console.log(
-          "  Warning: could not verify gateway container state and the gateway is not responding on HTTP. Treating as unhealthy; will attempt to start a fresh gateway.",
+          "  Warning: could not verify gateway container state and the gateway is not responding on HTTP. Onboard will re-verify before reuse; restart Docker and re-run if onboard fails.",
         );
-        gatewayReuseState = "missing";
       }
     } else if (!(await waitForGatewayHttpReady())) {
       // Container is running but the gateway HTTP endpoint is not responding.

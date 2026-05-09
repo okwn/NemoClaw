@@ -268,4 +268,42 @@ describe("waitForGatewayHttpReady (#3258)", () => {
       expect(sleeps).toEqual([]);
     }
   });
+
+  it("does not loop forever when maxAttempts is Infinity or NaN", async () => {
+    for (const bad of [Number.POSITIVE_INFINITY, Number.NaN]) {
+      let calls = 0;
+      const sleeps: number[] = [];
+      const result = await waitForGatewayHttpReady({
+        probe: async () => {
+          calls += 1;
+          return false;
+        },
+        sleeper: (s: number) => sleeps.push(s),
+        maxAttempts: bad,
+        intervalSeconds: 5,
+      });
+      expect(result).toBe(false);
+      expect(calls).toBe(1);
+      expect(sleeps).toEqual([]);
+    }
+  });
+
+  it("does not pass NaN/Infinity through to the sleeper", async () => {
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY]) {
+      let calls = 0;
+      const sleeps: number[] = [];
+      const result = await waitForGatewayHttpReady({
+        probe: async () => {
+          calls += 1;
+          return calls >= 2;
+        },
+        sleeper: (s: number) => sleeps.push(s),
+        maxAttempts: 3,
+        intervalSeconds: bad,
+      });
+      expect(result).toBe(true);
+      // One sleep before the second probe — must be 0, not NaN/Infinity.
+      expect(sleeps).toEqual([0]);
+    }
+  });
 });
