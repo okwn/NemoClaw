@@ -39,10 +39,25 @@ FAIL=0
 SKIP=0
 TOTAL=0
 
-pass() { ((PASS++)); ((TOTAL++)); printf '\033[32m  PASS: %s\033[0m\n' "$1"; }
-fail() { ((FAIL++)); ((TOTAL++)); printf '\033[31m  FAIL: %s\033[0m\n' "$1"; }
-skip() { ((SKIP++)); ((TOTAL++)); printf '\033[33m  SKIP: %s\033[0m\n' "$1"; }
-section() { echo ""; printf '\033[1;36m=== %s ===\033[0m\n' "$1"; }
+pass() {
+  ((PASS++))
+  ((TOTAL++))
+  printf '\033[32m  PASS: %s\033[0m\n' "$1"
+}
+fail() {
+  ((FAIL++))
+  ((TOTAL++))
+  printf '\033[31m  FAIL: %s\033[0m\n' "$1"
+}
+skip() {
+  ((SKIP++))
+  ((TOTAL++))
+  printf '\033[33m  SKIP: %s\033[0m\n' "$1"
+}
+section() {
+  echo ""
+  printf '\033[1;36m=== %s ===\033[0m\n' "$1"
+}
 info() { printf '\033[1;34m  [info]\033[0m %s\n' "$1"; }
 
 summary() {
@@ -205,7 +220,8 @@ check_brave_preset_applied() {
     fail "B2a: brave preset NOT applied — api.search.brave.com is missing from the gateway policy"
   fi
 
-  config_script=$(cat <<'SH'
+  config_script=$(
+    cat <<'SH'
 python3 <<'PY'
 import json
 with open("/sandbox/.openclaw/openclaw.json") as f:
