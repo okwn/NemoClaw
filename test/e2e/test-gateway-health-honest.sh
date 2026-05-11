@@ -97,7 +97,7 @@ cleanup_pid() {
 
 cleanup() {
   set +e
-  [ -f "$PID_FILE" ] && CHILD_PID="$(tr -d '[:space:]' < "$PID_FILE")"
+  [ -f "$PID_FILE" ] && CHILD_PID="$(tr -d '[:space:]' <"$PID_FILE")"
   cleanup_pid "$CHILD_PID"
   openshell gateway remove nemoclaw >/dev/null 2>&1 || true
   rm -f "$PID_FILE" "$SABOTAGE_BIN"
@@ -125,7 +125,7 @@ rm -f "$PID_FILE" "$START_LOG" "$GATEWAY_LOG"
 openshell gateway remove nemoclaw >/dev/null 2>&1 || true
 
 info "Installing sabotage gateway binary that simulates the #3111 GLIBC crash"
-cat > "$SABOTAGE_BIN" <<'SHIM'
+cat >"$SABOTAGE_BIN" <<'SHIM'
 #!/usr/bin/env bash
 # Simulates the Ubuntu 22.04 GLIBC-2.38/2.39 failure mode reported in #3111.
 # The real binary dies at the dynamic-linker stage before main() runs; we
@@ -145,9 +145,9 @@ info "Invoking startGateway() with the sabotaged binary"
 # and MUST NOT print "Docker-driver gateway is healthy".
 set +e
 NEMOCLAW_OPENSHELL_GATEWAY_BIN="$SABOTAGE_BIN" \
-NEMOCLAW_HEALTH_POLL_COUNT="${NEMOCLAW_HEALTH_POLL_COUNT:-10}" \
-NEMOCLAW_HEALTH_POLL_INTERVAL="${NEMOCLAW_HEALTH_POLL_INTERVAL:-1}" \
-node <<'NODE' 2>&1 | tee "$START_LOG"
+  NEMOCLAW_HEALTH_POLL_COUNT="${NEMOCLAW_HEALTH_POLL_COUNT:-10}" \
+  NEMOCLAW_HEALTH_POLL_INTERVAL="${NEMOCLAW_HEALTH_POLL_INTERVAL:-1}" \
+  node <<'NODE' 2>&1 | tee "$START_LOG"
 const { startGateway } = require("./dist/lib/onboard");
 
 startGateway(null)
@@ -170,7 +170,7 @@ info "node exit code: ${NODE_EXIT}"
 # This is the bug from #3111. Onboard printed "healthy" while the child
 # process was a crashed zombie and had never served a real connection.
 if grep -q "✓ Docker-driver gateway is healthy" "$START_LOG" \
-|| grep -q "Docker-driver gateway is healthy" "$START_LOG"; then
+  || grep -q "Docker-driver gateway is healthy" "$START_LOG"; then
   fail "Onboard reported '✓ Docker-driver gateway is healthy' although the gateway binary crashed on startup (#3111 false-positive health check)"
 fi
 pass "Onboard did not falsely log 'Docker-driver gateway is healthy' when the binary crashed"
@@ -192,7 +192,7 @@ pass "Onboard surfaced a user-visible gateway failure message"
 
 # ── Corroborating assertion 3: no live gateway process ───────────────
 if [ -f "$PID_FILE" ]; then
-  LINGERING_PID="$(tr -d '[:space:]' < "$PID_FILE")"
+  LINGERING_PID="$(tr -d '[:space:]' <"$PID_FILE")"
   if [ -n "$LINGERING_PID" ] && kill -0 "$LINGERING_PID" 2>/dev/null; then
     # A live pid that is *not* a zombie would mean onboard somehow kept
     # something alive. Zombies are acceptable as a transient artifact.
