@@ -27,6 +27,16 @@ describe("onboard temp file helpers", () => {
     expect(path.basename(filePath)).toBe("nemoclaw-test.txt");
   });
 
+  it("rejects temp prefixes with path separators", () => {
+    expect(() => secureTempFile("../nemoclaw-test", ".txt")).toThrow("Invalid temp file prefix");
+    expect(() => secureTempFile("nested/nemoclaw-test", ".txt")).toThrow(
+      "Invalid temp file prefix",
+    );
+    expect(() => secureTempFile("nested\\nemoclaw-test", ".txt")).toThrow(
+      "Invalid temp file prefix",
+    );
+  });
+
   it("removes only the matching mkdtemp-created parent directory", () => {
     const filePath = secureTempFile("nemoclaw-cleanup", ".txt");
     const parent = path.dirname(filePath);
@@ -46,5 +56,16 @@ describe("onboard temp file helpers", () => {
     cleanupTempDir(filePath, "nemoclaw-cleanup");
 
     expect(fs.existsSync(parent)).toBe(true);
+  });
+
+  it("does not remove matching-prefix directories outside os.tmpdir()", () => {
+    const outsideParent = fs.mkdtempSync(path.join(process.cwd(), "nemoclaw-cleanup-"));
+    createdParents.push(outsideParent);
+    const filePath = path.join(outsideParent, "nemoclaw-cleanup.txt");
+    fs.writeFileSync(filePath, "payload");
+
+    cleanupTempDir(filePath, "nemoclaw-cleanup");
+
+    expect(fs.existsSync(outsideParent)).toBe(true);
   });
 });
