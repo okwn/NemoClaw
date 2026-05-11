@@ -136,6 +136,7 @@ const {
   awaitWindowsOllamaReady,
   setupWindowsOllamaWith0000Binding,
   switchToWindowsOllamaHost,
+  printWindowsOllamaTimeoutDiagnostics,
 } = require("./inference/ollama/windows");
 const { detectVllmProfile, installVllm } = require("./inference/vllm");
 const inferenceConfig: typeof import("./inference/config") = require("./inference/config");
@@ -4715,16 +4716,10 @@ async function preflight(
   // GPU
   const gpu = nim.detectGpu();
   if (gpu && gpu.type === "nvidia") {
-    if (gpu.name) {
-      // Match DevTest case 517913 cross-check format when the GPU model is
-      // known: `NVIDIA GPU detected (<model>, <vram> MB)`. Multi-GPU hosts
-      // with the same model render as `Nx <model>` inside the parens.
-      const detail = gpu.count > 1 ? `${gpu.count}x ${gpu.name}` : gpu.name;
-      console.log(`  ✓ NVIDIA GPU detected (${detail}, ${gpu.totalMemoryMB} MB)`);
-    } else {
-      // Mixed-model or unnamed devices fall back to the count-only form so
-      // we never falsely attribute one GPU's name to the others.
-      console.log(`  ✓ NVIDIA GPU detected: ${gpu.count} GPU(s), ${gpu.totalMemoryMB} MB VRAM`);
+    const lines = nim.formatNvidiaGpuPreflightLines(gpu);
+    console.log(`  ✓ ${lines[0]}`);
+    for (const extra of lines.slice(1)) {
+      console.log(`  ${extra}`);
     }
     if (!gpu.nimCapable) {
       console.log("  ⓘ Local NIM unavailable — GPU VRAM too small");
@@ -7730,6 +7725,9 @@ async function setupNim(
           model = sel.name;
 
           // Ensure Docker is logged in to NGC registry before pulling NIM images.
+          // The key is also forwarded into the NIM container at runtime (#3333),
+          // so we hoist it out of the not-logged-in branch.
+          let ngcApiKey: string | null = null;
           if (!nim.isNgcLoggedIn()) {
             if (isNonInteractive()) {
               console.error(
@@ -7757,16 +7755,39 @@ async function setupNim(
                 process.exit(1);
               }
             }
+            ngcApiKey = ngcKey;
+          } else {
+            // Docker is already logged in, but NIM still needs the key in its
+            // container env to download model manifests. Users hit by the
+            // original #3333 bug typically have a cached docker login from
+            // the earlier broken attempt while the NGC key was never saved
+            // anywhere, so a passive lookup would silently reproduce the
+            // failure. Try env first, then prompt interactively; an empty
+            // answer falls through to startNimContainerByName's warning so
+            // we don't double-fail in non-interactive callers.
+            ngcApiKey =
+              hydrateCredentialEnv("NGC_API_KEY") || hydrateCredentialEnv("NVIDIA_API_KEY");
+            if (!ngcApiKey && !isNonInteractive()) {
+              console.log("");
+              console.log("  NGC API Key required to download NIM model weights at runtime.");
+              console.log("  (Docker is logged in to nvcr.io, but the key was not saved.)");
+              ngcApiKey = normalizeCredentialValue(
+                await prompt("  NGC API Key: ", { secret: true }),
+              );
+            }
           }
 
           console.log(`  Pulling NIM image for ${model}...`);
           nim.pullNimImage(model);
 
           console.log("  Starting NIM container...");
-          nimContainer = nim.startNimContainerByName(nim.containerName(GATEWAY_NAME), model);
+          const nimContainerNameLocal = nim.containerName(GATEWAY_NAME);
+          nimContainer = nim.startNimContainerByName(nimContainerNameLocal, model, undefined, {
+            ngcApiKey: ngcApiKey ?? undefined,
+          });
 
           console.log("  Waiting for NIM to become healthy...");
-          if (!nim.waitForNimHealth()) {
+          if (!nim.waitForNimHealth(undefined, undefined, { container: nimContainerNameLocal })) {
             console.error("  NIM failed to start. Falling back to cloud API.");
             model = null;
             nimContainer = null;
@@ -7878,8 +7899,6 @@ async function setupNim(
         if (isSwitch) {
           switchToWindowsOllamaHost();
         } else if (isInstall) {
-          // installOllamaOnWindowsHost pre-sets the env so the auto-spawned
-          // daemon already binds 0.0.0.0; no kill+relaunch needed.
           const installResult = await installOllamaOnWindowsHost();
           if (!installResult.ok) {
             console.error(
@@ -7889,14 +7908,21 @@ async function setupNim(
             continue selectionLoop;
           }
           if (!awaitWindowsOllamaReady()) {
-            console.error("  Timed out waiting for Ollama to start on the Windows host.");
-            if (isNonInteractive()) process.exit(1);
-            continue selectionLoop;
+            console.log("  Installer did not leave a reachable Ollama daemon; restarting it...");
+            if (
+              !setupWindowsOllamaWith0000Binding({
+                installedPath: installResult.path,
+              })
+            ) {
+              printWindowsOllamaTimeoutDiagnostics();
+              if (isNonInteractive()) process.exit(1);
+              continue selectionLoop;
+            }
           }
           console.log(`  ✓ Using Ollama on host.docker.internal:${OLLAMA_PORT}`);
         } else {
           if (!setupWindowsOllamaWith0000Binding({ announceStop: isRestart })) {
-            console.error("  Timed out waiting for Ollama to start on the Windows host.");
+            printWindowsOllamaTimeoutDiagnostics();
             if (isNonInteractive()) process.exit(1);
             continue selectionLoop;
           }
@@ -8137,6 +8163,10 @@ async function setupNim(
           }
         } else {
           if (!resolveProviderCredential(routerCredentialEnv)) {
+            console.log("");
+            console.log("  Model Router accepts NVIDIA API keys (nvapi-...).");
+            console.log("  Get one at https://build.nvidia.com");
+            console.log("");
             await ensureNamedCredential(routerCredentialEnv, "Model Router API key", null);
           }
         }
@@ -10394,7 +10424,7 @@ function printDashboard(
   console.log("");
   console.log("  To change settings later:");
   console.log(
-    `    Model:       openshell inference set -g nemoclaw --model <model> --provider <provider>`,
+    `    Model:       ${cliName()} inference set --model <model> --provider <provider> --sandbox ${sandboxName}`,
   );
   console.log(`    Policies:    ${cliName()} ${sandboxName} policy-add`);
   console.log(`    Credentials: ${cliName()} credentials reset <KEY>  then  ${cliName()} onboard`);
