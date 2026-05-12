@@ -505,8 +505,9 @@
 -->
 <section class="tex2jax_ignore mathjax_ignore" id="messaging-channels">
 <h1>Messaging Channels<a class="headerlink" href="#messaging-channels" title="Link to this heading">#</a></h1>
-<p>Telegram, Discord, and Slack reach your agent through OpenShell-managed processes and gateway constructs.
-NemoClaw registers channel tokens with OpenShell providers, bakes the selected channel configuration into the sandbox image, and keeps runtime delivery under OpenShell control.</p>
+<p>Telegram, Discord, Slack, and WhatsApp reach your agent through OpenShell-managed processes and gateway constructs.
+For token-based channels, NemoClaw registers credentials with OpenShell providers; WhatsApp pairs inside the sandbox via QR scan and stores session state there.
+NemoClaw bakes the selected channel configuration into the sandbox image and keeps runtime delivery under OpenShell control.</p>
 <p>You can enable channels during <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> or add them later with host-side <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;sandbox&gt;</span> <span class="pre">channels</span></code> commands.
 Do not run <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">add</span></code> or <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">remove</span></code> inside the sandbox because <code class="docutils literal notranslate"><span class="pre">/sandbox/.openclaw/openclaw.json</span></code> is generated at image build time and changes inside the running container do not persist across rebuilds.</p>
 <p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">tunnel</span> <span class="pre">start</span></code> does not start Telegram, Discord, Slack, or other chat bridges.
@@ -516,7 +517,7 @@ For details, refer to <a class="reference internal" href="../reference/commands.
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p>A machine where you can run <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> (local or remote host that runs the gateway and sandbox).</p></li>
-<li><p>A token for each messaging platform you want to enable.</p></li>
+<li><p>A token for each token-based messaging platform you want to enable, or a phone you can use to scan the QR code for WhatsApp pairing.</p></li>
 <li><p>A network policy preset for each enabled channel, or equivalent custom egress rules.</p></li>
 </ul>
 </section>
@@ -543,7 +544,7 @@ For details, refer to <a class="reference internal" href="../reference/commands.
 <td><p>None</p></td>
 </tr>
 <tr class="row-odd"><td><p>WhatsApp</p></td>
-<td><p>None — pair via QR after rebuild</p></td>
+<td><p>None. Pair via QR after rebuild</p></td>
 <td><p>None</p></td>
 </tr>
 </tbody>
@@ -559,12 +560,16 @@ Pairing and <code class="docutils literal notranslate"><span class="pre">TELEGRA
 For server channels, enable Developer Mode in Discord, right-click the server, and copy the Server ID into <code class="docutils literal notranslate"><span class="pre">DISCORD_SERVER_ID</span></code>.
 By default, NemoClaw configures the bot to reply only when mentioned.
 Set <code class="docutils literal notranslate"><span class="pre">DISCORD_REQUIRE_MENTION=0</span></code> if you want it to reply to all messages in the configured server.
-Set <code class="docutils literal notranslate"><span class="pre">DISCORD_USER_ID</span></code> to restrict access to one user; otherwise, any member of the configured server can message the bot.</p>
+Set <code class="docutils literal notranslate"><span class="pre">DISCORD_USER_ID</span></code> to restrict access to one user.
+Otherwise, any member of the configured server can message the bot.</p>
 <p>Slack uses Socket Mode and requires two tokens.
 Use <code class="docutils literal notranslate"><span class="pre">SLACK_BOT_TOKEN</span></code> for the bot user OAuth token (<code class="docutils literal notranslate"><span class="pre">xoxb-...</span></code>) and <code class="docutils literal notranslate"><span class="pre">SLACK_APP_TOKEN</span></code> for the app-level Socket Mode token (<code class="docutils literal notranslate"><span class="pre">xapp-...</span></code>).</p>
 <p>WhatsApp Web does not use a host-side token.
-Pairing happens inside the sandbox: after the rebuild completes, run <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">term</span> <span class="pre">&lt;sandbox&gt;</span></code> and then <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">login</span> <span class="pre">--channel</span> <span class="pre">whatsapp</span></code> to render the QR code in the terminal, then scan it with your phone.
-Because session credentials are generated and stored inside the sandbox image, NemoClaw cannot detect cross-sandbox WhatsApp conflicts the way it does for token-based channels; pair only one sandbox per WhatsApp account at a time.</p>
+Pairing happens inside the sandbox after the rebuild completes.
+Run <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">term</span> <span class="pre">&lt;sandbox&gt;</span></code> and then <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">login</span> <span class="pre">--channel</span> <span class="pre">whatsapp</span></code> to render the QR code in the terminal, and scan it with your phone.
+Session credentials are generated and stored inside the sandbox image.
+NemoClaw cannot detect cross-sandbox WhatsApp conflicts the way it does for token-based channels.
+Pair only one sandbox per WhatsApp account at a time.</p>
 </section>
 <section id="enable-channels-during-onboarding">
 <h2>Enable Channels During Onboarding<a class="headerlink" href="#enable-channels-during-onboarding" title="Link to this heading">#</a></h2>
