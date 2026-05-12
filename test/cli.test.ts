@@ -305,9 +305,33 @@ function createDebugCommandTestEnv(prefix: string): Record<string, string> {
   };
 }
 
+function writeHostAliasDockerStub(
+  localBin: string,
+  dockerLog: string,
+  hostAliases: { ip: string; hostnames: string[] }[],
+): void {
+  const resource = JSON.stringify({
+    metadata: { resourceVersion: "123" },
+    spec: { podTemplate: { spec: { hostAliases } } },
+  });
+  fs.writeFileSync(
+    path.join(localBin, "docker"),
+    [
+      "#!/usr/bin/env bash",
+      `log_file=${JSON.stringify(dockerLog)}`,
+      'printf "%s\\n" "$@" >> "$log_file"',
+      'if printf "%s\\n" "$@" | grep -q "^get$"; then',
+      `  printf "%s\\n" ${JSON.stringify(resource)}`,
+      "fi",
+      "exit 0",
+    ].join("\n"),
+    { mode: 0o755 },
+  );
+}
+
 describe("CLI dispatch", () => {
   it("config get validates flags and values before dispatch", async () => {
-    const sandboxConfigModule = await import("../dist/lib/sandbox-config.js");
+    const sandboxConfigModule = await import("../dist/lib/sandbox/config.js");
     const { parseConfigGetArgs } = (sandboxConfigModule.default ?? sandboxConfigModule) as {
       parseConfigGetArgs: (
         args: string[],
@@ -1268,7 +1292,7 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain("--sandbox");
   });
 
-  it("debug warns when default sandbox is stale", testTimeoutOptions(), () => {
+  it("debug warns when default sandbox is stale", testTimeoutOptions(30_000), () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-stale-"));
     fs.mkdirSync(path.join(home, ".nemoclaw"), { recursive: true });
     fs.writeFileSync(
@@ -1276,7 +1300,7 @@ describe("CLI dispatch", () => {
       JSON.stringify({ sandboxes: {}, defaultSandbox: "ghost" }),
       { mode: 0o600 },
     );
-    const r = runWithEnv("debug --quick 2>&1", { HOME: home });
+    const r = runWithEnv("debug --quick 2>&1", { HOME: home }, 30000);
     expect(r.code).toBe(0);
     expect(r.out).toContain("Warning");
     expect(r.out).toContain("ghost");
@@ -1441,7 +1465,7 @@ describe("CLI dispatch", () => {
     }
   });
 
-  it("sandbox inspection help keeps public sandbox-scoped usage", () => {
+  it("sandbox inspection help keeps public sandbox-scoped usage", testTimeoutOptions(15_000), () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-inspection-help-"));
     writeSandboxRegistry(home);
 
@@ -1483,6 +1507,13 @@ describe("CLI dispatch", () => {
       expect(policy.code).toBe(0);
       expect(policy.out).toContain(`<name> ${action}`);
       expect(policy.out).not.toContain(`sandbox:${action}`);
+    }
+
+    for (const action of ["hosts-add", "hosts-list", "hosts-remove"]) {
+      const hosts = runWithEnv(`alpha ${action} --help`, { HOME: home });
+      expect(hosts.code).toBe(0);
+      expect(hosts.out).toContain(`<name> ${action}`);
+      expect(hosts.out).not.toContain("sandbox:hosts:");
     }
 
     const channels = runWithEnv("alpha channels list --help", { HOME: home });
@@ -1541,6 +1572,250 @@ describe("CLI dispatch", () => {
     const start = runWithEnv("alpha channels start telegram --dry-run", { HOME: home });
     expect(start.code).toBe(0);
     expect(start.out).toContain("Channel 'telegram' is already enabled for 'alpha'. Nothing to do.");
+  });
+
+  it("adds host aliases with a sandbox json patch", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-add-"));
+    const localBin = path.join(home, "bin");
+    const dockerLog = path.join(home, "docker.log");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    fs.writeFileSync(
+      path.join(localBin, "docker"),
+      [
+        "#!/usr/bin/env bash",
+        `log_file=${JSON.stringify(dockerLog)}`,
+        'printf "%s\\n" "$@" >> "$log_file"',
+        'if printf "%s\\n" "$@" | grep -q "^get$"; then',
+        '  printf "%s\\n" \'{"metadata":{"resourceVersion":"123"},"spec":{"podTemplate":{"spec":{"hostAliases":[{"ip":"10.0.0.5","hostnames":["old.local"]}]}}}}\'',
+        "fi",
+        "exit 0",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+
+    const r = runWithEnv("alpha hosts-add searxng.local 192.168.1.105", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Added host alias searxng.local -> 192.168.1.105");
+    const log = fs.readFileSync(dockerLog, "utf8").trim().split(/\n/);
+    expect(log).toContain("patch");
+    expect(log).toContain("--type=json");
+    const patch = JSON.parse(log[log.indexOf("-p") + 1]);
+    expect(patch[0]).toEqual({
+      op: "test",
+      path: "/metadata/resourceVersion",
+      value: "123",
+    });
+    expect(patch[1]).toEqual({
+      op: "replace",
+      path: "/spec/podTemplate/spec/hostAliases",
+      value: [
+        { ip: "10.0.0.5", hostnames: ["old.local"] },
+        { ip: "192.168.1.105", hostnames: ["searxng.local"] },
+      ],
+    });
+  });
+
+  it("lists host aliases from the sandbox resource", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-list-"));
+    const localBin = path.join(home, "bin");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    fs.writeFileSync(
+      path.join(localBin, "docker"),
+      [
+        "#!/usr/bin/env bash",
+        'printf "%s\\n" \'{"metadata":{"resourceVersion":"123"},"spec":{"podTemplate":{"spec":{"hostAliases":[{"ip":"192.168.1.105","hostnames":["searxng.local","search.lan"]}]}}}}\'',
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+
+    const r = runWithEnv("alpha hosts-list", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Host aliases for 'alpha'");
+    expect(r.out).toContain("192.168.1.105  searxng.local, search.lan");
+  });
+
+  it("removes host aliases with a sandbox json patch", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-remove-"));
+    const localBin = path.join(home, "bin");
+    const dockerLog = path.join(home, "docker.log");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    writeHostAliasDockerStub(localBin, dockerLog, [
+      { ip: "10.0.0.5", hostnames: ["searxng.local", "old.local"] },
+      { ip: "192.168.1.10", hostnames: ["keep.local"] },
+    ]);
+
+    const r = runWithEnv("alpha hosts-remove searxng.local", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Removed host alias searxng.local");
+    const log = fs.readFileSync(dockerLog, "utf8").trim().split(/\n/);
+    expect(log).toContain("patch");
+    const patch = JSON.parse(log[log.lastIndexOf("-p") + 1]);
+    expect(patch[0]).toEqual({
+      op: "test",
+      path: "/metadata/resourceVersion",
+      value: "123",
+    });
+    expect(patch[1]).toEqual({
+      op: "replace",
+      path: "/spec/podTemplate/spec/hostAliases",
+      value: [
+        { ip: "10.0.0.5", hostnames: ["old.local"] },
+        { ip: "192.168.1.10", hostnames: ["keep.local"] },
+      ],
+    });
+  });
+
+  it("rejects duplicate host aliases case-insensitively", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-duplicate-"));
+    const localBin = path.join(home, "bin");
+    const dockerLog = path.join(home, "docker.log");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    writeHostAliasDockerStub(localBin, dockerLog, [
+      { ip: "10.0.0.5", hostnames: ["SearXNG.local"] },
+    ]);
+
+    const r = runWithEnv("alpha hosts-add searxng.local 192.168.1.105", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("Host alias 'searxng.local' already exists");
+    const log = fs.readFileSync(dockerLog, "utf8").trim().split(/\n/);
+    expect(log).not.toContain("patch");
+  });
+
+  it("previews host alias changes with dry-run without patching", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-dry-run-"));
+    const localBin = path.join(home, "bin");
+    const dockerLog = path.join(home, "docker.log");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    writeHostAliasDockerStub(localBin, dockerLog, [
+      { ip: "10.0.0.5", hostnames: ["searxng.local", "old.local"] },
+    ]);
+
+    const add = runWithEnv("alpha hosts-add dry.local 192.168.1.105 --dry-run", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+    const remove = runWithEnv("alpha hosts-remove searxng.local --dry-run", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(add.code).toBe(0);
+    expect(add.out).toContain('\"/metadata/resourceVersion\"');
+    expect(add.out).toContain('\"/spec/podTemplate/spec/hostAliases\"');
+    expect(add.out).toContain('\"dry.local\"');
+    expect(add.out).toContain('\"192.168.1.105\"');
+    expect(remove.code).toBe(0);
+    expect(remove.out).toContain('\"/metadata/resourceVersion\"');
+    expect(remove.out).toContain('\"/spec/podTemplate/spec/hostAliases\"');
+    expect(remove.out).toContain('\"old.local\"');
+    expect(remove.out).not.toContain('\"searxng.local\"');
+    const log = fs.readFileSync(dockerLog, "utf8").trim().split(/\n/);
+    expect(log).not.toContain("patch");
+  });
+
+  it("rejects unknown host alias flags without patching", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-unknown-flag-"));
+    const localBin = path.join(home, "bin");
+    const dockerLog = path.join(home, "docker.log");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    writeHostAliasDockerStub(localBin, dockerLog, [
+      { ip: "10.0.0.5", hostnames: ["searxng.local"] },
+    ]);
+
+    const add = runWithEnv("alpha hosts-add searxng.local 192.168.1.105 --dry-rnu", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+    const remove = runWithEnv("alpha hosts-remove searxng.local --force", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(add.code).toBe(PARSER_EXIT_CODE);
+    expect(add.out).toContain("Nonexistent flag: --dry-rnu");
+    expect(remove.code).toBe(PARSER_EXIT_CODE);
+    expect(remove.out).toContain("Nonexistent flag: --force");
+    expect(fs.existsSync(dockerLog)).toBe(false);
+  });
+
+  it("retries host alias patches when the resource version changes", () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-hosts-retry-"));
+    const localBin = path.join(home, "bin");
+    const dockerLog = path.join(home, "docker.log");
+    const getCount = path.join(home, "get-count");
+    const patchCount = path.join(home, "patch-count");
+    fs.mkdirSync(localBin, { recursive: true });
+    writeSandboxRegistry(home);
+    fs.writeFileSync(
+      path.join(localBin, "docker"),
+      [
+        "#!/usr/bin/env bash",
+        `log_file=${JSON.stringify(dockerLog)}`,
+        `get_count=${JSON.stringify(getCount)}`,
+        `patch_count=${JSON.stringify(patchCount)}`,
+        'printf "%s\\n" "$@" >> "$log_file"',
+        'if printf "%s\\n" "$@" | grep -q "^get$"; then',
+        '  count=$(cat "$get_count" 2>/dev/null || echo 0)',
+        "  count=$((count + 1))",
+        '  printf "%s" "$count" > "$get_count"',
+        '  if [ "$count" = "1" ]; then version=123; else version=124; fi',
+        '  printf \'{"metadata":{"resourceVersion":"%s"},"spec":{"podTemplate":{"spec":{"hostAliases":[{"ip":"10.0.0.5","hostnames":["old.local"]}]}}}}\\n\' "$version"',
+        "  exit 0",
+        "fi",
+        'if printf "%s\\n" "$@" | grep -q "^patch$"; then',
+        '  count=$(cat "$patch_count" 2>/dev/null || echo 0)',
+        "  count=$((count + 1))",
+        '  printf "%s" "$count" > "$patch_count"',
+        '  if [ "$count" = "1" ]; then',
+        '    echo "Operation cannot be fulfilled: the object has been modified" >&2',
+        "    exit 1",
+        "  fi",
+        "fi",
+        "exit 0",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+
+    const r = runWithEnv("alpha hosts-add retry.local 192.168.1.105", {
+      HOME: home,
+      PATH: `${localBin}:${process.env.PATH || ""}`,
+    });
+
+    expect(r.code).toBe(0);
+    expect(r.out).toContain("Added host alias retry.local -> 192.168.1.105");
+    expect(fs.readFileSync(getCount, "utf8")).toBe("2");
+    expect(fs.readFileSync(patchCount, "utf8")).toBe("2");
+    const log = fs.readFileSync(dockerLog, "utf8").trim().split(/\n/);
+    const patchArgs = log.filter((line) => line.startsWith("["));
+    const finalPatch = patchArgs.at(-1);
+    expect(finalPatch).toBeDefined();
+    expect(JSON.parse(finalPatch!)[0]).toEqual({
+      op: "test",
+      path: "/metadata/resourceVersion",
+      value: "124",
+    });
   });
 
   it("supports oclif-native sandbox command forms", () => {
@@ -1864,7 +2139,7 @@ describe("CLI dispatch", () => {
     expect(r.out).toContain(FAKE_OPENSHELL_LOG_LINE);
   });
 
-  it("keeps logs --follow running when one log source exits", testTimeoutOptions(), async () => {
+  it("keeps logs --follow running when one log source exits", testTimeoutOptions(10_000), async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-logs-follow-source-exit-"));
     const localBin = path.join(home, "bin");
     const registryDir = path.join(home, ".nemoclaw");
@@ -1919,7 +2194,8 @@ describe("CLI dispatch", () => {
 
     try {
       let calls: string[] = [];
-      const pollTimeoutMs = Math.min(testTimeout(10_000), Math.max(1_000, testTimeout() - 5_000));
+      const testBudgetMs = testTimeout(10_000);
+      const pollTimeoutMs = Math.min(testBudgetMs, Math.max(1_000, testBudgetMs - 5_000));
       const deadline = Date.now() + pollTimeoutMs;
       while (Date.now() < deadline) {
         calls = readCalls();
@@ -1942,7 +2218,7 @@ describe("CLI dispatch", () => {
     }
   });
 
-  it("waits for logs --follow children to stop after SIGTERM", testTimeoutOptions(), async () => {
+  it("waits for logs --follow children to stop after SIGTERM", testTimeoutOptions(10_000), async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-logs-follow-sigterm-wait-"));
     const localBin = path.join(home, "bin");
     const markerFile = path.join(home, "logs-follow-sigterm-wait-args");
@@ -1983,7 +2259,8 @@ describe("CLI dispatch", () => {
 
     try {
       let calls: string[] = [];
-      const pollTimeoutMs = Math.min(testTimeout(10_000), Math.max(1_000, testTimeout() - 5_000));
+      const testBudgetMs = testTimeout(10_000);
+      const pollTimeoutMs = Math.min(testBudgetMs, Math.max(1_000, testBudgetMs - 5_000));
       const deadline = Date.now() + pollTimeoutMs;
       while (Date.now() < deadline) {
         calls = readCalls();
@@ -2000,7 +2277,8 @@ describe("CLI dispatch", () => {
       child.kill("SIGTERM");
 
       let callsAfterTerm: string[] = [];
-      const termDeadline = Date.now() + Math.min(testTimeout(5_000), Math.max(1_000, testTimeout() - 5_000));
+      const termTimeoutMs = Math.min(testBudgetMs, Math.max(1_000, testBudgetMs - 5_000));
+      const termDeadline = Date.now() + termTimeoutMs;
       while (Date.now() < termDeadline) {
         callsAfterTerm = readCalls();
         if (callsAfterTerm.some((call) => call.endsWith("term-start")) || hasExited) {

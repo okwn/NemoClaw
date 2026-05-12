@@ -50,7 +50,7 @@ function buildPreamble({
   const credPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "credentials", "store.js"));
   const runnerPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "runner.js"));
   const registryPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "state", "registry.js"));
-  const policiesPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "policies.js"));
+  const policiesPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "policy", "index.js"));
   const resolveOpenshellPath = JSON.stringify(
     path.join(repoRoot, "dist", "lib", "adapters", "openshell", "resolve.js"),
   );
@@ -66,8 +66,11 @@ resolver.resolveOpenshell = () => "/fake/openshell";
 
 const runner = require(${runnerPath});
 runner.run = () => {};
-// Return "Running" so waitForSandboxReady passes immediately.
-runner.runCapture = () => "Running";
+runner.runCapture = (command) => {
+  const text = Array.isArray(command) ? command.join(" ") : String(command);
+  if (text.includes("sandbox list")) return "test-sb Ready";
+  return "Running";
+};
 
 const credentials = require(${credPath});
 credentials.prompt = async (msg) => { throw new Error("unexpected prompt: " + msg); };

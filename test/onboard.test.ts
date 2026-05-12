@@ -14,7 +14,7 @@ import type { AgentDefinition } from "../dist/lib/agent/defs.js";
 import { loadAgent } from "../dist/lib/agent/defs.js";
 import { buildChain, buildControlUiUrls } from "../dist/lib/dashboard/contract.js";
 import { NAME_ALLOWED_FORMAT } from "../dist/lib/name-validation.js";
-import { stageOptimizedSandboxBuildContext } from "../dist/lib/sandbox-build-context.js";
+import { stageOptimizedSandboxBuildContext } from "../dist/lib/sandbox/build-context.js";
 
 type ShimScalar = string | number | boolean | null | undefined;
 type ShimCallable = (...args: readonly string[]) => ShimValue;
@@ -84,14 +84,30 @@ type OnboardTestInternals = {
   getInstalledOpenshellVersion: (versionOutput?: string | null) => string | null;
   getBlueprintMinOpenshellVersion: (rootDir?: string) => string | null;
   getBlueprintMaxOpenshellVersion: (rootDir?: string) => string | null;
-  getDockerDriverGatewayEnv: (versionOutput?: string | null) => Record<string, string>;
+  getDockerDriverGatewayEnv: (
+    versionOutput?: string | null,
+    platform?: NodeJS.Platform,
+  ) => Record<string, string>;
+  areRequiredDockerDriverBinariesPresent: (
+    platform?: NodeJS.Platform,
+    binaries?: {
+      gatewayBin?: string | null;
+      sandboxBin?: string | null;
+      vmDriverBin?: string | null;
+    },
+    arch?: NodeJS.Architecture,
+  ) => boolean;
+  shouldRequireDockerDriverEnv: (platform?: NodeJS.Platform) => boolean;
   getDockerDriverGatewayRuntimeDriftFromSnapshot: (snapshot: {
     processEnv: Record<string, string> | null;
     processExe: string | null;
     desiredEnv: Record<string, string>;
     gatewayBin?: string | null;
   }) => { reason: string } | null;
-  isLinuxDockerDriverGatewayEnabled: (platform?: NodeJS.Platform) => boolean;
+  isLinuxDockerDriverGatewayEnabled: (
+    platform?: NodeJS.Platform,
+    arch?: NodeJS.Architecture,
+  ) => boolean;
   isDockerDriverGatewayPortListener: (
     portCheck: {
       ok: boolean;
@@ -100,6 +116,7 @@ type OnboardTestInternals = {
     },
     opts?: {
       platform?: NodeJS.Platform;
+      arch?: NodeJS.Architecture;
       gatewayBin?: string | null;
       isPidAliveFn?: (pid: number) => boolean;
       isDockerDriverGatewayProcessFn?: (pid: number, gatewayBin?: string | null) => boolean;
@@ -207,6 +224,8 @@ function isOnboardTestInternals(
     typeof value.buildDirectSandboxGpuProofCommands === "function" &&
     typeof value.classifySandboxCreateFailure === "function" &&
     typeof value.getDockerDriverGatewayEnv === "function" &&
+    typeof value.areRequiredDockerDriverBinariesPresent === "function" &&
+    typeof value.shouldRequireDockerDriverEnv === "function" &&
     typeof value.getDockerDriverGatewayRuntimeDriftFromSnapshot === "function" &&
     typeof value.isLinuxDockerDriverGatewayEnabled === "function" &&
     typeof value.isDockerDriverGatewayPortListener === "function" &&
@@ -263,6 +282,8 @@ const {
   getBlueprintMinOpenshellVersion,
   getBlueprintMaxOpenshellVersion,
   getDockerDriverGatewayEnv,
+  areRequiredDockerDriverBinariesPresent,
+  shouldRequireDockerDriverEnv,
   getDockerDriverGatewayRuntimeDriftFromSnapshot,
   isLinuxDockerDriverGatewayEnabled,
   isDockerDriverGatewayPortListener,
@@ -310,6 +331,9 @@ const {
 } = onboardTestInternals;
 
 const repoRoot = path.join(import.meta.dirname, "..");
+const onboardScriptMocksPath = JSON.stringify(
+  path.join(repoRoot, "test", "helpers", "onboard-script-mocks.cjs"),
+);
 
 describe("onboard helpers", () => {
   it("resolves sandbox GPU auto/force/disable modes", () => {
@@ -400,18 +424,102 @@ network_policies:
     ]);
   });
 
-  it("models the Linux OpenShell Docker-driver gateway environment", () => {
+  it("models the OpenShell standalone gateway environment", () => {
     expect(isLinuxDockerDriverGatewayEnabled("linux")).toBe(true);
-    expect(isLinuxDockerDriverGatewayEnabled("darwin")).toBe(false);
-    const env = getDockerDriverGatewayEnv("openshell 0.0.37");
-    expect(env.OPENSHELL_DRIVERS).toBe("docker");
-    expect(env.OPENSHELL_GRPC_ENDPOINT).toBe("http://127.0.0.1:8080");
-    expect(env.OPENSHELL_CLUSTER_IMAGE).toBeUndefined();
-    expect(env.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toContain(":0.0.37");
+    expect(isLinuxDockerDriverGatewayEnabled("darwin", "arm64")).toBe(true);
+    expect(isLinuxDockerDriverGatewayEnabled("darwin", "x64")).toBe(false);
+    expect(isLinuxDockerDriverGatewayEnabled("win32")).toBe(false);
+    const linuxEnv = getDockerDriverGatewayEnv("openshell 0.0.37", "linux");
+    expect(linuxEnv.OPENSHELL_DRIVERS).toBe("docker");
+    expect(linuxEnv.OPENSHELL_GRPC_ENDPOINT).toBe("http://127.0.0.1:8080");
+    expect(linuxEnv.OPENSHELL_CLUSTER_IMAGE).toBeUndefined();
+    expect(linuxEnv.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toContain(":0.0.37");
+
+    const darwinEnv = getDockerDriverGatewayEnv("openshell 0.0.37", "darwin");
+    expect(darwinEnv.OPENSHELL_DRIVERS).toBe("vm");
+    expect(darwinEnv.OPENSHELL_GRPC_ENDPOINT).toBe("http://host.containers.internal:8080");
+    expect(darwinEnv.OPENSHELL_VM_DRIVER_STATE_DIR).toContain("vm-driver");
+    expect(darwinEnv.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toBeUndefined();
+  });
+
+  it("requires platform-specific Docker-driver binaries", () => {
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: "/tmp/openshell-gateway",
+          sandboxBin: null,
+          vmDriverBin: "/tmp/openshell-driver-vm",
+        },
+        "arm64",
+      ),
+    ).toBe(true);
+    expect(
+      areRequiredDockerDriverBinariesPresent("linux", {
+        gatewayBin: "/tmp/openshell-gateway",
+        sandboxBin: null,
+        vmDriverBin: null,
+      }),
+    ).toBe(false);
+    expect(
+      areRequiredDockerDriverBinariesPresent("linux", {
+        gatewayBin: "/tmp/openshell-gateway",
+        sandboxBin: "/tmp/openshell-sandbox",
+        vmDriverBin: null,
+      }),
+    ).toBe(true);
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: "/tmp/openshell-gateway",
+          sandboxBin: null,
+        },
+        "arm64",
+      ),
+    ).toBe(true);
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: "/tmp/openshell-gateway",
+          sandboxBin: null,
+          vmDriverBin: null,
+        },
+        "arm64",
+      ),
+    ).toBe(false);
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: null,
+          sandboxBin: "/tmp/openshell-sandbox",
+          vmDriverBin: "/tmp/openshell-driver-vm",
+        },
+        "arm64",
+      ),
+    ).toBe(false);
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: null,
+          sandboxBin: null,
+        },
+        "x64",
+      ),
+    ).toBe(true);
+  });
+
+  it("requires Docker-driver process env verification only where /proc is available", () => {
+    expect(shouldRequireDockerDriverEnv("linux")).toBe(true);
+    expect(shouldRequireDockerDriverEnv("darwin")).toBe(false);
+    expect(shouldRequireDockerDriverEnv("win32")).toBe(false);
   });
 
   it("detects stale Docker-driver gateway runtime state before reuse", () => {
-    const desiredEnv = getDockerDriverGatewayEnv("openshell 0.0.37");
+    const desiredEnv = getDockerDriverGatewayEnv("openshell 0.0.37", "linux");
     const gatewayBin = process.execPath;
 
     expect(
@@ -475,7 +583,13 @@ network_policies:
     expect(
       isDockerDriverGatewayPortListener(
         { ok: false, process: "openshell", pid: 1234 },
-        { ...opts, platform: "darwin" },
+        { ...opts, platform: "darwin", arch: "arm64" },
+      ),
+    ).toBe(true);
+    expect(
+      isDockerDriverGatewayPortListener(
+        { ok: false, process: "openshell", pid: 1234 },
+        { ...opts, platform: "win32" },
       ),
     ).toBe(false);
     expect(
@@ -2368,12 +2482,16 @@ const { loadAgent } = require(${agentDefsPath});
   });
 
   it("allows slow sandbox create recovery to wait beyond 60 seconds", () => {
+    const envSource = fs.readFileSync(
+      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "env.ts"),
+      "utf-8",
+    );
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
       "utf-8",
     );
 
-    assert.match(source, /NEMOCLAW_SANDBOX_READY_TIMEOUT", 180/);
+    assert.match(envSource, /NEMOCLAW_SANDBOX_READY_TIMEOUT", 180/);
     assert.match(source, /Math\.ceil\(SANDBOX_READY_TIMEOUT_SECS \/ 2\)/);
     assert.match(source, /within \$\{SANDBOX_READY_TIMEOUT_SECS\}s/);
   });
@@ -2477,7 +2595,7 @@ mod._load = function(req, parent, isMain) {
   }
   return origLoad.call(this, req, parent, isMain);
 };
-Object.defineProperty(process, "platform", { value: "darwin" });
+Object.defineProperty(process, "platform", { value: "freebsd" });
 const { startGateway } = require(${onboardPath});
 startGateway(null).catch(() => {});
 `;
@@ -4631,7 +4749,7 @@ const { setupInference } = require(${onboardPath});
       "utf-8",
     );
     const probeSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "http-probe.ts"),
+      path.join(import.meta.dirname, "..", "src", "lib", "adapters", "http", "probe.ts"),
       "utf-8",
     );
     const recoverySource = fs.readFileSync(
@@ -4639,7 +4757,7 @@ const { setupInference } = require(${onboardPath});
       "utf-8",
     );
 
-    assert.match(onboardSource, /http-probe/);
+    assert.match(onboardSource, /adapters\/http\/probe/);
     assert.match(probeSource, /return \["--connect-timeout", "10", "--max-time", "60"\];/);
     assert.match(recoverySource, /failure\.curlStatus === 2/);
     assert.match(recoverySource, /local curl invocation error/);
@@ -4851,9 +4969,9 @@ const { setupInference } = require(${onboardPath});
       path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
       "utf-8",
     );
-    const { streamSandboxCreate } = require("../dist/lib/sandbox-create-stream");
+    const { streamSandboxCreate } = require("../dist/lib/sandbox/create-stream");
 
-    assert.match(onboardSource, /sandbox-create-stream/);
+    assert.match(onboardSource, /sandbox\/create-stream/);
     assert.equal(typeof streamSandboxCreate, "function");
   });
 
@@ -5091,7 +5209,10 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
@@ -5228,7 +5349,10 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
@@ -5324,7 +5448,10 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
   // Custom port: dashboard readiness curl uses 19000 (DASHBOARD_PORT from env)
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:19000/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 19000 12345 running";
   return "";
 };
@@ -5456,7 +5583,12 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
   if (_n(command).includes("provider get")) return "Provider: discord-bridge";
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command, {
+      defaultCurlOutput: "ok",
+    });
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   return "";
 };
 registry.registerSandbox = () => true;
@@ -5697,7 +5829,12 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command, {
+      defaultCurlOutput: "ok",
+    });
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   return "";
 };
 registry.registerSandbox = (entry) => {
@@ -5872,7 +6009,10 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
@@ -6279,7 +6419,12 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "my-assistant";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
   if (_n(command).includes("forward list")) return "";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command, {
+      defaultCurlOutput: "ok",
+    });
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   return "";
 };
 registry.getSandbox = () => ({ name: "my-assistant", gpuEnabled: false });
@@ -6386,7 +6531,12 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "my-assistant";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
   if (_n(command).includes("forward list")) return "";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command, {
+      defaultCurlOutput: "ok",
+    });
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   return "";
 };
 
@@ -6651,7 +6801,12 @@ runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "my-assistant";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
   if (_n(command).includes("forward list")) return "";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command, {
+      defaultCurlOutput: "ok",
+    });
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   return "";
 };
 registry.getSandbox = () => ({ name: "my-assistant", gpuEnabled: false });
@@ -6776,7 +6931,12 @@ runner.runCapture = (command) => {
     return sandboxDeleted ? "my-assistant Ready" : "my-assistant NotReady";
   }
   if (_n(command).includes("forward list")) return "";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("curl")) return "ok";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command, {
+      defaultCurlOutput: "ok",
+    });
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   return "";
 };
 registry.getSandbox = () => ({ name: "my-assistant", gpuEnabled: false });
@@ -6809,7 +6969,7 @@ childProcess.spawn = fakeSpawn;
 // childProcess object above does not reach it. Patch the cached module
 // directly so streamSandboxCreate (called by createSandbox) doesn't spawn
 // a real bash process that tries to hit a live gateway.
-const sandboxCreateStreamMod = require(${JSON.stringify(path.join(repoRoot, "dist", "lib", "sandbox-create-stream.js"))});
+const sandboxCreateStreamMod = require(${JSON.stringify(path.join(repoRoot, "dist", "lib", "sandbox", "create-stream.js"))});
 const _origStreamCreate = sandboxCreateStreamMod.streamSandboxCreate;
 sandboxCreateStreamMod.streamSandboxCreate = (command, env, options = {}) => {
   return _origStreamCreate(command, env, { ...options, spawnImpl: fakeSpawn });
@@ -7265,7 +7425,10 @@ runner.runCapture = (command) => {
     sandboxListCalls += 1;
     return sandboxListCalls >= 2 ? "my-assistant Ready" : "my-assistant Pending";
   }
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
@@ -7660,7 +7823,10 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
@@ -7792,7 +7958,10 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
@@ -7888,7 +8057,7 @@ const { createSandbox } = require(${onboardPath});
       const scriptPath = path.join(tmpDir, "messaging-noninteractive.js");
       const onboardPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "onboard.js"));
       const runnerPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "runner.js"));
-      const httpProbePath = JSON.stringify(path.join(repoRoot, "dist", "lib", "http-probe.js"));
+      const httpProbePath = JSON.stringify(path.join(repoRoot, "dist", "lib", "adapters", "http", "probe.js"));
 
       fs.mkdirSync(fakeBin, { recursive: true });
       fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
@@ -8409,7 +8578,10 @@ runner.run = (command, opts = {}) => {
 runner.runCapture = (command) => {
   if (_n(command).includes("sandbox get my-assistant")) return "";
   if (_n(command).includes("sandbox list")) return "my-assistant Ready";
-  if (_n(command).includes("sandbox exec") && _n(command).includes("http://localhost:18789/health")) return "200";
+  {
+    const sandboxExecCurl = require(${onboardScriptMocksPath}).mockSandboxExecCurl(command);
+    if (sandboxExecCurl !== null) return sandboxExecCurl;
+  }
   if (_n(command).includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
   return "";
 };
