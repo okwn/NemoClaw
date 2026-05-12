@@ -185,6 +185,10 @@ It verifies that Docker is reachable, warns on untested runtimes such as Podman,
 The preflight also enforces the OpenShell version range declared in the blueprint (`min_openshell_version` and `max_openshell_version`).
 If the installed OpenShell version falls outside this range, onboarding exits with an actionable error and a link to compatible releases.
 
+When an existing gateway is detected for reuse, NemoClaw probes the host gateway HTTP endpoint (`http://127.0.0.1:${NEMOCLAW_GATEWAY_PORT}/`) before declaring it reusable, so a gateway whose container is running but whose upstream is still warming up (e.g. immediately after a Docker daemon restart) is rebuilt instead of trusted.
+Tune the wait via `NEMOCLAW_REUSE_HEALTH_POLL_COUNT` (default `6`) and `NEMOCLAW_REUSE_HEALTH_POLL_INTERVAL` (default `5` seconds).
+The poll count is clamped to a minimum of `1` so the probe always runs at least once, and the interval is clamped to a minimum of `0` (no sleep between attempts).
+
 #### `--from <Dockerfile>`
 
 Build the sandbox image from a custom Dockerfile instead of the stock NemoClaw image.
@@ -1099,6 +1103,7 @@ These flags toggle optional behaviors during onboarding; set them before running
 | Variable | Format | Effect |
 |----------|--------|--------|
 | `NEMOCLAW_YES` | `1` to enable | Auto-accepts confirmation prompts (`--yes` equivalent) including in helpers like the Ollama proxy auth setup. |
+| `NEMOCLAW_NO_EXPRESS` | `1` to enable | Installer-only. Skips the DGX Spark and DGX Station express install prompt and continues with the normal interactive onboarding flow. |
 | `NEMOCLAW_EXPERIMENTAL` | `1` to enable | Surfaces experimental providers and flows in onboarding. |
 | `NEMOCLAW_IGNORE_RUNTIME_RESOURCES` | `1` to enable | Suppresses the under-provisioned runtime warning during preflight. Use only when you know the sandbox host meets the minimums. |
 | `NEMOCLAW_DISABLE_OVERLAY_FIX` | `1` to enable | Skips the Docker overlay-fix step during sandbox build. For environments where the fix is incompatible. |

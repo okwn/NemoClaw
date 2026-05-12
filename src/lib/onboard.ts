@@ -281,6 +281,11 @@ const policies: typeof import("./policy") = require("./policy");
 const shields = require("./shields");
 const tiers: typeof import("./policy/tiers") = require("./policy/tiers");
 const { ensureUsageNoticeConsent } = require("./onboard/usage-notice");
+const {
+  getGatewayReuseHealthWaitConfig,
+  isGatewayHttpReady,
+  waitForGatewayHttpReady,
+} = require("./onboard/gateway-http-readiness") as typeof import("./onboard/gateway-http-readiness");
 const preflightUtils: typeof import("./onboard/preflight") = require("./onboard/preflight");
 const clusterImagePatch: typeof import("./cluster-image-patch") = require("./cluster-image-patch");
 const {
@@ -4660,9 +4665,38 @@ async function preflight(
       gatewayReuseState = "missing";
       console.log("  ✓ Stale gateway metadata cleaned up");
     } else if (containerState === "unknown") {
+      // Docker probe failed but cached metadata says healthy. Try the host-level
+      // HTTP probe — it doesn't depend on Docker, so it can confirm the gateway
+      // is genuinely serving even when the daemon is flaky.
+      //
+      // Per #2020 the "unknown" state must stay non-destructive end-to-end:
+      // do not downgrade to "missing" in preflight even when HTTP probe fails.
+      // Doing so would feed the orphan-cleanup block below, and a transient
+      // `docker inspect` failure plus an HTTP warm-up miss would delete a
+      // live gateway. The main onboard "unknown" branch makes the abort/reuse
+      // decision once preflight has surfaced the warning to the user.
+      if (await waitForGatewayHttpReady()) {
+        console.log(
+          "  Warning: could not verify gateway container state (Docker may be unavailable), but the gateway is responding on HTTP. Proceeding with reuse.",
+        );
+      } else {
+        console.log(
+          "  Warning: could not verify gateway container state and the gateway is not responding on HTTP. Onboard will abort before reuse if this persists; restart Docker and re-run.",
+        );
+      }
+    } else if (!(await waitForGatewayHttpReady())) {
+      // Container is running but the gateway HTTP endpoint is not responding.
+      // Common immediately after a Docker daemon restart — the container comes
+      // back before the OpenShell gateway upstream finishes warming up. Safe to
+      // recreate because Docker is functional. See #3258.
       console.log(
-        "  Warning: could not verify gateway container state (Docker may be unavailable). Proceeding with cached health status.",
+        `  Gateway container is running but http://127.0.0.1:${GATEWAY_PORT}/ is not responding. Recreating...`,
       );
+      runOpenshell(["forward", "stop", String(DASHBOARD_PORT)], { ignoreError: true });
+      destroyGateway();
+      registry.clearAll();
+      gatewayReuseState = "missing";
+      console.log("  ✓ Stale gateway cleaned up");
     } else {
       const imageDrift = getGatewayClusterImageDrift();
       if (imageDrift) {
@@ -4916,10 +4950,20 @@ async function startGatewayWithOptions(
       gatewaySnapshot.activeGatewayInfo,
     )
   ) {
-    console.log("  ✓ Reusing existing gateway");
-    runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
-    process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
-    return;
+    // Final reuse gate — `isGatewayHealthy()` parses openshell CLI metadata,
+    // which can be stale when the gateway container was just restarted (e.g.
+    // after `colima stop && colima start`). Verify the gateway HTTP endpoint
+    // is actually serving before declaring reuse, so we don't skip startup
+    // and fail later in step 4 with "Connection refused". See #3258.
+    if (await isGatewayHttpReady()) {
+      console.log("  ✓ Reusing existing gateway");
+      runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
+      process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
+      return;
+    }
+    console.log(
+      `  Gateway metadata reports healthy but http://127.0.0.1:${GATEWAY_PORT}/ is not responding. Starting a fresh gateway...`,
+    );
   }
 
   // When a stale gateway is detected (metadata exists but container is gone,
@@ -5016,7 +5060,12 @@ async function startGatewayWithOptions(
             ignoreError: true,
           });
           const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
-          if (isGatewayHealthy(status, namedInfo, currentInfo)) {
+          // Require BOTH the openshell CLI metadata to report healthy AND the
+          // host HTTP endpoint to be serving — the CLI metadata can report
+          // healthy from the previous run while the upstream is still warming
+          // up after a Docker daemon restart, leading to "Connection refused"
+          // in step 4. See #3258.
+          if (isGatewayHealthy(status, namedInfo, currentInfo) && (await isGatewayHttpReady())) {
             return; // success
           }
           if (i < healthPollCount - 1) sleep(healthPollInterval);
@@ -5330,7 +5379,11 @@ async function recoverGatewayRuntime() {
 
   runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
   let status = runCaptureOpenshell(["status"], { ignoreError: true });
-  if (status.includes("Connected") && isSelectedGateway(status)) {
+  if (
+    status.includes("Connected") &&
+    isSelectedGateway(status) &&
+    (await isGatewayHttpReady())
+  ) {
     process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
     return true;
   }
@@ -5372,7 +5425,11 @@ async function recoverGatewayRuntime() {
       attachGatewayMetadataIfNeeded();
     }
     status = runCaptureOpenshell(["status"], { ignoreError: true });
-    if (status.includes("Connected") && isSelectedGateway(status)) {
+    if (
+      status.includes("Connected") &&
+      isSelectedGateway(status) &&
+      (await isGatewayHttpReady())
+    ) {
       process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
       const runtime = getContainerRuntime();
       if (shouldPatchCoredns(runtime)) {
@@ -11040,9 +11097,43 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
         gatewayReuseState = "missing";
         console.log("  ✓ Stale gateway metadata cleaned up");
       } else if (containerState === "unknown") {
+        // Docker probe failed but cached metadata says healthy. Try the host-level
+        // HTTP probe — it doesn't depend on Docker, so it can confirm the gateway
+        // is genuinely serving even when the daemon is flaky.
+        if (await waitForGatewayHttpReady()) {
+          console.log(
+            "  Warning: could not verify gateway container state (Docker may be unavailable), but the gateway is responding on HTTP. Proceeding with reuse.",
+          );
+        } else {
+          // Docker can't be probed AND the gateway HTTP endpoint isn't
+          // responding. We cannot tell whether the existing gateway is live
+          // (transient `docker inspect` flake + warm-up miss) or genuinely
+          // gone. Per #2020 we must not destroy in this branch, and we must
+          // not downgrade to "missing" either: that would push execution into
+          // `startGatewayWithOptions`, whose retry hook calls
+          // `destroyGateway()` between attempts — which would tear down a
+          // possibly-live gateway. Bail with an actionable error instead.
+          console.log(
+            `  Error: could not verify gateway container state and http://127.0.0.1:${GATEWAY_PORT}/ is not responding.`,
+          );
+          console.log(
+            "  Refusing to proceed without a clear Docker signal — restarting Docker and re-running onboard is the safe path. See #3258 / #2020.",
+          );
+          process.exit(1);
+        }
+      } else if (!(await waitForGatewayHttpReady())) {
+        // Container is running but the gateway HTTP endpoint is not responding.
+        // Common immediately after a Docker daemon restart — the container comes
+        // back before the OpenShell gateway upstream finishes warming up. Safe to
+        // recreate because Docker is functional. See #3258.
         console.log(
-          "  Warning: could not verify gateway container state (Docker may be unavailable). Proceeding with cached health status.",
+          `  Gateway container is running but http://127.0.0.1:${GATEWAY_PORT}/ is not responding. Recreating...`,
         );
+        runOpenshell(["forward", "stop", String(DASHBOARD_PORT)], { ignoreError: true });
+        destroyGateway();
+        registry.clearAll();
+        gatewayReuseState = "missing";
+        console.log("  ✓ Stale gateway cleaned up");
       } else {
         const imageDrift = getGatewayClusterImageDrift();
         if (imageDrift) {
@@ -11672,8 +11763,11 @@ module.exports = {
   getDockerDriverGatewayRuntimeDriftFromSnapshot,
   getGatewayClusterContainerState,
   getGatewayHealthWaitConfig,
+  getGatewayReuseHealthWaitConfig,
   getGatewayReuseState,
   isDockerDriverGatewayPortListener,
+  isGatewayHttpReady,
+  waitForGatewayHttpReady,
   handleFinalGatewayStartFailure,
   getNavigationChoice,
   getSandboxInferenceConfig,
