@@ -13,7 +13,7 @@ vi.mock("../runner", () => ({
   run: runMock,
 }));
 
-vi.mock("../policies", () => ({
+vi.mock("../policy", () => ({
   buildPolicySetCommand: vi.fn((file: string, name: string) => [
     "openshell",
     "policy",
@@ -25,7 +25,7 @@ vi.mock("../policies", () => ({
   ]),
 }));
 
-vi.mock("../sandbox-config", () => ({
+vi.mock("../sandbox/config", () => ({
   DEFAULT_AGENT_CONFIG: Symbol("DEFAULT_AGENT_CONFIG"),
   resolveAgentConfig: vi.fn(() => ({
     configPath: "/sandbox/.openclaw/openclaw.json",
