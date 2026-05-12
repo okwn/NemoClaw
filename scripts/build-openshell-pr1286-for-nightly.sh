@@ -112,6 +112,7 @@ docker run --rm --privileged \
     log "Checked out ${OPEN_SHELL_PR_URL} at ${actual_commit}"
 
     git config --global --add safe.directory "$PWD"
+    mise trust --yes "$PWD/mise.toml"
 
     log "Installing mise tools from lockfile"
     mise install --locked
