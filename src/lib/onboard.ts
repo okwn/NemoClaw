@@ -7443,19 +7443,19 @@ async function setupNim(
   }
   // vLLM: an already-running local server is safe to offer in-place because
   // selecting it is an explicit user action. Managed install/start remains
-  // gated by NEMOCLAW_PROVIDER or NEMOCLAW_EXPERIMENTAL because it pulls images
-  // and starts containers.
+  // gated by NEMOCLAW_PROVIDER=install-vllm or NEMOCLAW_EXPERIMENTAL because it
+  // pulls images and starts containers.
   // Read NEMOCLAW_PROVIDER directly so interactive runs with an explicit
   // env-var opt-in surface the menu entry too — requestedProvider is null
   // outside non-interactive mode.
   const explicitProvider = (process.env.NEMOCLAW_PROVIDER || "").trim().toLowerCase();
-  const userChoseVllm = explicitProvider === "vllm" || explicitProvider === "install-vllm";
+  const userChoseManagedVllm = explicitProvider === "install-vllm";
   if (vllmRunning) {
     options.push({
       key: "vllm",
       label: `Local vLLM [experimental] (localhost:${VLLM_PORT}) — running (suggested)`,
     });
-  } else if (vllmProfile && (userChoseVllm || EXPERIMENTAL)) {
+  } else if (vllmProfile && (userChoseManagedVllm || EXPERIMENTAL)) {
     const verb = hasVllmImage ? "Start" : "Install";
     options.push({ key: "install-vllm", label: `${verb} vLLM (${vllmProfile.name})` });
   }
@@ -7594,15 +7594,13 @@ async function setupNim(
         }
         selected = options.find((o) => o.key === providerKey);
         if (!selected) {
-          // Action keys fall back to the equivalent running-provider key
-          // when the menu only emits the running entry (the install would
+          // Install action keys fall back to the equivalent running-provider
+          // key when the menu only emits the running entry (the install would
           // have been a no-op anyway).
           if (providerKey === "install-ollama") {
             selected = options.find((o) => o.key === "ollama");
           } else if (providerKey === "install-vllm") {
             selected = options.find((o) => o.key === "vllm");
-          } else if (providerKey === "vllm") {
-            selected = options.find((o) => o.key === "install-vllm");
           } else if (providerKey === "ollama") {
             selected = options.find((o) => o.key === "install-ollama");
           }

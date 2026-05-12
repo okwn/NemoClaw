@@ -303,6 +303,59 @@ const { setupNim } = require(${onboardPath});
     assert.ok(!payload.lines.some((line: string) => line.includes("rerun the same command")));
   });
 
+  it("does not turn non-interactive NEMOCLAW_PROVIDER=vllm into managed install-vllm", () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-vllm-no-install-"));
+    const scriptPath = path.join(tmpDir, "vllm-no-install-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "onboard.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "runner.js"));
+    const vllmPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "inference", "vllm.js"));
+
+    const script = String.raw`
+const runner = require(${runnerPath});
+const vllm = require(${vllmPath});
+
+vllm.installVllm = async () => {
+  console.error("INSTALL_VLLM_CALLED");
+  return { ok: false };
+};
+runner.runCapture = (command) => {
+  const cmd = Array.isArray(command) ? command.join(" ") : command;
+  if (cmd.includes("command -v ollama")) return "";
+  if (cmd.includes("127.0.0.1:11434/api/tags")) return "";
+  if (cmd.includes("127.0.0.1:8000/v1/models")) return "";
+  if (cmd.includes("docker images")) return "";
+  return "";
+};
+
+const { setupNim } = require(${onboardPath});
+
+(async () => {
+  await setupNim({ type: "nvidia" }, null);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        NEMOCLAW_NON_INTERACTIVE: "1",
+        NEMOCLAW_PROVIDER: "vllm",
+        NEMOCLAW_EXPERIMENTAL: "",
+      },
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Requested provider 'vllm' is not available/);
+    assert.doesNotMatch(result.stderr, /INSTALL_VLLM_CALLED/);
+  });
+
   it("does not label NVIDIA Endpoints as recommended in the provider list", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-no-recommended-label-"));
