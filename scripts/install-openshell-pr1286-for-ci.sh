@@ -14,7 +14,7 @@ OPENSHELL_PR1286_COMMIT="${OPENSHELL_PR1286_COMMIT:-d391cfce299cb96d268a0997993f
 
 runner_temp="${RUNNER_TEMP:-/tmp}"
 openshell_src="${runner_temp}/openshell-pr1286"
-openshell_bin_dir="${runner_temp}/openshell-pr1286-bin"
+openshell_bin_dir="${OPENSHELL_PR1286_INSTALL_DIR:-${runner_temp}/openshell-pr1286-bin}"
 cargo_target_dir="${CARGO_TARGET_DIR:-${openshell_src}/target}"
 
 rm -rf "$openshell_src" "$openshell_bin_dir"
@@ -31,6 +31,12 @@ actual_commit="$(git -C "$openshell_src" rev-parse HEAD)"
 if [ "$actual_commit" != "$OPENSHELL_PR1286_COMMIT" ]; then
   echo "Expected OpenShell $OPENSHELL_PR1286_COMMIT but checked out $actual_commit" >&2
   exit 1
+fi
+
+if ! command -v rustup >/dev/null 2>&1; then
+  curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.88.0
+  # shellcheck source=/dev/null
+  [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 fi
 
 rustup toolchain install 1.88.0 --profile minimal

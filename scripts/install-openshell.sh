@@ -18,6 +18,7 @@ fail() {
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$OS" in
   Darwin) OS_LABEL="macOS" ;;
@@ -100,6 +101,37 @@ openshell_has_required_messaging_features() {
   [[ "$binary_strings" == *"request-body-credential-rewrite"* ]] \
     && [[ "$binary_strings" == *"websocket-credential-rewrite"* ]]
 }
+
+use_openshell_pr1286_ci_pin() {
+  # Temporary branch-scoped CI pin for NemoClaw PR #3323. This is deliberately
+  # inert on main and outside GitHub Actions; remove it after OpenShell PR #1286
+  # is available in the normal OpenShell release channel.
+  [ "${NEMOCLAW_OPENSHELL_PR1286_CI_PIN:-auto}" != "0" ] || return 1
+  [ "${GITHUB_ACTIONS:-}" = "true" ] || return 1
+  [ "${GITHUB_REPOSITORY:-}" = "NVIDIA/NemoClaw" ] || return 1
+  [ "${GITHUB_REF:-}" = "refs/heads/fix/native-messaging-websocket" ] || return 1
+}
+
+install_openshell_pr1286_ci_pin() {
+  local target_dir
+  target_dir="/usr/local/bin"
+  if [ ! -w "$target_dir" ]; then
+    target_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  fi
+  mkdir -p "$target_dir"
+
+  warn "Installing branch-scoped OpenShell PR #1286 CI build for NemoClaw messaging validation..."
+  OPENSHELL_PR1286_INSTALL_DIR="$target_dir" bash "$SCRIPT_DIR/install-openshell-pr1286-for-ci.sh"
+  if ! openshell_has_required_messaging_features "$target_dir/openshell"; then
+    fail "OpenShell PR #1286 CI build is missing required messaging credential rewrite support."
+  fi
+  info "$("$target_dir/openshell" --version 2>&1 || echo openshell) installed from OpenShell PR #1286 CI pin"
+  exit 0
+}
+
+if use_openshell_pr1286_ci_pin; then
+  install_openshell_pr1286_ci_pin
+fi
 
 if command -v openshell >/dev/null 2>&1; then
   INSTALLED_VERSION_OUTPUT="$(openshell --version 2>&1 || true)"
