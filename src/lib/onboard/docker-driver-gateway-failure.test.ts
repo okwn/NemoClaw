@@ -50,7 +50,7 @@ describe("reportDockerDriverGatewayStartFailure (#3111)", () => {
         { exitOnFailure: false },
       ),
     ).not.toThrow();
-    const joined = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const joined = errSpy.mock.calls.map((c: string[]) => c.join(" ")).join("\n");
     expect(joined).toContain("Docker-driver gateway failed to start");
     expect(joined).toContain("Troubleshooting:");
     expect(joined).toContain("tail -100 /tmp/nonexistent-gateway.log");
@@ -67,7 +67,7 @@ describe("reportDockerDriverGatewayStartFailure (#3111)", () => {
       }),
       { exitOnFailure: false },
     );
-    const joined = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const joined = errSpy.mock.calls.map((c: string[]) => c.join(" ")).join("\n");
     expect(joined).toContain(
       "Gateway process exited with code 127 before becoming ready",
     );
@@ -79,7 +79,7 @@ describe("reportDockerDriverGatewayStartFailure (#3111)", () => {
       makeExitState(),
       { exitOnFailure: false },
     );
-    const joined = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const joined = errSpy.mock.calls.map((c: string[]) => c.join(" ")).join("\n");
     expect(joined).not.toContain("before becoming ready");
   });
 
@@ -94,7 +94,7 @@ describe("reportDockerDriverGatewayStartFailure (#3111)", () => {
       reportDockerDriverGatewayStartFailure(log, makeExitState(), {
         exitOnFailure: false,
       });
-      const joined = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+      const joined = errSpy.mock.calls.map((c: string[]) => c.join(" ")).join("\n");
       expect(joined).toContain("Gateway log tail");
       expect(joined).toContain("GLIBC_2.38 not found");
     } finally {
