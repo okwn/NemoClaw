@@ -17,10 +17,7 @@ openshell_src="${runner_temp}/openshell-pr1286"
 openshell_bin_dir="${OPENSHELL_PR1286_INSTALL_DIR:-${runner_temp}/openshell-pr1286-bin}"
 cargo_target_dir="${CARGO_TARGET_DIR:-${openshell_src}/target}"
 
-rm -rf "$openshell_src"
-if [ -z "${OPENSHELL_PR1286_INSTALL_DIR:-}" ]; then
-  rm -rf "$openshell_bin_dir"
-fi
+rm -rf "$openshell_src" "$openshell_bin_dir"
 mkdir -p "$openshell_src" "$openshell_bin_dir"
 
 git -C "$openshell_src" init

@@ -121,7 +121,10 @@ install_openshell_pr1286_ci_pin() {
     exit 0
   fi
 
-  target_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  target_dir="/usr/local/bin"
+  if [ ! -w "$target_dir" ]; then
+    target_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  fi
   mkdir -p "$target_dir"
 
   warn "Installing branch-scoped OpenShell PR #1286 CI build for NemoClaw messaging validation..."
