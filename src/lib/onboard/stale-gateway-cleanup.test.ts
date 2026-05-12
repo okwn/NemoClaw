@@ -54,14 +54,14 @@ describe("stopStaleDashboardListeners", () => {
       ...baseDeps({ commandExists: () => false }),
       run,
     });
-    expect(result).toEqual({ stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [] });
+    expect(result).toEqual({ stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [], skippedProtectedPorts: [] });
     expect(run).not.toHaveBeenCalled();
   });
 
   it("returns no work when lsof reports no listeners across the range", () => {
     const { run } = makeRun(new Map());
     const result = stopStaleDashboardListeners(baseDeps({ run }));
-    expect(result).toEqual({ stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [] });
+    expect(result).toEqual({ stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [], skippedProtectedPorts: [] });
   });
 
   it("kills a user-owned openclaw-gateway process holding the dashboard port", () => {
@@ -135,7 +135,40 @@ describe("stopStaleDashboardListeners", () => {
     const result = stopStaleDashboardListeners({
       ...baseDeps({ run, kill, env: { USER: "tester" } }),
     });
-    expect(result).toEqual({ stopped: [], skippedForeignPids: [42], skippedNonMatchingPids: [] });
+    expect(result).toEqual({ stopped: [], skippedForeignPids: [42], skippedNonMatchingPids: [], skippedProtectedPorts: [] });
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("does not kill listeners on ports protected by registered sandboxes (#3260)", () => {
+    const kill = vi.fn(() => true);
+    const responses = new Map<string, RunResult | ((args: string[]) => RunResult)>([
+      ["lsof -ti :18789", { status: 0, stdout: "4242\n", stderr: "" }],
+    ]);
+    const { run, calls } = makeRun(responses);
+    const result = stopStaleDashboardListeners(
+      { ...baseDeps({ run, kill }) },
+      { protectedPorts: [18789] },
+    );
+    expect(result.stopped).toEqual([]);
+    expect(result.skippedProtectedPorts).toEqual([18789]);
+    expect(kill).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.command === "ps" && c.args.includes("user="))).toBe(false);
+    expect(calls.some((c) => c.command === "ps" && c.args.includes("args="))).toBe(false);
+  });
+
+  it("does not revisit a PID seen on a protected port when it also appears on an unprotected port", () => {
+    const kill = vi.fn(() => true);
+    const responses = new Map<string, RunResult | ((args: string[]) => RunResult)>([
+      ["lsof -ti :18789", { status: 0, stdout: "777\n", stderr: "" }],
+      ["lsof -ti :18790", { status: 0, stdout: "777\n", stderr: "" }],
+    ]);
+    const { run } = makeRun(responses);
+    const result = stopStaleDashboardListeners(
+      { ...baseDeps({ run, kill }) },
+      { protectedPorts: [18789] },
+    );
+    expect(result.stopped).toEqual([]);
+    expect(result.skippedProtectedPorts).toEqual([18789]);
     expect(kill).not.toHaveBeenCalled();
   });
 
@@ -150,7 +183,7 @@ describe("stopStaleDashboardListeners", () => {
     const result = stopStaleDashboardListeners({
       ...baseDeps({ run, kill }),
     });
-    expect(result).toEqual({ stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [777] });
+    expect(result).toEqual({ stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [777], skippedProtectedPorts: [] });
     expect(kill).not.toHaveBeenCalled();
   });
 

@@ -657,4 +657,26 @@ describe("inventory commands", () => {
       process.exitCode = previousExitCode;
     }
   });
+
+  it("skips the gateway health check when no sandboxes are registered", () => {
+    const previousExitCode = process.exitCode;
+    process.exitCode = 0;
+    const lines: string[] = [];
+    const getGatewayHealth = vi.fn();
+    try {
+      showStatusCommand({
+        listSandboxes: () => ({ sandboxes: [], defaultSandbox: null }),
+        getLiveInference: () => null,
+        showServiceStatus: vi.fn(),
+        getGatewayHealth,
+        log: (message = "") => lines.push(message),
+      });
+
+      expect(getGatewayHealth).not.toHaveBeenCalled();
+      expect(lines.some((l) => l.includes("gateway: down"))).toBe(false);
+      expect(process.exitCode).toBe(0);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
 });

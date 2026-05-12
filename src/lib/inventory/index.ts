@@ -404,8 +404,10 @@ export function showStatusCommand(deps: ShowStatusCommandDeps): void {
   // gateway is unhealthy we also set process.exitCode = 1 so shell scripts
   // and CI can detect the degraded state from `$?` (#3386). The exit code is
   // set, not thrown — JSON callers (`status --json`) remain unaffected and
-  // the rest of the report keeps printing.
-  if (deps.getGatewayHealth) {
+  // the rest of the report keeps printing. A clean machine with no registered
+  // sandboxes has no expectation of a configured gateway, so the check is
+  // suppressed in that case to avoid a spurious failure exit code.
+  if (deps.getGatewayHealth && sandboxes.length > 0) {
     const health = deps.getGatewayHealth();
     if (!health.healthy) {
       log("");

@@ -50,6 +50,17 @@ export interface CleanupResult {
   stopped: number[];
   skippedForeignPids: number[];
   skippedNonMatchingPids: number[];
+  skippedProtectedPorts: number[];
+}
+
+export interface StaleGatewayOptions {
+  /**
+   * Ports that must not be swept even if a matching gateway-forward process is
+   * holding them. The onboard `--fresh` path passes the dashboard ports of
+   * currently-registered sandboxes so a fresh onboard for a new name does not
+   * disrupt the forward of an existing sandbox (#3260).
+   */
+  protectedPorts?: Iterable<number>;
 }
 
 const CMDLINE_MARKERS = ["openclaw-gateway", "openshell-forward", "openshell forward"];
@@ -189,13 +200,30 @@ function tryStopPid(pid: number, deps: StaleGatewayDeps): boolean {
  */
 export function stopStaleDashboardListeners(
   depsOverrides: Partial<StaleGatewayDeps> = {},
+  options: StaleGatewayOptions = {},
 ): CleanupResult {
   const deps = defaultStaleGatewayDeps(depsOverrides);
-  const result: CleanupResult = { stopped: [], skippedForeignPids: [], skippedNonMatchingPids: [] };
+  const protectedPorts = new Set<number>(
+    options.protectedPorts ? Array.from(options.protectedPorts).filter(Number.isFinite) : [],
+  );
+  const result: CleanupResult = {
+    stopped: [],
+    skippedForeignPids: [],
+    skippedNonMatchingPids: [],
+    skippedProtectedPorts: [],
+  };
   if (deps.commandExists && !deps.commandExists("lsof")) return result;
 
   const seen = new Set<number>();
   for (let port = DASHBOARD_PORT_RANGE_START; port <= DASHBOARD_PORT_RANGE_END; port += 1) {
+    if (protectedPorts.has(port)) {
+      const pids = lsofPidsForPort(port, deps);
+      if (pids.length > 0) {
+        result.skippedProtectedPorts.push(port);
+        for (const pid of pids) seen.add(pid);
+      }
+      continue;
+    }
     for (const pid of lsofPidsForPort(port, deps)) {
       if (seen.has(pid)) continue;
       seen.add(pid);
