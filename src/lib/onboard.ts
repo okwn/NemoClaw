@@ -3786,8 +3786,9 @@ function getGatewayLocalEndpoint(): string {
 
 function isLinuxDockerDriverGatewayEnabled(
   platform: NodeJS.Platform = process.platform,
+  arch: NodeJS.Architecture = process.arch,
 ): boolean {
-  return platform === "linux" || platform === "darwin";
+  return platform === "linux" || (platform === "darwin" && arch === "arm64");
 }
 
 function isLinuxDockerDriverGatewayPlatform(
@@ -3876,20 +3877,20 @@ function areRequiredDockerDriverBinariesPresent(
     sandboxBin?: string | null;
     vmDriverBin?: string | null;
   } = {},
+  arch: NodeJS.Architecture = process.arch,
 ): boolean {
-  if (!isLinuxDockerDriverGatewayEnabled(platform)) return true;
+  if (!isLinuxDockerDriverGatewayEnabled(platform, arch)) return true;
   const gatewayBin = Object.prototype.hasOwnProperty.call(binaries, "gatewayBin")
     ? binaries.gatewayBin
     : resolveOpenShellGatewayBinary();
   const sandboxBin = Object.prototype.hasOwnProperty.call(binaries, "sandboxBin")
     ? binaries.sandboxBin
     : resolveOpenShellSandboxBinary();
-  const vmDriverBin = Object.prototype.hasOwnProperty.call(binaries, "vmDriverBin")
-    ? binaries.vmDriverBin
-    : resolveOpenShellVmDriverBinary();
+  const hasVmDriverBin = Object.prototype.hasOwnProperty.call(binaries, "vmDriverBin");
+  const vmDriverBin = hasVmDriverBin ? binaries.vmDriverBin : resolveOpenShellVmDriverBinary();
   if (!gatewayBin) return false;
   if (platform === "linux" && !sandboxBin) return false;
-  if (platform === "darwin" && !vmDriverBin) return false;
+  if (platform === "darwin" && hasVmDriverBin && !vmDriverBin) return false;
   return true;
 }
 
@@ -5774,11 +5775,11 @@ function getSandboxRuntimeRegistryFields(
     sandboxGpuEnabled: config.sandboxGpuEnabled,
     sandboxGpuMode: config.mode,
     sandboxGpuDevice: config.sandboxGpuDevice,
-    openshellDriver: process.platform === "darwin"
-      ? "vm"
-      : isLinuxDockerDriverGatewayEnabled()
-        ? "docker"
-        : "kubernetes",
+    openshellDriver: isLinuxDockerDriverGatewayEnabled()
+      ? process.platform === "darwin"
+        ? "vm"
+        : "docker"
+      : "kubernetes",
     openshellVersion: getInstalledOpenshellVersion(
       runCaptureOpenshell(["--version"], { ignoreError: true }),
     ),

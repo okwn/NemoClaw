@@ -421,7 +421,8 @@ network_policies:
 
   it("models the OpenShell standalone gateway environment", () => {
     expect(isLinuxDockerDriverGatewayEnabled("linux")).toBe(true);
-    expect(isLinuxDockerDriverGatewayEnabled("darwin")).toBe(true);
+    expect(isLinuxDockerDriverGatewayEnabled("darwin", "arm64")).toBe(true);
+    expect(isLinuxDockerDriverGatewayEnabled("darwin", "x64")).toBe(false);
     expect(isLinuxDockerDriverGatewayEnabled("win32")).toBe(false);
     const linuxEnv = getDockerDriverGatewayEnv("openshell 0.0.37", "linux");
     expect(linuxEnv.OPENSHELL_DRIVERS).toBe("docker");
@@ -438,11 +439,15 @@ network_policies:
 
   it("requires platform-specific Docker-driver binaries", () => {
     expect(
-      areRequiredDockerDriverBinariesPresent("darwin", {
-        gatewayBin: "/tmp/openshell-gateway",
-        sandboxBin: null,
-        vmDriverBin: "/tmp/openshell-driver-vm",
-      }),
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: "/tmp/openshell-gateway",
+          sandboxBin: null,
+          vmDriverBin: "/tmp/openshell-driver-vm",
+        },
+        "arm64",
+      ),
     ).toBe(true);
     expect(
       areRequiredDockerDriverBinariesPresent("linux", {
@@ -459,19 +464,47 @@ network_policies:
       }),
     ).toBe(true);
     expect(
-      areRequiredDockerDriverBinariesPresent("darwin", {
-        gatewayBin: "/tmp/openshell-gateway",
-        sandboxBin: null,
-        vmDriverBin: null,
-      }),
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: "/tmp/openshell-gateway",
+          sandboxBin: null,
+        },
+        "arm64",
+      ),
+    ).toBe(true);
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: "/tmp/openshell-gateway",
+          sandboxBin: null,
+          vmDriverBin: null,
+        },
+        "arm64",
+      ),
     ).toBe(false);
     expect(
-      areRequiredDockerDriverBinariesPresent("darwin", {
-        gatewayBin: null,
-        sandboxBin: "/tmp/openshell-sandbox",
-        vmDriverBin: "/tmp/openshell-driver-vm",
-      }),
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: null,
+          sandboxBin: "/tmp/openshell-sandbox",
+          vmDriverBin: "/tmp/openshell-driver-vm",
+        },
+        "arm64",
+      ),
     ).toBe(false);
+    expect(
+      areRequiredDockerDriverBinariesPresent(
+        "darwin",
+        {
+          gatewayBin: null,
+          sandboxBin: null,
+        },
+        "x64",
+      ),
+    ).toBe(true);
   });
 
   it("requires Docker-driver process env verification only where /proc is available", () => {
