@@ -278,7 +278,7 @@ jobs:
           BREV_ORG_ID: ${{ secrets.BREV_ORG_ID }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
-          INSTANCE_NAME: e2e-pr-${{ inputs.pr_number || github.run_id }}
+          INSTANCE_NAME: e2e-pr-${{ inputs.pr_number || github.run_id }}-${{ inputs.test_suite }}
           TEST_SUITE: ${{ inputs.test_suite }}
           USE_LAUNCHABLE: ${{ inputs.use_launchable && '1' || '0' }}
           # Use the published NemoClaw launchable (pre-baked GCP image, ~2 min

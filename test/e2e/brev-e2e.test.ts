@@ -568,6 +568,22 @@ function bootstrapLaunchable(elapsed: () => string): { remoteDir: string; needsO
   const remoteHome = ssh("echo $HOME");
   const resolvedRemoteDir = `${remoteHome}/NemoClaw`;
 
+  // The published launchable is pre-baked and may have root-owned build outputs
+  // from image creation. Remove stale dist/ trees and make source files writable
+  // before rsync/build, while preserving expensive node_modules caches.
+  console.log(`[${elapsed()}] Repairing launchable checkout ownership...`);
+  ssh(
+    [
+      `set -euo pipefail`,
+      `cd ${resolvedRemoteDir}`,
+      `sudo rm -rf dist nemoclaw/dist`,
+      `sudo find . -maxdepth 1 ! -name node_modules ! -name .git -exec chown -R \"$(id -u):$(id -g)\" {} +`,
+      `sudo find nemoclaw -maxdepth 1 ! -name node_modules -exec chown -R \"$(id -u):$(id -g)\" {} +`,
+    ].join(" && "),
+    { timeout: 120_000, stream: true },
+  );
+  console.log(`[${elapsed()}] Launchable checkout ownership repaired`);
+
   // Rsync PR branch code over the launchable's clone
   console.log(`[${elapsed()}] Syncing PR branch code over launchable's clone...`);
   execSync(
