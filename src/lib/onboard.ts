@@ -280,6 +280,8 @@ const {
   isGatewayHttpReady,
   waitForGatewayHttpReady,
 } = require("./onboard/gateway-http-readiness") as typeof import("./onboard/gateway-http-readiness");
+const { isGatewayTcpReady } =
+  require("./onboard/gateway-tcp-readiness") as typeof import("./onboard/gateway-tcp-readiness");
 const preflightUtils: typeof import("./onboard/preflight") = require("./onboard/preflight");
 const clusterImagePatch: typeof import("./cluster-image-patch") = require("./cluster-image-patch");
 const {
@@ -3953,60 +3955,6 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-/**
- * Probe a TCP endpoint on localhost to verify something is actually listening
- * and accepting connections. Used to gate the "Docker-driver gateway is
- * healthy" log in startDockerDriverGateway against the class of bug reported
- * in #3111 where the openshell-gateway binary crashed on startup but
- * metadata-based health checks (isGatewayHealthy) still returned true.
- *
- * We intentionally use a plain TCP probe here rather than the stronger HTTP
- * probe from ./onboard/gateway-http-readiness (isGatewayHttpReady) because
- * the Docker-driver gateway and the K3s gateway have different HTTP routes
- * for the root path:
- *
- *   - K3s path: GET / returns 200 / 401 (dispatcher catch-all)
- *   - Docker-driver path: GET / returns 404; only /openshell.v1.OpenShell/*
- *     is served
- *
- * A TCP connect is semantic-free (it just asks "is anyone listening?")
- * which is exactly what's needed to detect the #3111 failure mode without
- * making assumptions about HTTP route shape. Tracking convergence with
- * isGatewayHttpReady is left to #3213 (the unified advisory / probe
- * registry).
- *
- * Resolves true on successful TCP connect. Resolves false on connection
- * refused, unreachable host, or timeout. Never rejects.
- */
-async function isDockerDriverGatewayTcpReady(
-  port: number,
-  timeoutMs = 500,
-  host = "127.0.0.1",
-): Promise<boolean> {
-  // Lazy-require so tests that don't exercise the gateway path don't pay
-  // for the net module load.
-  // biome-ignore lint/suspicious/noExplicitAny: node:net types are not in scope in this file
-  const net: any = require("node:net");
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const settle = (result: boolean) => {
-      if (settled) return;
-      settled = true;
-      try {
-        socket.destroy();
-      } catch {
-        /* best effort */
-      }
-      resolve(result);
-    };
-    const socket = net.createConnection({ host, port });
-    socket.setTimeout(Math.max(50, timeoutMs));
-    socket.once("connect", () => settle(true));
-    socket.once("timeout", () => settle(false));
-    socket.once("error", () => settle(false));
-  });
-}
-
 
 function getDockerDriverGatewayPid(): number | null {
   try {
@@ -5512,26 +5460,20 @@ async function startDockerDriverGateway({
     });
     const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
     if (isGatewayHealthy(status, namedInfo, currentInfo)) {
-      // #3111: isGatewayHealthy is a pure string match on openshell CLI
-      // output. isGatewayConnected matches on "Server Status" which is a
-      // header the CLI prints unconditionally, so the metadata check can
-      // return true even when the gateway endpoint is unreachable
-      // (Connection refused). Gate the "healthy" log on a real TCP probe
-      // to verify something is actually listening on the gateway port.
-      //
-      // We use a TCP probe rather than the HTTP probe from
-      // ./onboard/gateway-http-readiness because the Docker-driver and K3s
-      // gateways serve different HTTP routes (Docker-driver: only the
-      // gRPC endpoints under /openshell.v1.OpenShell/; K3s: a dispatcher
-      // that answers GET /). See isDockerDriverGatewayTcpReady() above.
+      // #3111: isGatewayHealthy is a string match on openshell CLI output
+      // ("Server Status" header is always printed, even when the body is
+      // Connection refused), so gate the "healthy" log on a real TCP probe
+      // via isGatewayTcpReady() — the Docker-driver peer of the K3s path's
+      // isGatewayHttpReady() (see ./onboard/gateway-tcp-readiness for why
+      // this path uses TCP rather than HTTP).
       //
       // On probe failure, keep polling: the binary may still be binding
-      // its listener. The childExited / isPidAlive check at the top of
-      // the loop terminates us if the process actually died.
+      // its listener. The childExited / isPidAlive check at the top of the
+      // loop terminates us if the process actually died.
       //
       // TODO(#3213): surface this as a structured advisory rather than
       // plain log output once the unified registry lands.
-      if (await isDockerDriverGatewayTcpReady(GATEWAY_PORT)) {
+      if (await isGatewayTcpReady()) {
         console.log("  ✓ Docker-driver gateway is healthy");
         return;
       }
@@ -12113,7 +12055,6 @@ module.exports = {
   getResumeConfigConflicts,
   isGatewayHealthy,
   hasStaleGateway,
-  isDockerDriverGatewayTcpReady,
   getRequestedSandboxNameHint,
   getResumeSandboxConflict,
   getSandboxReuseState,
