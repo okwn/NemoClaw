@@ -10,11 +10,11 @@ import path from "node:path";
 import {
   validateExpectedState,
   type ProbeResults,
-} from "./e2e/resolver/validator.ts";
-import type { ExpectedStateConfig, ResolvedSuite } from "./e2e/resolver/schema.ts";
+} from "./e2e/runtime/resolver/validator.ts";
+import type { ExpectedStateConfig, ResolvedSuite } from "./e2e/runtime/resolver/schema.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
-const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/run-scenario.sh");
+const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/runtime/run-scenario.sh");
 
 function cloudOpenclawReady(): ExpectedStateConfig {
   return {

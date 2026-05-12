@@ -12,12 +12,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { loadMetadataFromDir } from "./e2e/resolver/load.ts";
-import { resolveScenario } from "./e2e/resolver/plan.ts";
+import { loadMetadataFromDir } from "./e2e/runtime/resolver/load.ts";
+import { resolveScenario } from "./e2e/runtime/resolver/plan.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");
-const RUN_SCENARIO = path.join(E2E_DIR, "run-scenario.sh");
+const RUN_SCENARIO = path.join(E2E_DIR, "runtime", "run-scenario.sh");
 
 describe("Phase 6: ubuntu-repo-cloud-openclaw migration", () => {
   it("ubuntu_repo_cloud_openclaw_should_resolve_to_cloud_openclaw_ready", () => {
@@ -84,7 +84,7 @@ describe("Phase 6: ubuntu-repo-cloud-openclaw migration", () => {
       // suite sequence against the emitted context.
       const suites = spawnSync(
         "bash",
-        [path.join(E2E_DIR, "run-suites.sh"), "smoke", "inference"],
+        [path.join(E2E_DIR, "runtime", "run-suites.sh"), "smoke", "inference"],
         {
           env: { ...process.env, E2E_CONTEXT_DIR: tmp, E2E_DRY_RUN: "1" },
           encoding: "utf8",

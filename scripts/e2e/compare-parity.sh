@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Compare PASS/FAIL outcomes between a legacy e2e log and a migrated
-# scenario log using the mapping in test/e2e/parity-map.yaml.
+# scenario log using the mapping in test/e2e/docs/parity-map.yaml.
 #
 # Usage:
 #   scripts/e2e/compare-parity.sh \
@@ -34,12 +34,31 @@ USAGE
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --script)   SCRIPT_NAME="${2:?}"; shift 2 ;;
-    --legacy)   LEGACY_LOG="${2:?}"; shift 2 ;;
-    --scenario) SCENARIO_LOG="${2:?}"; shift 2 ;;
-    --map)      MAP_FILE="${2:?}"; shift 2 ;;
-    -h|--help)  usage; exit 0 ;;
-    *)          echo "compare-parity: unknown arg: $1" >&2; usage; exit 2 ;;
+    --script)
+      SCRIPT_NAME="${2:?}"
+      shift 2
+      ;;
+    --legacy)
+      LEGACY_LOG="${2:?}"
+      shift 2
+      ;;
+    --scenario)
+      SCENARIO_LOG="${2:?}"
+      shift 2
+      ;;
+    --map)
+      MAP_FILE="${2:?}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "compare-parity: unknown arg: $1" >&2
+      usage
+      exit 2
+      ;;
   esac
 done
 
@@ -51,7 +70,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 if [[ -z "${MAP_FILE}" ]]; then
-  MAP_FILE="${REPO_ROOT}/test/e2e/parity-map.yaml"
+  MAP_FILE="${REPO_ROOT}/test/e2e/docs/parity-map.yaml"
 fi
 if [[ ! -f "${MAP_FILE}" ]]; then
   echo "compare-parity: map file not found: ${MAP_FILE}" >&2

@@ -34,7 +34,7 @@ describe("e2e-scenarios workflow", () => {
 
   it("e2e_scenarios_workflow_should_call_run_scenario", () => {
     const raw = fs.readFileSync(WORKFLOW_PATH, "utf8");
-    expect(raw).toMatch(/test\/e2e\/run-scenario\.sh/);
+    expect(raw).toMatch(/test\/e2e\/runtime\/run-scenario\.sh/);
   });
 
   it("e2e_scenarios_workflow_should_upload_artifacts", () => {

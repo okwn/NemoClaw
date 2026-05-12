@@ -5,8 +5,9 @@
 /**
  * E2E convention lint.
  *
- * Enforces the migration-spec conventions on `test/e2e/suites/**` step
- * scripts and the `test/e2e/test-*.sh` legacy frontier:
+ * Enforces the migration-spec conventions on
+ * `test/e2e/validation_suites/**` step scripts and the
+ * `test/e2e/test-*.sh` legacy frontier:
  *
  *   - Suite step scripts MUST NOT re-export non-interactive env vars
  *     (use lib/env.sh::e2e_env_apply_noninteractive instead).
@@ -21,8 +22,8 @@
  *     `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` and
  *     walk up.
  *   - Every `test/e2e/test-*.sh` script MUST have an entry in
- *     `test/e2e/parity-map.yaml` (Risk #1: guards against new legacy
- *     scripts landing unmapped).
+ *     `test/e2e/docs/parity-map.yaml` (Risk #1: guards against new
+ *     legacy scripts landing unmapped).
  *
  * Invocation:
  *   tsx scripts/e2e/lint-conventions.ts [--root <repo-root>]
@@ -160,7 +161,7 @@ function parseArgs(argv: string[]): { root: string } {
 
 function lintSuiteSteps(root: string): LintFinding[] {
   const findings: LintFinding[] = [];
-  const suitesRoot = path.join(root, "test/e2e/suites");
+  const suitesRoot = path.join(root, "test/e2e/validation_suites");
   if (!fs.existsSync(suitesRoot)) return findings;
   for (const file of walkShellScripts(suitesRoot)) {
     const body = fs.readFileSync(file, "utf8");
@@ -193,7 +194,7 @@ function readParityMapScripts(mapFile: string): Set<string> {
 function lintLegacyFrontier(root: string): LintFinding[] {
   const findings: LintFinding[] = [];
   const e2eDir = path.join(root, "test/e2e");
-  const mapFile = path.join(e2eDir, "parity-map.yaml");
+  const mapFile = path.join(e2eDir, "docs", "parity-map.yaml");
   const mapped = readParityMapScripts(mapFile);
   let entries: fs.Dirent[];
   try {
@@ -208,7 +209,7 @@ function lintLegacyFrontier(root: string): LintFinding[] {
     findings.push({
       file: `test/e2e/${ent.name}`,
       rule: "legacy-script-needs-parity-map-entry",
-      message: `new legacy test/e2e/${ent.name} has no entry in test/e2e/parity-map.yaml (Risk #1)`,
+      message: `new legacy test/e2e/${ent.name} has no entry in test/e2e/docs/parity-map.yaml (Risk #1)`,
     });
   }
   return findings;

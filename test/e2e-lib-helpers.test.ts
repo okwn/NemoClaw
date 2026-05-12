@@ -8,8 +8,12 @@ import os from "node:os";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
-const LIB = path.join(REPO_ROOT, "test/e2e/lib");
-const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/run-scenario.sh");
+const RUNTIME_LIB = path.join(REPO_ROOT, "test/e2e/runtime/lib");
+const VALIDATION_SUITES = path.join(REPO_ROOT, "test/e2e/validation_suites");
+const ASSERT = path.join(VALIDATION_SUITES, "assert");
+const FIXTURES = path.join(REPO_ROOT, "test/e2e/nemoclaw_scenarios/fixtures");
+const INSTALL_DIR = path.join(REPO_ROOT, "test/e2e/nemoclaw_scenarios/install");
+const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/runtime/run-scenario.sh");
 
 function runBash(script: string, env: Record<string, string> = {}): SpawnSyncReturns<string> {
   return spawnSync("bash", ["-c", script], {
@@ -29,7 +33,7 @@ describe("E2E shell helpers", () => {
   it("env_helper_should_set_standard_noninteractive_env", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/env.sh"
+      . "${RUNTIME_LIB}/env.sh"
       e2e_env_apply_noninteractive
       echo "NEMOCLAW_NON_INTERACTIVE=\${NEMOCLAW_NON_INTERACTIVE:-}"
       echo "DEBIAN_FRONTEND=\${DEBIAN_FRONTEND:-}"
@@ -48,7 +52,7 @@ describe("E2E shell helpers", () => {
     fs.writeFileSync(path.join(srcDir, "present.log"), "hello\n");
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/artifacts.sh"
+      . "${RUNTIME_LIB}/artifacts.sh"
       e2e_artifact_collect_file "${srcDir}/present.log" "${dstDir}/present.log"
       e2e_artifact_collect_file "${srcDir}/missing.log" "${dstDir}/missing.log" || true
       ls "${dstDir}"
@@ -64,7 +68,7 @@ describe("E2E shell helpers", () => {
     // Pick a port very unlikely to be bound.
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/gateway.sh"
+      . "${RUNTIME_LIB}/gateway.sh"
       e2e_gateway_assert_healthy "http://127.0.0.1:65531"
     `);
     expect(r.status).not.toBe(0);
@@ -78,8 +82,8 @@ describe("E2E shell helpers", () => {
       const r = runBash(
         `
         set -euo pipefail
-        . "${LIB}/context.sh"
-        . "${LIB}/assert/sandbox-alive.sh"
+        . "${RUNTIME_LIB}/context.sh"
+        . "${ASSERT}/sandbox-alive.sh"
         e2e_context_init
         e2e_context_set E2E_SCENARIO test
         e2e_sandbox_assert_running
@@ -135,7 +139,7 @@ describe("Phase 1.A logging helpers", () => {
   it("logging_should_emit_stable_pass_marker_when_e2e_pass_called", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/logging.sh"
+      . "${RUNTIME_LIB}/logging.sh"
       e2e_pass "assertion X"
     `);
     expect(r.status, r.stderr).toBe(0);
@@ -144,7 +148,7 @@ describe("Phase 1.A logging helpers", () => {
 
   it("logging_should_emit_stable_fail_marker_and_nonzero_exit_when_e2e_fail_called", () => {
     const r = runBash(`
-      . "${LIB}/logging.sh"
+      . "${RUNTIME_LIB}/logging.sh"
       ( e2e_fail "assertion Y" )
     `);
     expect(r.status).not.toBe(0);
@@ -154,7 +158,7 @@ describe("Phase 1.A logging helpers", () => {
   it("logging_should_include_phase_prefix_when_e2e_section_called", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/logging.sh"
+      . "${RUNTIME_LIB}/logging.sh"
       e2e_section "Phase 2: onboarding"
     `);
     expect(r.status, r.stderr).toBe(0);
@@ -164,7 +168,7 @@ describe("Phase 1.A logging helpers", () => {
   it("logging_should_autosource_logging_when_env_sh_sourced", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/env.sh"
+      . "${RUNTIME_LIB}/env.sh"
       # e2e_pass must be defined after sourcing env.sh alone.
       e2e_pass "from env.sh"
     `);
@@ -191,7 +195,7 @@ describe("Phase 1.B sandbox-exec helper", () => {
       );
       const r = runBash(
         `
-        . "${LIB}/sandbox-exec.sh"
+        . "${VALIDATION_SUITES}/sandbox-exec.sh"
         e2e_sandbox_exec sb1 -- false
         echo "rc=$?"
       `,
@@ -209,7 +213,7 @@ describe("Phase 1.B sandbox-exec helper", () => {
     const r = runBash(
       `
         set -euo pipefail
-        . "${LIB}/sandbox-exec.sh"
+        . "${VALIDATION_SUITES}/sandbox-exec.sh"
         e2e_sandbox_exec sb1 -- rm -rf /
       `,
       { E2E_DRY_RUN: "1", PATH: "/usr/bin:/bin" },
@@ -236,7 +240,7 @@ describe("Phase 1.B sandbox-exec helper", () => {
       const r = runBash(
         `
           set -euo pipefail
-          . "${LIB}/sandbox-exec.sh"
+          . "${VALIDATION_SUITES}/sandbox-exec.sh"
           printf 'hello $TOKEN' | e2e_sandbox_exec_stdin sb1 -- cat
         `,
         { PATH: `${bin}:${process.env.PATH}`, TOKEN: "SHOULD_NOT_EXPAND" },
@@ -258,7 +262,7 @@ describe("Phase 1.C fixtures", () => {
   it("fake_openai_should_start_and_stop_cleanly_and_serve_chat_completions", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/fixtures/fake-openai.sh"
+      . "${FIXTURES}/fake-openai.sh"
       fake_openai_start
       : "\${FAKE_OPENAI_PORT:?not exported}"
       URL="http://127.0.0.1:\${FAKE_OPENAI_PORT}/v1/chat/completions"
@@ -275,7 +279,7 @@ describe("Phase 1.C fixtures", () => {
   it("older_base_image_should_emit_dockerfile_pointing_at_tagged_base", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/fixtures/older-base-image.sh"
+      . "${FIXTURES}/older-base-image.sh"
       df="$(older_base_image_prepare v0.0.1-test)"
       echo "DF=$df"
       head -n1 "$df"
@@ -288,7 +292,7 @@ describe("Phase 1.C fixtures", () => {
     for (const provider of ["telegram", "discord", "slack"]) {
       const r = runBash(`
         set -euo pipefail
-        . "${LIB}/fixtures/fake-${provider}.sh"
+        . "${FIXTURES}/fake-${provider}.sh"
         fake_${provider}_start
         : "\${FAKE_${provider.toUpperCase()}_PORT:?port not exported}"
         URL="http://127.0.0.1:\${FAKE_${provider.toUpperCase()}_PORT}/ping"
@@ -310,8 +314,8 @@ describe("Phase 1.D assertion helpers", () => {
   it("inference_works_should_pass_when_round_trip_returns_ok", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/fixtures/fake-openai.sh"
-      . "${LIB}/assert/inference-works.sh"
+      . "${FIXTURES}/fake-openai.sh"
+      . "${ASSERT}/inference-works.sh"
       fake_openai_start
       URL="http://127.0.0.1:\${FAKE_OPENAI_PORT}"
       e2e_assert_inference_works "$URL"
@@ -329,7 +333,7 @@ describe("Phase 1.D assertion helpers", () => {
       fs.mkdirSync(bundle);
       fs.writeFileSync(path.join(bundle, "leak.txt"), "token=sk-abc123DEADBEEFCAFE0000111122223333");
       const r = runBash(`
-        . "${LIB}/assert/no-credentials-leaked.sh"
+        . "${ASSERT}/no-credentials-leaked.sh"
         e2e_assert_no_credentials_leaked "${bundle}"
       `);
       expect(r.status).not.toBe(0);
@@ -353,7 +357,7 @@ describe("Phase 1.D assertion helpers", () => {
       const r = runBash(
         `
           set -euo pipefail
-          . "${LIB}/assert/policy-preset-applied.sh"
+          . "${ASSERT}/policy-preset-applied.sh"
           e2e_assert_policy_preset_applied slack discord
         `,
         { PATH: `${bin}:${process.env.PATH}` },
@@ -367,8 +371,8 @@ describe("Phase 1.D assertion helpers", () => {
   it("messaging_bridge_reachable_should_pass_when_provider_endpoint_alive", () => {
     const r = runBash(`
       set -euo pipefail
-      . "${LIB}/fixtures/fake-telegram.sh"
-      . "${LIB}/assert/messaging-bridge-reachable.sh"
+      . "${FIXTURES}/fake-telegram.sh"
+      . "${ASSERT}/messaging-bridge-reachable.sh"
       fake_telegram_start
       export MESSAGING_BRIDGE_URL="http://127.0.0.1:\${FAKE_TELEGRAM_PORT}"
       e2e_assert_messaging_bridge_reachable telegram
@@ -389,7 +393,7 @@ describe("Phase 1.E install dispatcher splits", () => {
     return runBash(
       `
         set -euo pipefail
-        . "${LIB}/setup/install.sh"
+        . "${INSTALL_DIR}/dispatch.sh"
         e2e_install "${profile}"
       `,
       { E2E_DRY_RUN: "1" },

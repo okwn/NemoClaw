@@ -84,13 +84,13 @@ jobs:
       - name: Render coverage report
         run: |
           mkdir -p .e2e
-          bash test/e2e/coverage-report.sh > .e2e/coverage.md
+          bash test/e2e/runtime/coverage-report.sh > .e2e/coverage.md
           echo '## E2E scenario coverage' >> "$GITHUB_STEP_SUMMARY"
           cat .e2e/coverage.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Show resolved plan
         run: |
-          bash test/e2e/run-scenario.sh "${{ github.event.inputs.scenario }}" --plan-only
+          bash test/e2e/runtime/run-scenario.sh "${{ github.event.inputs.scenario }}" --plan-only
 
       - name: Run scenario
         if: github.event.inputs.plan_only != 'true'
@@ -98,7 +98,7 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           E2E_SUITE_FILTER: ${{ github.event.inputs.suite_filter }}
         run: |
-          bash test/e2e/run-scenario.sh "${{ github.event.inputs.scenario }}"
+          bash test/e2e/runtime/run-scenario.sh "${{ github.event.inputs.scenario }}"
 
       - name: Upload scenario artifacts
         if: always()

@@ -10,7 +10,7 @@ import path from "node:path";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const LINT_BIN = path.join(REPO_ROOT, "scripts/e2e/lint-conventions.ts");
 const COMPARE_PARITY = path.join(REPO_ROOT, "scripts/e2e/compare-parity.sh");
-const PARITY_MAP_REAL = path.join(REPO_ROOT, "test/e2e/parity-map.yaml");
+const PARITY_MAP_REAL = path.join(REPO_ROOT, "test/e2e/docs/parity-map.yaml");
 
 function runTsx(scriptPath: string, args: string[] = [], env: Record<string, string> = {}): SpawnSyncReturns<string> {
   const tsx = path.join(REPO_ROOT, "node_modules/.bin/tsx");
@@ -33,19 +33,20 @@ function runBash(script: string, env: Record<string, string> = {}): SpawnSyncRet
 
 /**
  * Create a synthetic repo layout mirroring the paths the lint walks:
- *   <root>/test/e2e/suites/<suite>/<step>.sh         (suite step scripts)
- *   <root>/test/e2e/test-*.sh                        (legacy scripts)
- *   <root>/test/e2e/parity-map.yaml                  (mapping file)
+ *   <root>/test/e2e/validation_suites/<suite>/<step>.sh  (suite step scripts)
+ *   <root>/test/e2e/test-*.sh                            (legacy scripts)
+ *   <root>/test/e2e/docs/parity-map.yaml                 (mapping file)
  */
 function makeSyntheticRepo(): string {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-lint-"));
-  fs.mkdirSync(path.join(tmp, "test/e2e/suites/example"), { recursive: true });
-  fs.writeFileSync(path.join(tmp, "test/e2e/parity-map.yaml"), "scripts: {}\n");
+  fs.mkdirSync(path.join(tmp, "test/e2e/validation_suites/example"), { recursive: true });
+  fs.mkdirSync(path.join(tmp, "test/e2e/docs"), { recursive: true });
+  fs.writeFileSync(path.join(tmp, "test/e2e/docs/parity-map.yaml"), "scripts: {}\n");
   return tmp;
 }
 
 function writeStep(tmp: string, name: string, body: string) {
-  const p = path.join(tmp, "test/e2e/suites/example", name);
+  const p = path.join(tmp, "test/e2e/validation_suites/example", name);
   fs.writeFileSync(p, `#!/usr/bin/env bash\n${body}\n`);
 }
 

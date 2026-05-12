@@ -15,11 +15,12 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadMetadataFromDir } from "./e2e/resolver/load.ts";
+import { loadMetadataFromDir } from "./e2e/runtime/resolver/load.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");
-const README_PATH = path.join(E2E_DIR, "README.md");
+const VALIDATION_SUITES_DIR = path.join(E2E_DIR, "validation_suites");
+const README_PATH = path.join(E2E_DIR, "docs", "README.md");
 
 describe("Phase 11 final hygiene", () => {
   it("e2e_readme_should_document_scenario_runner", () => {
@@ -40,7 +41,7 @@ describe("Phase 11 final hygiene", () => {
     const missing: string[] = [];
     for (const [suiteId, suite] of Object.entries(meta.suites.suites)) {
       for (const step of suite.steps) {
-        const p = path.join(E2E_DIR, step.script);
+        const p = path.join(VALIDATION_SUITES_DIR, step.script);
         if (!fs.existsSync(p)) {
           missing.push(`${suiteId}/${step.id} -> ${step.script}`);
         } else {

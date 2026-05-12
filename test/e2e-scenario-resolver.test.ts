@@ -8,8 +8,8 @@ import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
 
-import { resolveScenario, type ResolverInput } from "./e2e/resolver/plan.ts";
-import { loadMetadataFromDir, loadMetadataFromObjects } from "./e2e/resolver/load.ts";
+import { resolveScenario, type ResolverInput } from "./e2e/runtime/resolver/plan.ts";
+import { loadMetadataFromDir, loadMetadataFromObjects } from "./e2e/runtime/resolver/load.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");
@@ -180,7 +180,7 @@ describe("run-scenario.sh --plan-only", () => {
       const result = spawnSync(
         "bash",
         [
-          path.join(E2E_DIR, "run-scenario.sh"),
+          path.join(E2E_DIR, "runtime", "run-scenario.sh"),
           "ubuntu-repo-cloud-openclaw",
           "--plan-only",
         ],
@@ -214,7 +214,7 @@ describe("run-scenario.sh --plan-only", () => {
       const result = spawnSync(
         "bash",
         [
-          path.join(E2E_DIR, "run-scenario.sh"),
+          path.join(E2E_DIR, "runtime", "run-scenario.sh"),
           "does-not-exist",
           "--plan-only",
         ],

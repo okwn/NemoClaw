@@ -8,8 +8,8 @@ import os from "node:os";
 import path from "node:path";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
-const CONTEXT_LIB = path.join(REPO_ROOT, "test/e2e/lib/context.sh");
-const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/run-scenario.sh");
+const CONTEXT_LIB = path.join(REPO_ROOT, "test/e2e/runtime/lib/context.sh");
+const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/runtime/run-scenario.sh");
 
 function runBash(script: string, env: Record<string, string> = {}): SpawnSyncReturns<string> {
   return spawnSync("bash", ["-c", script], {
@@ -20,7 +20,7 @@ function runBash(script: string, env: Record<string, string> = {}): SpawnSyncRet
   });
 }
 
-describe("E2E context helper (lib/context.sh)", () => {
+describe("E2E context helper (runtime/lib/context.sh)", () => {
   it("context_should_write_and_source_values", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-ctx-"));
     try {

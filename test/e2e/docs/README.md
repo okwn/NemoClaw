@@ -16,22 +16,24 @@ setup scenario → expected state → suite sequence
 The declarative sources of truth live in three files — read these
 first, they are short and deliberately not redundant with prose:
 
-- [`scenarios.yaml`](scenarios.yaml) — platforms, installs, runtimes,
-  onboarding choices, and the concrete scenarios that combine them.
-- [`expected-states.yaml`](expected-states.yaml) — reusable structural
-  contracts (gateway health, sandbox status, inference routing, etc.).
-- [`suites.yaml`](suites.yaml) — ordered validation steps, each with a
-  `requires_state` predicate.
+- [`../nemoclaw_scenarios/scenarios.yaml`](../nemoclaw_scenarios/scenarios.yaml)
+  — platforms, installs, runtimes, onboarding choices, and the
+  concrete scenarios that combine them.
+- [`../nemoclaw_scenarios/expected-states.yaml`](../nemoclaw_scenarios/expected-states.yaml)
+  — reusable structural contracts (gateway health, sandbox status,
+  inference routing, etc.).
+- [`../validation_suites/suites.yaml`](../validation_suites/suites.yaml)
+  — ordered validation steps, each with a `requires_state` predicate.
 
 ## How to run
 
 ```bash
-bash test/e2e/run-scenario.sh <id> --plan-only       # resolve + print plan, no side effects
-bash test/e2e/run-scenario.sh <id> --dry-run         # helpers short-circuit with trace
-bash test/e2e/run-scenario.sh <id> --validate-only   # assume setup done; validate expected state
-bash test/e2e/run-scenario.sh <id>                   # full live run
-bash test/e2e/run-suites.sh <suite-id> [<suite-id>…]
-bash test/e2e/coverage-report.sh                     # Markdown matrix of scenario × suite
+bash test/e2e/runtime/run-scenario.sh <id> --plan-only       # resolve + print plan, no side effects
+bash test/e2e/runtime/run-scenario.sh <id> --dry-run         # helpers short-circuit with trace
+bash test/e2e/runtime/run-scenario.sh <id> --validate-only   # assume setup done; validate expected state
+bash test/e2e/runtime/run-scenario.sh <id>                   # full live run
+bash test/e2e/runtime/run-suites.sh <suite-id> [<suite-id>…]
+bash test/e2e/runtime/coverage-report.sh                     # Markdown matrix of scenario × suite
 ```
 
 Override the runtime context dir with `E2E_CONTEXT_DIR=<path>` (default
@@ -43,16 +45,22 @@ setup state.
 
 ```text
 test/e2e/
-  scenarios.yaml / expected-states.yaml / suites.yaml   # declarative inputs
-  run-scenario.sh / run-suites.sh / coverage-report.sh  # entry points
-  resolver/        # TypeScript: load, plan, validate, coverage (invoked via tsx)
-  lib/             # shared shell helpers: context, env, cleanup, sandbox-exec, logging
-    setup/         # install + onboard dispatchers (one file per dimension value)
-    assert/        # outcome assertions (inference, credentials, policy, messaging)
+  docs/                              # README.md, MIGRATION.md, parity-map.yaml
+  nemoclaw_scenarios/                # declarative scenario inputs + setup machinery
+    scenarios.yaml / expected-states.yaml
+    install/       # install dispatcher + one file per install profile
+    onboard/       # onboard dispatcher + one file per onboarding profile
     fixtures/      # reusable stubs (fake-openai, fake-{telegram,discord,slack}, older-base-image)
-  suites/          # functional suites grouped by concern (smoke, onboarding, inference, …)
-  parity-map.yaml  # legacy test-*.sh → migrated-suite mapping (per-assertion)
-  MIGRATION.md     # wave-by-wave migration tracker
+    helpers/       # scenario-side shell utilities (e.g. emit-context-from-plan.sh)
+  validation_suites/                 # suite definitions and outcome assertions
+    suites.yaml
+    sandbox-exec.sh
+    assert/        # outcome assertions (inference, credentials, policy, messaging)
+    smoke/ inference/ hermes/ platform/ security/   # suite scripts grouped by concern
+  runtime/                           # entry points + cross-cutting shared libs
+    run-scenario.sh / run-suites.sh / coverage-report.sh
+    resolver/      # TypeScript: load, plan, validate, coverage (invoked via tsx)
+    lib/           # shared shell helpers: context, env, cleanup, logging, artifacts, sandbox-teardown
 ```
 
 The CI entry points are `.github/workflows/e2e-scenarios.yaml`
@@ -64,11 +72,13 @@ unchanged during the migration.
 ## Adding to the matrix
 
 Add-a-scenario, add-a-state, and add-a-suite are short edits to the
-three YAML files above, plus shell scripts under `lib/setup/`,
-`lib/assert/`, or `suites/<category>/`. The schemas in
-[`resolver/schema.ts`](resolver/schema.ts) describe the required
-shape; `run-scenario.sh <id> --plan-only` validates your change
-without running anything destructive.
+three YAML files above, plus shell scripts under
+`nemoclaw_scenarios/install/`, `nemoclaw_scenarios/onboard/`,
+`validation_suites/assert/`, or `validation_suites/<category>/`. The
+schemas in
+[`../runtime/resolver/schema.ts`](../runtime/resolver/schema.ts)
+describe the required shape; `run-scenario.sh <id> --plan-only`
+validates your change without running anything destructive.
 
 New legacy-style `test-*.sh` scripts are blocked by
 `scripts/e2e/lint-conventions.ts` — migrate into the matrix instead.

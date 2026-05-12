@@ -4,8 +4,8 @@
 import { describe, it, expect } from "vitest";
 import path from "node:path";
 
-import { loadMetadataFromDir, loadMetadataFromObjects } from "./e2e/resolver/load.ts";
-import { renderCoverageReport } from "./e2e/resolver/coverage.ts";
+import { loadMetadataFromDir, loadMetadataFromObjects } from "./e2e/runtime/resolver/load.ts";
+import { renderCoverageReport } from "./e2e/runtime/resolver/coverage.ts";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");

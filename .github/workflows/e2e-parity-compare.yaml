@@ -5,7 +5,7 @@
 #
 # Runs a legacy `test/e2e/test-*.sh` script AND its migrated scenario on
 # the same runner, collects PASS/FAIL per assertion from both, and fails
-# the job if any mapped assertion in test/e2e/parity-map.yaml diverges.
+# the job if any mapped assertion in test/e2e/docs/parity-map.yaml diverges.
 #
 # Manual-only (workflow_dispatch). Each migration phase dispatches this
 # workflow for every scenario it introduces and records zero-divergence
@@ -93,7 +93,7 @@ jobs:
         run: |
           mkdir -p .e2e/parity
           LOG=".e2e/parity/scenario.log"
-          bash test/e2e/run-scenario.sh "${{ github.event.inputs.scenario }}" 2>&1 | tee "$LOG" || true
+          bash test/e2e/runtime/run-scenario.sh "${{ github.event.inputs.scenario }}" 2>&1 | tee "$LOG" || true
 
       - name: Compare parity
         env:
@@ -109,7 +109,7 @@ jobs:
             --script "$SCRIPT_ARG" \
             --legacy "$LEGACY_LOG" \
             --scenario "$SCENARIO_LOG" \
-            --map test/e2e/parity-map.yaml
+            --map test/e2e/docs/parity-map.yaml
 
       - name: Upload parity artifacts
         if: always()
