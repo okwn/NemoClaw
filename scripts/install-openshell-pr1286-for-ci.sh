@@ -66,7 +66,7 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
   printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR:-github-actions}" --password-stdin
 fi
 
-docker run --rm \
+docker run --rm -i \
   -e CARGO_TERM_COLOR=always \
   -e CARGO_INCREMENTAL=0 \
   -e MISE_GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
