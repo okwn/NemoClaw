@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const RUNTIME_LIB = path.join(REPO_ROOT, "test/e2e/runtime/lib");
 const VALIDATION_SUITES = path.join(REPO_ROOT, "test/e2e/validation_suites");
 const ASSERT = path.join(VALIDATION_SUITES, "assert");

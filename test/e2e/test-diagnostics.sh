@@ -80,8 +80,8 @@ skip() {
 # ── Resolve repo root ────────────────────────────────────────────────────────
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# shellcheck source=test/e2e/nemoclaw_scenarios/install/helpers/install-path-refresh.sh
-. "$(dirname "${BASH_SOURCE[0]}")/nemoclaw_scenarios/install/helpers/install-path-refresh.sh"
+# shellcheck source=test/e2e/lib/install-path-refresh.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/install-path-refresh.sh"
 
 # ── Install NemoClaw if not present ──────────────────────────────────────────
 install_nemoclaw() {

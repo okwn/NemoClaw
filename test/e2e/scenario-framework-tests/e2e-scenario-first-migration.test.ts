@@ -12,10 +12,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { loadMetadataFromDir } from "./e2e/runtime/resolver/load.ts";
-import { resolveScenario } from "./e2e/runtime/resolver/plan.ts";
+import { loadMetadataFromDir } from "../runtime/resolver/load.ts";
+import { resolveScenario } from "../runtime/resolver/plan.ts";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");
 const RUN_SCENARIO = path.join(E2E_DIR, "runtime", "run-scenario.sh");
 

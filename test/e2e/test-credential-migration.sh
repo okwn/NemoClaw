@@ -85,8 +85,8 @@ SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-e2e-cred-migration}"
 . "$(dirname "${BASH_SOURCE[0]}")/lib/sandbox-teardown.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
 
-# shellcheck source=test/e2e/nemoclaw_scenarios/install/helpers/install-path-refresh.sh
-. "$(dirname "${BASH_SOURCE[0]}")/nemoclaw_scenarios/install/helpers/install-path-refresh.sh"
+# shellcheck source=test/e2e/lib/install-path-refresh.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/install-path-refresh.sh"
 
 # ══════════════════════════════════════════════════════════════════
 # Phase 0: Prerequisites

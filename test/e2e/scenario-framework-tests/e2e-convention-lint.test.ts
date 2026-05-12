@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const LINT_BIN = path.join(REPO_ROOT, "scripts/e2e/lint-conventions.ts");
 const COMPARE_PARITY = path.join(REPO_ROOT, "scripts/e2e/compare-parity.sh");
 const PARITY_MAP_REAL = path.join(REPO_ROOT, "test/e2e/docs/parity-map.yaml");

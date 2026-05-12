@@ -8,10 +8,10 @@ import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
 
-import { resolveScenario, type ResolverInput } from "./e2e/runtime/resolver/plan.ts";
-import { loadMetadataFromDir, loadMetadataFromObjects } from "./e2e/runtime/resolver/load.ts";
+import { resolveScenario, type ResolverInput } from "../runtime/resolver/plan.ts";
+import { loadMetadataFromDir, loadMetadataFromObjects } from "../runtime/resolver/load.ts";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");
 
 function realMetadata(): ResolverInput {

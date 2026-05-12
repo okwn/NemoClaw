@@ -375,8 +375,8 @@ export NEMOCLAW_AGENT="${NEMOCLAW_AGENT:-hermes}"
 
 # shellcheck source=test/e2e/lib/sandbox-teardown.sh
 . "${E2E_DIR}/lib/sandbox-teardown.sh"
-# shellcheck source=test/e2e/nemoclaw_scenarios/install/helpers/install-path-refresh.sh
-. "${E2E_DIR}/nemoclaw_scenarios/install/helpers/install-path-refresh.sh"
+# shellcheck source=test/e2e/lib/install-path-refresh.sh
+. "${E2E_DIR}/lib/install-path-refresh.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
 
 section "Phase 0: Pre-cleanup"

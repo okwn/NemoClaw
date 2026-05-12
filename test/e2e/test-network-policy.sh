@@ -29,8 +29,8 @@ export NEMOCLAW_E2E_DEFAULT_TIMEOUT=3600
 SCRIPT_DIR_TIMEOUT="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=test/e2e/e2e-timeout.sh
 source "${SCRIPT_DIR_TIMEOUT}/e2e-timeout.sh"
-# shellcheck source=test/e2e/nemoclaw_scenarios/install/helpers/install-path-refresh.sh
-source "${SCRIPT_DIR_TIMEOUT}/nemoclaw_scenarios/install/helpers/install-path-refresh.sh"
+# shellcheck source=test/e2e/lib/install-path-refresh.sh
+source "${SCRIPT_DIR_TIMEOUT}/lib/install-path-refresh.sh"
 
 # ── Config ───────────────────────────────────────────────────────────────────
 SANDBOX_NAME="e2e-net-policy"

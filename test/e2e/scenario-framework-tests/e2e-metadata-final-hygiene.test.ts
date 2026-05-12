@@ -15,9 +15,9 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadMetadataFromDir } from "./e2e/runtime/resolver/load.ts";
+import { loadMetadataFromDir } from "../runtime/resolver/load.ts";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const E2E_DIR = path.join(REPO_ROOT, "test/e2e");
 const VALIDATION_SUITES_DIR = path.join(E2E_DIR, "validation_suites");
 const README_PATH = path.join(E2E_DIR, "docs", "README.md");

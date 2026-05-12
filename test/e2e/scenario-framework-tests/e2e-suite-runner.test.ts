@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const RUN_SUITES = path.join(REPO_ROOT, "test/e2e/runtime/run-suites.sh");
 
 function runSuites(args: string[], env: Record<string, string> = {}): SpawnSyncReturns<string> {

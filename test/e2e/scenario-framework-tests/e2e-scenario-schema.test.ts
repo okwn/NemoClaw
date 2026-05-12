@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 
-const E2E_DIR = path.join(import.meta.dirname, "e2e");
+const E2E_DIR = path.resolve(import.meta.dirname, "..");
 const SCENARIOS_PATH = path.join(E2E_DIR, "nemoclaw_scenarios", "scenarios.yaml");
 const STATES_PATH = path.join(E2E_DIR, "nemoclaw_scenarios", "expected-states.yaml");
 const SUITES_PATH = path.join(E2E_DIR, "validation_suites", "suites.yaml");

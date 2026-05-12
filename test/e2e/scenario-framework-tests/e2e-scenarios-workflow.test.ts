@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import yaml from "js-yaml";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const WORKFLOW_PATH = path.join(REPO_ROOT, ".github/workflows/e2e-scenarios.yaml");
 
 type AnyRecord = Record<string, unknown>;
