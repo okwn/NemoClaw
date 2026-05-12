@@ -14,6 +14,7 @@ const portFile = process.env.FAKE_SLACK_API_PORT_FILE || "";
 const captureFile = process.env.FAKE_SLACK_API_CAPTURE_FILE || "";
 const expectedBotToken = process.env.FAKE_SLACK_API_EXPECTED_BOT_TOKEN || "";
 const expectedAppToken = process.env.FAKE_SLACK_API_EXPECTED_APP_TOKEN || "";
+const MAX_BODY_BYTES = 1024 * 1024;
 
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
   console.error(`FAKE_SLACK_API_PORT must be an integer between 0 and 65535 (received: ${rawPort})`);
@@ -37,8 +38,28 @@ function expectedTokenForPath(pathname) {
 
 const server = http.createServer((req, res) => {
   const chunks = [];
-  req.on("data", (chunk) => chunks.push(chunk));
+  let bodyBytes = 0;
+  let bodyTooLarge = false;
+  req.on("data", (chunk) => {
+    if (bodyTooLarge) return;
+    bodyBytes += chunk.length;
+    if (bodyBytes > MAX_BODY_BYTES) {
+      bodyTooLarge = true;
+      record({
+        event: "request-too-large",
+        method: req.method,
+        path: new URL(req.url || "/", "http://fake-slack.local").pathname,
+        bodyBytes,
+      });
+      res.writeHead(413, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "payload_too_large" }));
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
   req.on("end", () => {
+    if (bodyTooLarge) return;
     const body = Buffer.concat(chunks).toString("utf8");
     const pathname = new URL(req.url || "/", "http://fake-slack.local").pathname;
     const authorization = req.headers.authorization || "";

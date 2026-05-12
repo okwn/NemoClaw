@@ -94,19 +94,41 @@ required_driver_bins_present() {
   esac
 }
 
+OPENSHELL_FEATURE_CHECK_ERROR=""
+
 openshell_has_required_messaging_features() {
   local openshell_bin
+  OPENSHELL_FEATURE_CHECK_ERROR=""
   openshell_bin="${1:-$(command -v openshell 2>/dev/null || true)}"
-  [ -n "$openshell_bin" ] || return 1
-  command -v strings >/dev/null 2>&1 || return 1
+  if [ -z "$openshell_bin" ]; then
+    OPENSHELL_FEATURE_CHECK_ERROR="openshell binary was not found."
+    return 1
+  fi
+  if ! command -v strings >/dev/null 2>&1; then
+    OPENSHELL_FEATURE_CHECK_ERROR="'strings' is required to verify OpenShell messaging credential rewrite support. Install binutils or an equivalent package and retry."
+    return 2
+  fi
 
   # Keep this independent of a live gateway. `policy update --dry-run` still
   # needs gateway metadata, but the CLI binary must contain the endpoint-option
   # parser for request-body/WebSocket rewrite support now merged to OpenShell main.
   local binary_strings
   binary_strings="$(strings "$openshell_bin" 2>/dev/null || true)"
-  [[ "$binary_strings" == *"request-body-credential-rewrite"* ]] \
-    && [[ "$binary_strings" == *"websocket-credential-rewrite"* ]]
+  if [[ "$binary_strings" != *"request-body-credential-rewrite"* ]]; then
+    OPENSHELL_FEATURE_CHECK_ERROR="OpenShell binary is missing request-body-credential-rewrite support."
+    return 1
+  fi
+  if [[ "$binary_strings" != *"websocket-credential-rewrite"* ]]; then
+    OPENSHELL_FEATURE_CHECK_ERROR="OpenShell binary is missing websocket-credential-rewrite support."
+    return 1
+  fi
+  return 0
+}
+
+require_openshell_messaging_features() {
+  local openshell_bin="$1"
+  openshell_has_required_messaging_features "$openshell_bin" \
+    || fail "${OPENSHELL_FEATURE_CHECK_ERROR:-OpenShell binary is missing required messaging credential rewrite support.}"
 }
 
 is_native_messaging_websocket_nightly_branch() {
@@ -139,8 +161,7 @@ if is_native_messaging_websocket_nightly_branch; then
   require_main_nightly_binary openshell-gateway "${NEMOCLAW_OPENSHELL_GATEWAY_BIN:-}" >/dev/null
   require_main_nightly_binary openshell-sandbox "${NEMOCLAW_OPENSHELL_SANDBOX_BIN:-}" >/dev/null
 
-  openshell_has_required_messaging_features "$openshell_path" \
-    || fail "OpenShell main nightly binary is missing request-body-credential-rewrite or websocket-credential-rewrite."
+  require_openshell_messaging_features "$openshell_path"
   info "OpenShell main binary feature strings verified."
   exit 0
 fi
@@ -151,10 +172,16 @@ if command -v openshell >/dev/null 2>&1; then
   [ -n "$INSTALLED_VERSION" ] || INSTALLED_VERSION="0.0.0"
   if [ "$RESOLVED_CHANNEL" = "dev" ]; then
     if version_gte "$INSTALLED_VERSION" "$DEV_MIN_VERSION" \
-      && printf '%s\n' "$INSTALLED_VERSION_OUTPUT" | grep -qi 'dev' \
-      && openshell_has_required_messaging_features; then
-      info "openshell already installed: $INSTALLED_VERSION_OUTPUT (dev channel)"
-      exit 0
+      && printf '%s\n' "$INSTALLED_VERSION_OUTPUT" | grep -qi 'dev'; then
+      if openshell_has_required_messaging_features; then
+        info "openshell already installed: $INSTALLED_VERSION_OUTPUT (dev channel)"
+        exit 0
+      else
+        feature_status=$?
+        if [ "$feature_status" = "2" ]; then
+          fail "$OPENSHELL_FEATURE_CHECK_ERROR"
+        fi
+      fi
     fi
     warn "openshell $INSTALLED_VERSION is not the required dev-channel messaging-rewrite build — upgrading..."
   else
@@ -165,7 +192,7 @@ if command -v openshell >/dev/null 2>&1; then
       if ! required_driver_bins_present; then
         warn "openshell $INSTALLED_VERSION is missing Docker-driver binaries — reinstalling pinned OpenShell ${PIN_VERSION}..."
       elif ! openshell_has_required_messaging_features; then
-        fail "openshell $INSTALLED_VERSION is missing required messaging credential rewrite support. Install an OpenShell build that includes provider aliases, WebSocket text rewrite, and request-body credential rewrite."
+        fail "${OPENSHELL_FEATURE_CHECK_ERROR:-openshell $INSTALLED_VERSION is missing required messaging credential rewrite support. Install an OpenShell build that includes provider aliases, WebSocket text rewrite, and request-body credential rewrite.}"
       else
         info "openshell already installed: $INSTALLED_VERSION (>= $MIN_VERSION, <= $MAX_VERSION, messaging rewrite capable)"
         exit 0
@@ -306,8 +333,6 @@ else
   fi
 fi
 
-if ! openshell_has_required_messaging_features "$target_dir/openshell"; then
-  fail "installed openshell is missing required messaging credential rewrite support. Install an OpenShell build that includes provider aliases, WebSocket text rewrite, and request-body credential rewrite."
-fi
+require_openshell_messaging_features "$target_dir/openshell"
 
 info "$("$target_dir/openshell" --version 2>&1 || echo openshell) installed"

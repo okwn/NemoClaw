@@ -119,7 +119,7 @@ describe("install-openshell.sh version check", { timeout: 15_000 }, () => {
   it("fails closed when openshell 0.0.38 lacks required messaging rewrite support", () => {
     const result = runWithInstalledVersion("0.0.38", {}, { capability: false });
     expect(result.status).toBe(1);
-    expect(result.stdout).toMatch(/missing required messaging credential rewrite support/);
+    expect(result.stdout).toMatch(/missing request-body-credential-rewrite support/);
   });
 
   it("accepts macOS openshell 0.0.38 when the gateway and VM driver binaries are installed", () => {

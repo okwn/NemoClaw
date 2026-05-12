@@ -3659,7 +3659,7 @@ function destroyGateway(): boolean {
   if (gatewayRemoved) {
     registry.clearAll();
   }
-  if (dockerDriver || hasLifecycleCommands) {
+  if (gatewayRemoved && (dockerDriver || hasLifecycleCommands)) {
     // Legacy OpenShell gateway cleanup doesn't remove Docker volumes, which
     // leaves corrupted cluster state that breaks the next gateway start.
     dockerRemoveVolumesByPrefix(`openshell-cluster-${GATEWAY_NAME}`, { ignoreError: true });
