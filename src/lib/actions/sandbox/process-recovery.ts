@@ -367,15 +367,8 @@ export function classifyForwardHealthWithReachability(
  * Synchronous reachability check for a local port. Used to override a
  * negative `openshell forward list` verdict when the forward is actually
  * still serving traffic — see {@link classifyForwardHealthWithReachability}.
- *
- * Probes via a TCP connect (no HTTP) so corporate proxy env vars
- * (`ALL_PROXY`, `HTTP_PROXY`) can't intercept the check and return a
- * spurious success — a real risk because curl with a proxy env set
- * happily reports 0 on a 403 from the proxy. A bare TCP connect to
- * 127.0.0.1 ignores those env vars entirely.
- *
- * Returns false on any error so the existing recovery path stays
- * intact when Node can't probe (e.g., restrictive sandbox).
+ * Returns false on any error so the existing recovery path stays intact
+ * when Node can't probe (e.g., restrictive sandbox).
  */
 function isLocalForwardReachable(port: number): boolean {
   const script =

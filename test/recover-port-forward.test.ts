@@ -15,7 +15,9 @@ const tmpFixtures: string[] = [];
 // collides with real nemoclaw installs on the developer's machine: the
 // post-#3334 reachability probe sees the real forward answering and
 // (correctly) classifies the dead-list entry as healthy, skipping recovery.
-let nextFixturePort = 47000;
+// Seed the base with the worker PID so parallel vitest workers (if ever
+// enabled for this file) can't reuse the same ports across processes.
+let nextFixturePort = 47000 + (process.pid % 10000);
 
 afterEach(() => {
   for (const dir of tmpFixtures.splice(0)) {
