@@ -298,6 +298,12 @@ const {
   isGatewayHttpReady,
   waitForGatewayHttpReady,
 } = require("./onboard/gateway-http-readiness") as typeof import("./onboard/gateway-http-readiness");
+const { isGatewayTcpReady } =
+  require("./onboard/gateway-tcp-readiness") as typeof import("./onboard/gateway-tcp-readiness");
+const { trackChildExit } =
+  require("./onboard/child-exit-tracker") as typeof import("./onboard/child-exit-tracker");
+const { reportDockerDriverGatewayStartFailure } =
+  require("./onboard/docker-driver-gateway-failure") as typeof import("./onboard/docker-driver-gateway-failure");
 const preflightUtils: typeof import("./onboard/preflight") = require("./onboard/preflight");
 const clusterImagePatch: typeof import("./cluster-image-patch") = require("./cluster-image-patch");
 const {
@@ -3321,6 +3327,20 @@ function hostCommandExists(commandName: string): boolean {
   });
 }
 
+function ensureOllamaLinuxExtractionDependencies(): void {
+  if (hostCommandExists("zstd")) return;
+  console.log(
+    "  The Ollama Linux installer requires zstd for archive extraction. " +
+      "The next step uses sudo to install zstd; you may be prompted for your password.",
+  );
+  runShell(`if ! command -v apt-get >/dev/null 2>&1; then
+  echo "ERROR: Ollama requires zstd for extraction, and only apt-based Linux is supported here." >&2
+  echo "Install zstd manually (for example, sudo dnf install zstd or sudo pacman -S zstd), then rerun ${cliName()} onboard." >&2
+  exit 1
+fi
+sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zstd`);
+}
+
 function captureProcessArgs(pid: number): string {
   return runCapture(["ps", "-p", String(pid), "-o", "args="], {
     ignoreError: true,
@@ -4963,6 +4983,7 @@ async function startDockerDriverGateway({
       ...gatewayEnv,
     },
   });
+  const childExit = trackChildExit(child); // #3111 zombie-safe liveness
   child.unref();
   const childPid = child.pid ?? 0;
   if (childPid <= 0) {
@@ -4973,7 +4994,7 @@ async function startDockerDriverGateway({
   const pollCount = envInt("NEMOCLAW_HEALTH_POLL_COUNT", 30);
   const pollInterval = envInt("NEMOCLAW_HEALTH_POLL_INTERVAL", 2);
   for (let i = 0; i < pollCount; i += 1) {
-    if (!isPidAlive(childPid)) {
+    if (childExit.exited || !isPidAlive(childPid)) {
       break;
     }
     if (!registerDockerDriverGatewayEndpoint()) {
@@ -4985,32 +5006,19 @@ async function startDockerDriverGateway({
       ignoreError: true,
     });
     const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
-    if (isGatewayHealthy(status, namedInfo, currentInfo)) {
+    // #3111: gate the healthy log on a real TCP probe. See
+    // ./onboard/gateway-tcp-readiness for why TCP, not HTTP. TODO(#3213).
+    if (
+      isGatewayHealthy(status, namedInfo, currentInfo) &&
+      (await isGatewayTcpReady())
+    ) {
       console.log("  ✓ Docker-driver gateway is healthy");
       return;
     }
     if (i < pollCount - 1) sleep(pollInterval);
   }
 
-  const tail = fs.existsSync(logPath)
-    ? fs
-        .readFileSync(logPath, "utf-8")
-        .split("\n")
-        .filter(Boolean)
-        .slice(-20)
-        .join("\n")
-    : "";
-  if (exitOnFailure) {
-    console.error("  Docker-driver gateway failed to start.");
-    if (tail) {
-      console.error("  Gateway log tail:");
-      for (const line of tail.split("\n")) console.error(`    ${redact(line)}`);
-    }
-    console.error("  Troubleshooting:");
-    console.error(`    tail -100 ${logPath}`);
-    console.error("    docker info --format '{{json .CDISpecDirs}}'");
-    process.exit(1);
-  }
+  reportDockerDriverGatewayStartFailure(logPath, childExit, { exitOnFailure });
   throw new Error("Docker-driver gateway failed to start");
 }
 
@@ -6988,29 +6996,23 @@ async function setupNim(
   if (EXPERIMENTAL && gpu && gpu.nimCapable) {
     options.push({ key: "nim-local", label: "Local NVIDIA NIM [experimental]" });
   }
-  // vLLM: profiles in inference/vllm.ts surface as menu entries only when
-  // the user explicitly opts in via NEMOCLAW_PROVIDER, or when
-  // NEMOCLAW_EXPERIMENTAL=1 is set.
+  // vLLM: an already-running local server is safe to offer in-place because
+  // selecting it is an explicit user action. Managed install/start remains
+  // gated by NEMOCLAW_PROVIDER=install-vllm or NEMOCLAW_EXPERIMENTAL because it
+  // pulls images and starts containers.
   // Read NEMOCLAW_PROVIDER directly so interactive runs with an explicit
   // env-var opt-in surface the menu entry too — requestedProvider is null
   // outside non-interactive mode.
   const explicitProvider = (process.env.NEMOCLAW_PROVIDER || "").trim().toLowerCase();
-  const userChoseVllm = explicitProvider === "vllm" || explicitProvider === "install-vllm";
-  if (vllmProfile && (userChoseVllm || EXPERIMENTAL)) {
-    if (vllmRunning) {
-      options.push({
-        key: "vllm",
-        label: `Local vLLM (localhost:${VLLM_PORT}) — running (suggested)`,
-      });
-    } else {
-      const verb = hasVllmImage ? "Start" : "Install";
-      options.push({ key: "install-vllm", label: `${verb} vLLM (${vllmProfile.name})` });
-    }
-  } else if (EXPERIMENTAL && vllmRunning) {
+  const userChoseManagedVllm = explicitProvider === "install-vllm";
+  if (vllmRunning) {
     options.push({
       key: "vllm",
-      label: "Local vLLM [experimental] — running",
+      label: `Local vLLM [experimental] (localhost:${VLLM_PORT}) — running (suggested)`,
     });
+  } else if (vllmProfile && (userChoseManagedVllm || EXPERIMENTAL)) {
+    const verb = hasVllmImage ? "Start" : "Install";
+    options.push({ key: "install-vllm", label: `${verb} vLLM (${vllmProfile.name})` });
   }
   // Skipped when Windows-host already won the cache: the running entry
   // above already covers that case.
@@ -7147,15 +7149,13 @@ async function setupNim(
         }
         selected = options.find((o) => o.key === providerKey);
         if (!selected) {
-          // Action keys fall back to the equivalent running-provider key
-          // when the menu only emits the running entry (the install would
+          // Install action keys fall back to the equivalent running-provider
+          // key when the menu only emits the running entry (the install would
           // have been a no-op anyway).
           if (providerKey === "install-ollama") {
             selected = options.find((o) => o.key === "ollama");
           } else if (providerKey === "install-vllm") {
             selected = options.find((o) => o.key === "vllm");
-          } else if (providerKey === "vllm") {
-            selected = options.find((o) => o.key === "install-vllm");
           } else if (providerKey === "ollama") {
             selected = options.find((o) => o.key === "install-ollama");
           }
@@ -7890,7 +7890,11 @@ async function setupNim(
           });
           sleep(2);
         } else {
-          console.log("  Installing Ollama via official installer...");
+          ensureOllamaLinuxExtractionDependencies();
+          console.log(
+            "  The Ollama installer creates a system user, a systemd service, and writes to /usr/local. " +
+              "It uses sudo for those steps; you may be prompted for your password.",
+          );
           runShell("set -o pipefail; curl -fsSL https://ollama.com/install.sh | sh");
           // Give the just-started ollama.service a moment to bind port
           // 11434 before we probe or apply the systemd drop-in override.
@@ -7915,6 +7919,11 @@ async function setupNim(
           // start: manual launch with the loopback binding.
           if (!isWsl() && hasOllamaSystemdUnit) {
             console.log("  Configuring Ollama systemd loopback override...");
+            console.log(
+              `  Applying an Ollama systemd override (OLLAMA_HOST=127.0.0.1:${OLLAMA_PORT}). ` +
+                "The next steps use sudo to write the drop-in, reload systemd, and restart the service; " +
+                "you may be prompted for your password.",
+            );
             const dropInBody = `[Service]\nEnvironment="OLLAMA_HOST=127.0.0.1:${OLLAMA_PORT}"\n`;
             const tmpDropIn = secureTempFile("nemoclaw-ollama-override", ".conf");
             fs.writeFileSync(tmpDropIn, dropInBody, { mode: 0o644 });
@@ -9580,7 +9589,12 @@ async function setupPoliciesWithSelection(
     supportOptions,
     customPresetNames,
   );
-  let chosen = selectedPresets
+  const filterSupportedPresetNames = (presetNames: string[]) =>
+    presetNames.filter(
+      (name) =>
+        customPresetNames.has(name) || policies.setupPolicyPresetSupported(name, supportOptions),
+    );
+  let chosen = selectedPresets !== null
     ? policies.clampSetupPolicyPresetNames(
         selectedPresets,
         selectablePresets,
@@ -9590,7 +9604,7 @@ async function setupPoliciesWithSelection(
     : null;
 
   // Resume path: caller supplies the preset list from a previous run.
-  if (selectedPresets && selectedPresets.length > 0) {
+  if (selectedPresets !== null) {
     const resumeSelection = chosen || [];
     if (onSelection) onSelection(resumeSelection);
     if (!waitForSandboxReady(sandboxName)) {
@@ -9624,15 +9638,16 @@ async function setupPoliciesWithSelection(
     }
 
     if (policyMode === "custom" || policyMode === "list") {
-      chosen = parsePolicyPresetEnv(process.env.NEMOCLAW_POLICY_PRESETS || "");
-      if (chosen.length === 0) {
+      const envPresets = parsePolicyPresetEnv(process.env.NEMOCLAW_POLICY_PRESETS || "");
+      if (envPresets.length === 0) {
         console.error("  NEMOCLAW_POLICY_PRESETS is required when NEMOCLAW_POLICY_MODE=custom.");
         process.exit(1);
       }
+      chosen = filterSupportedPresetNames(envPresets);
       isAuthoritative = true;
     } else if (policyMode === "suggested" || policyMode === "default" || policyMode === "auto") {
       const envPresets = parsePolicyPresetEnv(process.env.NEMOCLAW_POLICY_PRESETS || "");
-      if (envPresets.length > 0) chosen = envPresets;
+      if (envPresets.length > 0) chosen = filterSupportedPresetNames(envPresets);
     } else {
       // #2429: step 8/8 runs after the sandbox is created. Exiting here left
       // the sandbox with no presets. Warn, optionally suggest the intended
@@ -11383,8 +11398,14 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
         policies.listCustomPresets(sandboxName).map((p: { name: string }) => p.name),
       ),
     );
+    const recordedPolicyPresetsHaveUnsupported =
+      Array.isArray(recordedPolicyPresets) &&
+      recordedPolicyPresetsForSupport.length !== recordedPolicyPresets.length;
     const resumePolicies =
-      resume && sandboxName && arePolicyPresetsApplied(sandboxName, recordedPolicyPresetsForSupport);
+      resume &&
+      sandboxName &&
+      !recordedPolicyPresetsHaveUnsupported &&
+      arePolicyPresetsApplied(sandboxName, recordedPolicyPresetsForSupport);
     if (resumePolicies) {
       skippedStepMessage("policies", recordedPolicyPresetsForSupport.join(", "));
       onboardSession.markStepComplete(
@@ -11405,7 +11426,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       });
       const appliedPolicyPresets = await setupPoliciesWithSelection(sandboxName, {
         selectedPresets:
-          recordedPolicyPresetsForSupport.length > 0
+          Array.isArray(recordedPolicyPresets)
             ? recordedPolicyPresetsForSupport
             : null,
         enabledChannels:

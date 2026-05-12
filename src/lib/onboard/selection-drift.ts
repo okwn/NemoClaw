@@ -48,8 +48,9 @@ export function readSandboxSelectionConfig(
   deps: SelectionConfigReadDeps,
 ): ProviderSelectionConfig | null {
   if (!sandboxName) return null;
-  const tmpDir = fs.mkdtempSync(path.join(deps.tmpDir ?? os.tmpdir(), "nemoclaw-selection-"));
+  let tmpDir: string | undefined;
   try {
+    tmpDir = fs.mkdtempSync(path.join(deps.tmpDir ?? os.tmpdir(), "nemoclaw-selection-"));
     const result = deps.runOpenshell(
       [
         "sandbox",
@@ -72,10 +73,12 @@ export function readSandboxSelectionConfig(
   } catch {
     return null;
   } finally {
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
+    if (tmpDir) {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        // ignore cleanup errors
+      }
     }
   }
 }
