@@ -84,7 +84,7 @@ jobs:
       ADVISOR_DIR: ${{ github.workspace }}/advisor
     steps:
       # Trusted-code boundary: the advisor implementation (pi-analyze.mjs,
-      # dispatch.mjs, comment.mjs, schema.json, pi-models.template.json) is always fetched
+      # dispatch.mts, comment.mjs, schema.json, pi-models.template.json) is always fetched
       # from the main branch of this repo, regardless of what the PR changed.
       # This prevents a future PR from modifying advisor code and executing
       # arbitrary Node in a job that holds API keys and a write-scoped token.
@@ -191,7 +191,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node "$ADVISOR_DIR/tools/e2e-advisor/dispatch.mjs" \
+          node --experimental-strip-types "$ADVISOR_DIR/tools/e2e-advisor/dispatch.mts" \
             --result "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-final-result.json" \
             --workflow nightly-e2e.yaml \
             --workflow-path "$ADVISOR_DIR/.github/workflows/nightly-e2e.yaml" \

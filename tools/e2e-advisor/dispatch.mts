@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -10,14 +9,74 @@ const DEFAULT_TARGET_WORKFLOW = "nightly-e2e.yaml";
 const DEFAULT_DISPATCH_REF = "main";
 const DEFAULT_ALLOWED_AUTHOR_ASSOCIATIONS = "OWNER,MEMBER";
 
+type StringMap = Record<string, string | undefined>;
+
+type PullRequestPayload = {
+  number?: number;
+  author_association?: string;
+  draft?: boolean;
+  head?: {
+    ref?: string;
+    sha?: string;
+    repo?: { full_name?: string };
+  };
+  base?: { ref?: string };
+};
+
+type GitHubEventPayload = {
+  event_name?: string;
+  pull_request?: PullRequestPayload;
+};
+
+type TestRecommendation = {
+  id?: string;
+  job?: string;
+  workflow?: string;
+};
+
+type AdvisorResult = {
+  confidence?: string;
+  requiredTests?: TestRecommendation[];
+};
+
+type DispatchInputs = {
+  jobs: string;
+  target_ref: string;
+  pr_number: string;
+};
+
+type DispatchPlan = {
+  status: "skipped" | "ready" | "dispatched" | "failed";
+  reason: string;
+  repository?: string;
+  workflow: string;
+  ref?: string;
+  inputs?: DispatchInputs;
+  jobs?: string[];
+  ignoredJobs?: string[];
+  recommendedJobs?: string[];
+  dispatchableJobCount?: number;
+  prNumber?: number;
+  targetRef?: string;
+  authorAssociation?: string;
+  allowedAuthorAssociations?: string[];
+};
+
+type ParsedArgs = {
+  result?: string;
+  workflowPath?: string;
+  workflow?: string;
+  outDir?: string;
+};
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
+  main().catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   });
 }
 
-async function main() {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const outDir = args.outDir || "artifacts/e2e-advisor";
   const resultPath = args.result || path.join(outDir, "e2e-advisor-final-result.json");
@@ -28,11 +87,11 @@ async function main() {
 
   fs.mkdirSync(outDir, { recursive: true });
 
-  let output;
+  let output: DispatchPlan;
   try {
-    const result = readJson(resultPath);
+    const result = readJson<AdvisorResult>(resultPath);
     const workflowText = fs.readFileSync(path.resolve(workflowPath), "utf8");
-    const event = readJsonIfExists(process.env.GITHUB_EVENT_PATH) || {};
+    const event = readJsonIfExists<GitHubEventPayload>(process.env.GITHUB_EVENT_PATH) || {};
     const plan = planAutoDispatch({
       result,
       workflowText,
@@ -45,11 +104,11 @@ async function main() {
       output = plan;
     } else {
       const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-      if (!token) {
+      if (!token || !plan.inputs || !plan.ref) {
         output = { ...plan, status: "skipped", reason: "GH_TOKEN/GITHUB_TOKEN was not available" };
       } else {
         await dispatchWorkflow({
-          repo: plan.repository,
+          repo: plan.repository || "",
           workflow: plan.workflow,
           ref: plan.ref,
           inputs: plan.inputs,
@@ -58,11 +117,11 @@ async function main() {
         output = {
           ...plan,
           status: "dispatched",
-          reason: `Dispatched ${plan.workflow} for ${plan.jobs.length} required E2E job(s)`,
+          reason: `Dispatched ${plan.workflow} for ${plan.jobs?.length || 0} required E2E job(s)`,
         };
       }
     }
-  } catch (error) {
+  } catch (error: unknown) {
     output = {
       status: "failed",
       reason: error instanceof Error ? error.message : String(error),
@@ -70,18 +129,18 @@ async function main() {
     };
   }
 
+  const summary = renderDispatchSummary(output);
   fs.writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
-  fs.writeFileSync(summaryPath, renderDispatchSummary(output));
-  console.log(renderDispatchSummary(output));
-
+  fs.writeFileSync(summaryPath, summary);
+  console.log(summary);
 }
 
-function parseArgs(argv) {
-  const parsed = {};
+function parseArgs(argv: string[]): ParsedArgs {
+  const parsed: Record<string, string | undefined> = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg.startsWith("--")) {
-      const key = arg.slice(2).replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+      const key = arg.slice(2).replace(/-([a-z])/g, (_, char: string) => char.toUpperCase());
       parsed[key] = argv[i + 1];
       i += 1;
     }
@@ -89,29 +148,41 @@ function parseArgs(argv) {
   return parsed;
 }
 
-function readJson(filePath) {
-  return JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8"));
+function readJson<T>(filePath: string): T {
+  return JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8")) as T;
 }
 
-function readJsonIfExists(filePath) {
+function readJsonIfExists<T>(filePath: string | undefined): T | undefined {
   if (!filePath) return undefined;
   const resolved = path.resolve(filePath);
-  return fs.existsSync(resolved) ? readJson(resolved) : undefined;
+  return fs.existsSync(resolved) ? readJson<T>(resolved) : undefined;
 }
 
-export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAULT_TARGET_WORKFLOW, event = {}, env = {} }) {
-  const repository = env["GITHUB_REPOSITORY"] || "";
-  const allowedRepository = env["E2E_ADVISOR_AUTO_DISPATCH_REPOSITORY"] || "NVIDIA/NemoClaw";
-  const eventName = env["GITHUB_EVENT_NAME"] || event?.["event_name"] || "";
-  const pr = event["pull_request"];
+export function planAutoDispatch({
+  result,
+  workflowText,
+  targetWorkflow = DEFAULT_TARGET_WORKFLOW,
+  event = {},
+  env = {},
+}: {
+  result: AdvisorResult;
+  workflowText: string;
+  targetWorkflow?: string;
+  event?: GitHubEventPayload;
+  env?: StringMap;
+}): DispatchPlan {
+  const repository = env.GITHUB_REPOSITORY || "";
+  const allowedRepository = env.E2E_ADVISOR_AUTO_DISPATCH_REPOSITORY || "NVIDIA/NemoClaw";
+  const eventName = env.GITHUB_EVENT_NAME || event.event_name || "";
+  const pr = event.pull_request;
 
   const base = {
-    status: "skipped",
+    status: "skipped" as const,
     workflow: targetWorkflow,
     repository,
   };
 
-  if (env["E2E_ADVISOR_AUTO_DISPATCH"] === "0") {
+  if (env.E2E_ADVISOR_AUTO_DISPATCH === "0") {
     return { ...base, reason: "E2E_ADVISOR_AUTO_DISPATCH=0" };
   }
   if (eventName !== "pull_request") {
@@ -139,7 +210,7 @@ export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAUL
   }
 
   const authorAssociation = pr.author_association || "";
-  const allowedAssociations = parseCsv(env["E2E_ADVISOR_AUTO_DISPATCH_AUTHOR_ASSOCIATIONS"] || DEFAULT_ALLOWED_AUTHOR_ASSOCIATIONS);
+  const allowedAssociations = parseCsv(env.E2E_ADVISOR_AUTO_DISPATCH_AUTHOR_ASSOCIATIONS || DEFAULT_ALLOWED_AUTHOR_ASSOCIATIONS);
   if (!allowedAssociations.includes(authorAssociation)) {
     return {
       ...base,
@@ -150,7 +221,7 @@ export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAUL
     };
   }
 
-  if (result?.confidence === "low" && env["E2E_ADVISOR_AUTO_DISPATCH_LOW_CONFIDENCE"] !== "1") {
+  if (result.confidence === "low" && env.E2E_ADVISOR_AUTO_DISPATCH_LOW_CONFIDENCE !== "1") {
     return {
       ...base,
       reason: "advisor confidence was low",
@@ -159,7 +230,7 @@ export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAUL
     };
   }
 
-  const requiredTests = Array.isArray(result?.requiredTests) ? result.requiredTests : [];
+  const requiredTests = Array.isArray(result.requiredTests) ? result.requiredTests : [];
   if (requiredTests.length === 0) {
     return {
       ...base,
@@ -186,7 +257,7 @@ export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAUL
     };
   }
 
-  const maxJobs = Number.parseInt(env["E2E_ADVISOR_AUTO_DISPATCH_MAX_JOBS"] || "0", 10);
+  const maxJobs = Number.parseInt(env.E2E_ADVISOR_AUTO_DISPATCH_MAX_JOBS || "0", 10);
   if (Number.isFinite(maxJobs) && maxJobs > 0 && jobs.length > maxJobs) {
     return {
       ...base,
@@ -199,7 +270,7 @@ export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAUL
   }
 
   const targetRef = pr.head?.sha || pr.head?.ref || "";
-  const dispatchRef = env["E2E_ADVISOR_AUTO_DISPATCH_REF"] || pr.base?.ref || DEFAULT_DISPATCH_REF;
+  const dispatchRef = env.E2E_ADVISOR_AUTO_DISPATCH_REF || pr.base?.ref || DEFAULT_DISPATCH_REF;
   const inputs = {
     jobs: jobs.join(","),
     target_ref: targetRef,
@@ -223,18 +294,18 @@ export function planAutoDispatch({ result, workflowText, targetWorkflow = DEFAUL
   };
 }
 
-export function extractDispatchableJobs(workflowText) {
+export function extractDispatchableJobs(workflowText: string): string[] {
   const jobsBlockStart = workflowText.search(/^jobs:\s*$/m);
   if (jobsBlockStart === -1) return [];
 
   const lines = workflowText.slice(jobsBlockStart).split(/\r?\n/);
-  const jobs = [];
+  const jobs: string[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const match = lines[index].match(/^  ([A-Za-z0-9_-]+):\s*$/);
     if (!match) continue;
 
     const job = match[1];
-    const bodyLines = [];
+    const bodyLines: string[] = [];
     for (let bodyIndex = index + 1; bodyIndex < lines.length; bodyIndex += 1) {
       if (/^  [A-Za-z0-9_-]+:\s*$/.test(lines[bodyIndex])) break;
       bodyLines.push(lines[bodyIndex]);
@@ -247,11 +318,10 @@ export function extractDispatchableJobs(workflowText) {
   return jobs.sort();
 }
 
-export function collectRecommendedJobs(result, targetWorkflow = DEFAULT_TARGET_WORKFLOW) {
-  const requiredTests = Array.isArray(result?.requiredTests) ? result.requiredTests : [];
-  const jobs = [];
+export function collectRecommendedJobs(result: AdvisorResult, targetWorkflow = DEFAULT_TARGET_WORKFLOW): string[] {
+  const requiredTests = Array.isArray(result.requiredTests) ? result.requiredTests : [];
+  const jobs: string[] = [];
   for (const test of requiredTests) {
-    if (!test || typeof test !== "object") continue;
     const workflow = typeof test.workflow === "string" ? path.basename(test.workflow.trim()) : "";
     const workflowMatches = !workflow || workflow === targetWorkflow || workflow === path.basename(targetWorkflow);
     if (!workflowMatches) continue;
@@ -261,18 +331,30 @@ export function collectRecommendedJobs(result, targetWorkflow = DEFAULT_TARGET_W
   return unique(jobs);
 }
 
-function parseCsv(value) {
+function parseCsv(value: string | undefined): string[] {
   return String(value || "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
-function unique(values) {
+function unique(values: string[]): string[] {
   return [...new Set(values)];
 }
 
-async function dispatchWorkflow({ repo, workflow, ref, inputs, token }) {
+async function dispatchWorkflow({
+  repo,
+  workflow,
+  ref,
+  inputs,
+  token,
+}: {
+  repo: string;
+  workflow: string;
+  ref: string;
+  inputs: DispatchInputs;
+  token: string;
+}): Promise<void> {
   const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, {
     method: "POST",
     headers: {
@@ -291,10 +373,9 @@ async function dispatchWorkflow({ repo, workflow, ref, inputs, token }) {
   }
 }
 
-function renderDispatchSummary(result) {
+function renderDispatchSummary(result: DispatchPlan): string {
   const lines = ["# E2E Advisor Auto-dispatch", ""];
-  const status = result.status || "unknown";
-  lines.push(`Status: **${status}**`);
+  lines.push(`Status: **${result.status || "unknown"}**`);
   if (result.reason) lines.push(`Reason: ${result.reason}`);
   if (result.workflow) lines.push(`Workflow: \`${result.workflow}\``);
   if (result.ref) lines.push(`Dispatch ref: \`${result.ref}\``);

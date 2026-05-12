@@ -9,7 +9,7 @@ import {
   collectRecommendedJobs,
   extractDispatchableJobs,
   planAutoDispatch,
-} from "../tools/e2e-advisor/dispatch.mjs";
+} from "../tools/e2e-advisor/dispatch.mts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 

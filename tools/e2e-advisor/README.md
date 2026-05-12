@@ -33,6 +33,8 @@ workflows, scripts, source files, and nearby tests before recommending coverage.
   author association.
 - Auto-dispatch runs the trusted `nightly-e2e.yaml` workflow from `main` and passes the PR head SHA
   as `target_ref`, so the workflow definition itself is not taken from the PR branch.
+- The dispatcher is TypeScript executed by Node with `--experimental-strip-types`, avoiding a
+  package install or build step in the secret-bearing advisor job.
 - The dispatcher does not use a hardcoded job allowlist. It derives dispatchable job names from the
   target workflow's own `inputs.jobs` selective-dispatch predicates and ignores recommendations that
   do not match those jobs.
