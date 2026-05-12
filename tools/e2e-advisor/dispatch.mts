@@ -355,7 +355,13 @@ async function dispatchWorkflow({
   inputs: DispatchInputs;
   token: string;
 }): Promise<void> {
-  const response = await fetch(`https://api.github.com/repos/${repo}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, {
+  const safeRepo = validateRepository(repo);
+  const safeWorkflow = validateWorkflowFile(workflow);
+  const safeRef = validateGitRef(ref);
+  const safeInputs = validateDispatchInputs(inputs);
+  const dispatchUrl = `https://api.github.com/repos/${safeRepo}/actions/workflows/${encodeURIComponent(safeWorkflow)}/dispatches`;
+
+  const response = await fetch(dispatchUrl, {
     method: "POST",
     headers: {
       "Accept": "application/vnd.github+json",
@@ -364,13 +370,59 @@ async function dispatchWorkflow({
       "X-GitHub-Api-Version": "2022-11-28",
       "User-Agent": "nemoclaw-e2e-advisor-dispatcher",
     },
-    body: JSON.stringify({ ref, inputs }),
+    body: JSON.stringify({ ref: safeRef, inputs: safeInputs }),
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`GitHub workflow dispatch failed: ${response.status} ${text}`);
+    // Do not include the response body in thrown errors. GitHub API error text
+    // is network-controlled and this script records failures to artifact files.
+    throw new Error(`GitHub workflow dispatch failed with HTTP ${response.status}`);
   }
+}
+
+function validateRepository(repo: string): string {
+  if (repo !== "NVIDIA/NemoClaw") {
+    throw new Error("Refusing to dispatch outside NVIDIA/NemoClaw");
+  }
+  return repo;
+}
+
+function validateWorkflowFile(workflow: string): string {
+  if (workflow !== DEFAULT_TARGET_WORKFLOW) {
+    throw new Error(`Refusing to dispatch unexpected workflow: ${workflow}`);
+  }
+  return workflow;
+}
+
+function validateGitRef(ref: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(ref)) {
+    throw new Error("Refusing to dispatch an unsafe workflow ref");
+  }
+  if (ref.includes("..") || ref.includes("//") || ref.endsWith("/") || ref.endsWith(".lock")) {
+    throw new Error("Refusing to dispatch an unsafe workflow ref");
+  }
+  return ref;
+}
+
+function validateDispatchInputs(inputs: DispatchInputs): DispatchInputs {
+  const jobs = inputs.jobs.split(",").filter(Boolean);
+  if (jobs.length === 0 || jobs.some((job) => !/^[A-Za-z0-9_-]+$/.test(job))) {
+    throw new Error("Refusing to dispatch unsafe E2E job input");
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/.test(inputs.target_ref)) {
+    throw new Error("Refusing to dispatch unsafe target_ref input");
+  }
+  if (inputs.target_ref.includes("..") || inputs.target_ref.includes("//") || inputs.target_ref.endsWith("/")) {
+    throw new Error("Refusing to dispatch unsafe target_ref input");
+  }
+  if (!/^\d+$/.test(inputs.pr_number)) {
+    throw new Error("Refusing to dispatch unsafe pr_number input");
+  }
+  return {
+    jobs: jobs.join(","),
+    target_ref: inputs.target_ref,
+    pr_number: inputs.pr_number,
+  };
 }
 
 function renderDispatchSummary(result: DispatchPlan): string {
