@@ -145,7 +145,9 @@ e2e_context_require() {
 # Internal: decide whether a key's value should be redacted.
 _e2e_context_is_sensitive_key() {
   local key="$1"
-  case "$key" in
+  local key_upper
+  key_upper="$(printf '%s' "${key}" | tr '[:lower:]' '[:upper:]')"
+  case "${key_upper}" in
     *TOKEN* | *SECRET* | *PASSWORD* | *API_KEY* | *APIKEY* | *CREDENTIAL* | *PRIVATE*)
       return 0
       ;;

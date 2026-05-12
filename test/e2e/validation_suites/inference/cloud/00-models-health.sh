@@ -28,5 +28,4 @@ if [[ -z "${body}" ]]; then
   echo "inference:models-health: no response from models endpoint" >&2
   exit 1
 fi
-echo "${body}" | head -c 512
-echo
+printf '%s\n' "${body:0:512}"

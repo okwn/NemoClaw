@@ -38,6 +38,9 @@ e2e_install_curl() {
       return 1
     fi
   fi
-  bash "${tmp}"
+  if ! bash "${tmp}"; then
+    echo "e2e_install_curl: installer execution failed" >&2
+    return 1
+  fi
   nemoclaw_refresh_install_env
 }
