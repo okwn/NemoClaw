@@ -44,7 +44,7 @@ fi
 
 rustup toolchain install 1.88.0 --profile minimal
 export CARGO_TARGET_DIR="$cargo_target_dir"
-cargo +1.88.0 build --locked --manifest-path "$openshell_src/Cargo.toml" -p openshell-cli --bin openshell
+cargo +1.88.0 build --locked --manifest-path "$openshell_src/Cargo.toml" -p openshell-cli --bin openshell --features bundled-z3
 cargo +1.88.0 build --locked --manifest-path "$openshell_src/Cargo.toml" -p openshell-server --bin openshell-gateway
 cargo +1.88.0 build --locked --manifest-path "$openshell_src/Cargo.toml" -p openshell-sandbox --bin openshell-sandbox
 
