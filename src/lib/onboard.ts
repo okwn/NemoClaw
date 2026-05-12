@@ -288,6 +288,10 @@ const {
 } = require("./onboard/gateway-http-readiness") as typeof import("./onboard/gateway-http-readiness");
 const { isGatewayTcpReady } =
   require("./onboard/gateway-tcp-readiness") as typeof import("./onboard/gateway-tcp-readiness");
+const { trackChildExit } =
+  require("./onboard/child-exit-tracker") as typeof import("./onboard/child-exit-tracker");
+const { reportDockerDriverGatewayStartFailure } =
+  require("./onboard/docker-driver-gateway-failure") as typeof import("./onboard/docker-driver-gateway-failure");
 const preflightUtils: typeof import("./onboard/preflight") = require("./onboard/preflight");
 const clusterImagePatch: typeof import("./cluster-image-patch") = require("./cluster-image-patch");
 const {
@@ -3823,7 +3827,6 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-
 function getDockerDriverGatewayPid(): number | null {
   try {
     const raw = fs.readFileSync(getDockerDriverGatewayPidFile(), "utf-8").trim();
@@ -5287,21 +5290,7 @@ async function startDockerDriverGateway({
       ...gatewayEnv,
     },
   });
-  // Track early-exit via the ChildProcess event rather than process.kill(pid, 0).
-  // isPidAlive() returns true for zombies (detached children that exited but
-  // were not reaped by a wait() call), which masks the failure mode reported
-  // in #3111: the binary crashes on startup but the pid remains in the
-  // process table as a zombie. The 'exit' event fires reliably for detached
-  // children once libuv observes SIGCHLD. We still call unref() below so the
-  // child doesn't hold the Node event loop open after we return.
-  let childExited = false;
-  let childExitCode: number | null = null;
-  let childExitSignal: NodeJS.Signals | null = null;
-  child.once("exit", (code: number | null, signal: NodeJS.Signals | null) => {
-    childExited = true;
-    childExitCode = code;
-    childExitSignal = signal;
-  });
+  const childExit = trackChildExit(child); // #3111 zombie-safe liveness
   child.unref();
   const childPid = child.pid ?? 0;
   if (childPid <= 0) {
@@ -5312,10 +5301,7 @@ async function startDockerDriverGateway({
   const pollCount = envInt("NEMOCLAW_HEALTH_POLL_COUNT", 30);
   const pollInterval = envInt("NEMOCLAW_HEALTH_POLL_INTERVAL", 2);
   for (let i = 0; i < pollCount; i += 1) {
-    // #3111: combine the exit-event check with isPidAlive. The exit event
-    // catches zombies that isPidAlive misses; isPidAlive catches children
-    // we somehow lost track of (defense in depth).
-    if (childExited || !isPidAlive(childPid)) {
+    if (childExit.exited || !isPidAlive(childPid)) {
       break;
     }
     if (!registerDockerDriverGatewayEndpoint()) {
@@ -5327,54 +5313,19 @@ async function startDockerDriverGateway({
       ignoreError: true,
     });
     const currentInfo = runCaptureOpenshell(["gateway", "info"], { ignoreError: true });
-    if (isGatewayHealthy(status, namedInfo, currentInfo)) {
-      // #3111: isGatewayHealthy is a string match on openshell CLI output
-      // ("Server Status" header is always printed, even when the body is
-      // Connection refused), so gate the "healthy" log on a real TCP probe
-      // via isGatewayTcpReady() — the Docker-driver peer of the K3s path's
-      // isGatewayHttpReady() (see ./onboard/gateway-tcp-readiness for why
-      // this path uses TCP rather than HTTP).
-      //
-      // On probe failure, keep polling: the binary may still be binding
-      // its listener. The childExited / isPidAlive check at the top of the
-      // loop terminates us if the process actually died.
-      //
-      // TODO(#3213): surface this as a structured advisory rather than
-      // plain log output once the unified registry lands.
-      if (await isGatewayTcpReady()) {
-        console.log("  ✓ Docker-driver gateway is healthy");
-        return;
-      }
+    // #3111: gate the healthy log on a real TCP probe. See
+    // ./onboard/gateway-tcp-readiness for why TCP, not HTTP. TODO(#3213).
+    if (
+      isGatewayHealthy(status, namedInfo, currentInfo) &&
+      (await isGatewayTcpReady())
+    ) {
+      console.log("  ✓ Docker-driver gateway is healthy");
+      return;
     }
     if (i < pollCount - 1) sleep(pollInterval);
   }
 
-  const tail = fs.existsSync(logPath)
-    ? fs
-        .readFileSync(logPath, "utf-8")
-        .split("\n")
-        .filter(Boolean)
-        .slice(-20)
-        .join("\n")
-    : "";
-  if (exitOnFailure) {
-    console.error("  Docker-driver gateway failed to start.");
-    if (childExited) {
-      const how =
-        childExitSignal !== null
-          ? `killed by signal ${childExitSignal}`
-          : `exited with code ${childExitCode ?? "(unknown)"}`;
-      console.error(`  Gateway process ${how} before becoming ready.`);
-    }
-    if (tail) {
-      console.error("  Gateway log tail:");
-      for (const line of tail.split("\n")) console.error(`    ${redact(line)}`);
-    }
-    console.error("  Troubleshooting:");
-    console.error(`    tail -100 ${logPath}`);
-    console.error("    docker info --format '{{json .CDISpecDirs}}'");
-    process.exit(1);
-  }
+  reportDockerDriverGatewayStartFailure(logPath, childExit, { exitOnFailure });
   throw new Error("Docker-driver gateway failed to start");
 }
 

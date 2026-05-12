@@ -44,12 +44,17 @@ describe("startDockerDriverGateway integration (#3111)", () => {
   const fnBody = fnMatch[0];
 
   it("tracks child-exit so zombies don't fool isPidAlive", () => {
-    expect(fnBody).toMatch(/child\.once\(\s*["']exit["']/);
-    expect(fnBody).toMatch(/childExited\s*=\s*true/);
+    // The concrete tracker lives in src/lib/onboard/child-exit-tracker.ts.
+    // startDockerDriverGateway must use it (not reimplement the listener)
+    // so the extraction stays extracted and the God-Object doesn't regrow.
+    expect(fnBody).toMatch(/trackChildExit\(\s*child\s*\)/);
+    expect(fnBody).not.toMatch(/child\.once\(\s*["']exit["']/);
   });
 
   it("breaks the poll loop when the child has exited", () => {
-    expect(fnBody).toMatch(/childExited\s*\|\|\s*!isPidAlive\(childPid\)/);
+    expect(fnBody).toMatch(
+      /childExit\.exited\s*\|\|\s*!isPidAlive\(childPid\)/,
+    );
   });
 
   it("gates the 'healthy' log on the TCP readiness probe", () => {
@@ -74,20 +79,36 @@ describe("startDockerDriverGateway integration (#3111)", () => {
     expect(before).not.toMatch(/await\s+isGatewayHttpReady\(/);
   });
 
-  it("does NOT define isGatewayTcpReady inline (it must live in its own module)", () => {
-    // The probe must come from src/lib/onboard/gateway-tcp-readiness.ts,
-    // not from an inline declaration in onboard.ts. onboard.ts is the
-    // God Object being decomposed — new helpers should land in focused
-    // modules, mirroring the pattern established by
-    // src/lib/onboard/gateway-http-readiness.ts.
+  it("does NOT define the probe, tracker, or failure reporter inline (they must live in their own modules)", () => {
+    // onboard.ts is the God Object being decomposed — new helpers should
+    // land in focused modules, mirroring the pattern established by
+    // src/lib/onboard/gateway-http-readiness.ts. These imports enforce
+    // that the fix stays extracted and doesn't regrow the entrypoint.
     expect(content).not.toMatch(/function\s+isGatewayTcpReady\s*\(/);
+    expect(content).not.toMatch(/function\s+trackChildExit\s*\(/);
+    expect(content).not.toMatch(
+      /function\s+reportDockerDriverGatewayStartFailure\s*\(/,
+    );
     expect(content).toMatch(
       /require\(\s*["']\.\/onboard\/gateway-tcp-readiness["']/,
     );
+    expect(content).toMatch(
+      /require\(\s*["']\.\/onboard\/child-exit-tracker["']/,
+    );
+    expect(content).toMatch(
+      /require\(\s*["']\.\/onboard\/docker-driver-gateway-failure["']/,
+    );
   });
 
-  it("surfaces child-exit details in the final failure message", () => {
-    expect(fnBody).toMatch(/childExited/);
-    expect(fnBody).toMatch(/childExitSignal|childExitCode/);
+  it("routes child-exit details through the failure reporter, not inline", () => {
+    // The failure message showing HOW the gateway exited (signal or code)
+    // comes from reportDockerDriverGatewayStartFailure's call to
+    // childExit.describeExit() inside its own module. The call site here
+    // only needs to pass childExit along.
+    expect(fnBody).toMatch(
+      /reportDockerDriverGatewayStartFailure\([^)]*childExit[^)]*\)/,
+    );
+    // And the old inline implementation must be gone.
+    expect(fnBody).not.toMatch(/childExit\.describeExit\(\)/);
   });
 });
