@@ -69,7 +69,7 @@ The CI entry points are `.github/workflows/e2e-scenarios.yaml`
 (`nightly-e2e.yaml`, `macos-e2e.yaml`, `wsl-e2e.yaml`, etc.) are
 unchanged during the migration.
 
-## Adding to the matrix
+## How to add a scenario, state, or suite
 
 Add-a-scenario, add-a-state, and add-a-suite are short edits to the
 three YAML files above, plus shell scripts under
