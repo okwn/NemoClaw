@@ -54,6 +54,7 @@ describe("compatible endpoint sandbox smoke helpers", () => {
   it("wraps the script as a base64 decoded temporary shell command", () => {
     const command = buildCompatibleEndpointSandboxSmokeCommand("nvidia/model");
 
+    expect(command).toContain("set -eu");
     expect(command).toContain("base64.b64decode");
     expect(command).toContain('sh "$tmp"');
     expect(command).toContain("trap");
