@@ -3141,6 +3141,123 @@
       ]
     },
     {
+      "script": "test/e2e/test-gateway-drift-preflight.sh",
+      "assertions": [
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 8,
+          "text": "$1",
+          "polarity": "pass",
+          "normalized_id": "1",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 11,
+          "text": "$1",
+          "polarity": "fail",
+          "normalized_id": "1",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 156,
+          "text": "$description",
+          "polarity": "pass",
+          "normalized_id": "description",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 158,
+          "text": "$description (missing pattern: $pattern)",
+          "polarity": "fail",
+          "normalized_id": "description.missing.pattern.pattern",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 165,
+          "text": "$description (unexpected pattern: $pattern)",
+          "polarity": "fail",
+          "normalized_id": "description.unexpected.pattern.pattern",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 167,
+          "text": "$description",
+          "polarity": "pass",
+          "normalized_id": "description",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 175,
+          "text": "npm ci failed",
+          "polarity": "fail",
+          "normalized_id": "npm.ci.failed",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 177,
+          "text": "CLI build failed",
+          "polarity": "fail",
+          "normalized_id": "cli.build.failed",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 187,
+          "text": "backup-all exits non-zero on protobuf mismatch",
+          "polarity": "pass",
+          "normalized_id": "backup.all.exits.non.zero.on.protobuf.mismatch",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 203,
+          "text": "backup-all unexpectedly succeeded with stale patched gateway image",
+          "polarity": "fail",
+          "normalized_id": "backup.all.unexpectedly.succeeded.with.stale.patched.gateway.image",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 204,
+          "text": "backup-all exits non-zero on stale patched gateway image",
+          "polarity": "pass",
+          "normalized_id": "backup.all.exits.non.zero.on.stale.patched.gateway.image",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 209,
+          "text": "sandbox list was called despite preflight image drift",
+          "polarity": "fail",
+          "normalized_id": "sandbox.list.was.called.despite.preflight.image.drift",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 211,
+          "text": "preflight image drift blocks sandbox list",
+          "polarity": "pass",
+          "normalized_id": "preflight.image.drift.blocks.sandbox.list",
+          "mapping_status": "unmapped"
+        },
+        {
+          "script": "test/e2e/test-gateway-drift-preflight.sh",
+          "line": 214,
+          "text": "Gateway drift preflight regression guard completed",
+          "polarity": "pass",
+          "normalized_id": "gateway.drift.preflight.regression.guard.completed",
+          "mapping_status": "unmapped"
+        }
+      ]
+    },
+    {
       "script": "test/e2e/test-gateway-health-honest.sh",
       "assertions": [
         {
@@ -15507,8 +15624,8 @@
     }
   ],
   "totals": {
-    "scripts": 46,
-    "assertions": 1909,
+    "scripts": 47,
+    "assertions": 1923,
     "zero_assertion_scripts": 1
   }
 }

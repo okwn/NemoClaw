@@ -58,6 +58,9 @@ scripts:
   test-full-e2e.sh:
     scenario: ""
     assertions: []
+  test-gateway-drift-preflight.sh:
+    scenario: ""
+    assertions: []
   test-gateway-health-honest.sh:
     scenario: ""
     assertions: []
