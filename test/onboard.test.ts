@@ -4912,7 +4912,8 @@ const { setupInference } = require(${onboardPath});
       path.join(import.meta.dirname, "..", "src", "lib", "onboard", "web-search-verify.ts"),
       "utf-8",
     );
-    const source = `${onboardSource}\n${webSearchVerifySource}`;
+    const source = `${onboardSource}
+${webSearchVerifySource}`;
 
     assert.match(source, /"sandbox",\s*"exec",\s*"-n",\s*sandboxName,\s*"--",\s*"curl"/);
     assert.match(source, /"sandbox",\s*"exec",\s*"-n",\s*sandboxName,\s*"--",\s*"hermes"/);
