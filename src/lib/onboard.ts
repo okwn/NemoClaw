@@ -9712,26 +9712,6 @@ function getWslHostAddress(
   return dashboardAccess.getWslHostAddress({ ...options, runCapture: options.runCapture || runCapture });
 }
 
-function getDashboardAccessInfo(
-  sandboxName: string,
-  options: Parameters<typeof dashboardAccess.getDashboardAccessInfo>[1] = {},
-) {
-  return dashboardAccess.getDashboardAccessInfo(sandboxName, {
-    ...options,
-    runCapture: options.runCapture || runCapture,
-    fetchGatewayAuthToken: fetchGatewayAuthTokenFromSandbox,
-  });
-}
-
-function getDashboardGuidanceLines(
-  access: Parameters<typeof dashboardAccess.getDashboardGuidanceLines>[0] = [],
-  options: Parameters<typeof dashboardAccess.getDashboardGuidanceLines>[1] = {},
-): string[] {
-  return dashboardAccess.getDashboardGuidanceLines(access, {
-    ...options,
-    runCapture: options.runCapture || runCapture,
-  });
-}
 /** Print the post-onboard dashboard with sandbox status and reconfiguration hints. */
 function printDashboard(
   sandboxName: string,
