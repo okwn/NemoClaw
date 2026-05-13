@@ -89,6 +89,19 @@ npx tsx scripts/e2e/extract-legacy-assertions.ts --check
 Scripts with no extracted assertions remain listed with a review TODO so
 parity gaps are visible in diffs.
 
+`test/e2e/docs/parity-map.yaml` is the assertion-level migration map.
+Every inventory assertion must be classified as `mapped`, `deferred`, or
+`retired`; strict validation requires zero `unmapped` assertions:
+
+```bash
+npx tsx scripts/e2e/check-parity-map.ts --strict
+```
+
+Mapped assertions point at stable scenario-side assertion IDs emitted by
+suites (for example `smoke.cli.available`). Deferred assertions must name
+an owner plus a runner or secret requirement, and retired assertions must
+record reviewer/date evidence.
+
 ## How to add a scenario, state, or suite
 
 Add-a-scenario, add-a-state, and add-a-suite are short edits to the
@@ -99,6 +112,12 @@ schemas in
 [`../runtime/resolver/schema.ts`](../runtime/resolver/schema.ts)
 describe the required shape; `run-scenario.sh <id> --plan-only`
 validates your change without running anything destructive.
+
+When adding a suite assertion, emit or preserve a stable `PASS: <id>` /
+`FAIL: <id>` log line, add the legacy assertion mapping if one exists,
+regenerate the inventory, and re-run strict parity validation. Platform-
+specific scenarios such as GPU, macOS, WSL, Brev, or DGX Spark must also
+list `runner_requirements` in `scenarios.yaml`.
 
 New legacy-style `test-*.sh` scripts are blocked by
 `scripts/e2e/lint-conventions.ts` — migrate into the matrix instead.

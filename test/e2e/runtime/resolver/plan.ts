@@ -143,6 +143,7 @@ export function resolveScenario(scenarioId: string, meta: ResolverInput): Resolv
     expected_state: { id: sc.expected_state, config: stateConfig },
     suites: resolvedSuites,
     overrides: sc.overrides,
+    runner_requirements: sc.runner_requirements,
   };
 }
 
@@ -160,6 +161,12 @@ export function formatPlan(plan: ResolvedPlan): string {
     lines.push(`  - ${s.id}`);
     for (const step of s.steps) {
       lines.push(`      * ${step.id} (${step.script})`);
+    }
+  }
+  if (plan.runner_requirements && plan.runner_requirements.length > 0) {
+    lines.push("Runner requirements:");
+    for (const requirement of plan.runner_requirements) {
+      lines.push(`  - ${requirement}`);
     }
   }
   if (plan.overrides) {

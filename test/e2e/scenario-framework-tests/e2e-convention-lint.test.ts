@@ -111,6 +111,22 @@ describe("Phase 1.G convention lint", () => {
     expect(r.stdout + r.stderr).toMatch(/parity.?map/i);
   });
 
+  it("retired_wrapper_lint_should_reject_monolithic_logic", () => {
+    writeLegacy(tmp, "test-retired.sh", 'pass() { echo "PASS: $*"; }\nnemoclaw onboard --name old\n');
+    fs.writeFileSync(
+      path.join(tmp, "test/e2e/docs/parity-map.yaml"),
+      `scripts:\n  test-retired.sh:\n    status: retired\n    scenario: ubuntu-repo-cloud-openclaw\n    assertions: []\n`,
+    );
+    fs.writeFileSync(
+      path.join(tmp, "test/e2e/docs/parity-inventory.generated.json"),
+      JSON.stringify({ generated_by: "test", entrypoints: [], totals: { scripts: 0, assertions: 0, zero_assertion_scripts: 0 } }),
+    );
+    const r = runTsx(LINT_BIN, ["--root", tmp]);
+    expect(r.status).not.toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/test-retired\.sh/);
+    expect(r.stdout + r.stderr).toMatch(/retired-wrapper/);
+  });
+
   it("lint_should_pass_on_current_repo_state", () => {
     const r = runTsx(LINT_BIN);
     expect(r.status, r.stdout + r.stderr).toBe(0);

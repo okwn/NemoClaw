@@ -76,6 +76,14 @@ function validateScenarios(doc: Record<string, unknown>, file: string): Scenario
     if (!Array.isArray(e.suites)) {
       throw new Error(`scenario ${id} must declare a list of 'suites'`);
     }
+    if ("runner_requirements" in e) {
+      if (
+        !Array.isArray(e.runner_requirements) ||
+        e.runner_requirements.some((requirement) => typeof requirement !== "string")
+      ) {
+        throw new Error(`scenario ${id}.runner_requirements must be a list of strings`);
+      }
+    }
     const dims = e.dimensions as Record<string, unknown> | undefined;
     if (!dims) {
       throw new Error(`scenario ${id} must declare 'dimensions'`);
@@ -84,6 +92,22 @@ function validateScenarios(doc: Record<string, unknown>, file: string): Scenario
       if (typeof dims[key] !== "string") {
         throw new Error(`scenario ${id}.dimensions.${key} must be a string`);
       }
+    }
+    const platformId = dims.platform as string;
+    const platform = (doc.platforms as Record<string, Record<string, unknown> | undefined>)[
+      platformId
+    ];
+    const requiresExplicitRunner =
+      platform?.execution_target === "remote" ||
+      platform?.os === "macos" ||
+      platform?.os === "wsl" ||
+      platform?.gpu !== undefined ||
+      platform?.hardware !== undefined;
+    if (
+      requiresExplicitRunner &&
+      (!Array.isArray(e.runner_requirements) || e.runner_requirements.length === 0)
+    ) {
+      throw new Error(`scenario ${id} must declare runner_requirements for platform ${platformId}`);
     }
   }
   return doc as unknown as ScenariosFile;

@@ -30,6 +30,9 @@ describe("Phase 11 final hygiene", () => {
     expect(raw).toMatch(/setup scenario/i);
     expect(raw).toMatch(/expected state/i);
     expect(raw).toMatch(/suite/i);
+    expect(raw).toMatch(/assertion ID|PASS: <id>/i);
+    expect(raw).toMatch(/parity-map\.yaml/);
+    expect(raw).toMatch(/check-parity-map\.ts --strict/);
     expect(raw).toMatch(/run-scenario\.sh/);
     expect(raw).toMatch(/run-suites\.sh/);
     // Adding-a-scenario guidance must exist.

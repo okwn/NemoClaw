@@ -22,10 +22,33 @@ on:
         default: ""
         type: string
       scenario:
-        description: "Migrated scenario id (e.g. ubuntu-repo-cloud-openclaw). Empty = no scenario run, empty-diff only."
+        description: "Migrated scenario id (e.g. ubuntu-repo-cloud-openclaw). Empty = use script map/default bucket scenarios."
         required: false
         default: ""
         type: string
+      bucket:
+        description: "Parity bucket to run (onboarding-baseline, lifecycle, rebuild-runtime, providers-messaging, final-security-policy-platform-misc)."
+        required: false
+        default: ""
+        type: string
+      all_migrated:
+        description: "Run all migrated buckets from parity-map.yaml."
+        required: false
+        default: false
+        type: boolean
+      strict:
+        description: "Pass --strict to compare-parity.sh and fail on missing mapped log assertions."
+        required: false
+        default: true
+        type: boolean
+      deferred_handling:
+        description: "How deferred/retired assertions are handled by reporting."
+        required: false
+        default: "skip"
+        type: choice
+        options:
+          - skip
+          - report
 
 permissions:
   contents: read
@@ -105,11 +128,27 @@ jobs:
           [ -f "$LEGACY_LOG" ]   || : > "$LEGACY_LOG"
           [ -f "$SCENARIO_LOG" ] || : > "$SCENARIO_LOG"
           SCRIPT_ARG="${LEGACY_SCRIPT:-none.sh}"
+          REPORT=".e2e/parity/parity-report.json"
+          STRICT_ARGS=()
+          if [ "${{ github.event.inputs.strict }}" = "true" ]; then
+            STRICT_ARGS+=(--strict)
+          fi
           bash scripts/e2e/compare-parity.sh \
             --script "$SCRIPT_ARG" \
             --legacy "$LEGACY_LOG" \
             --scenario "$SCENARIO_LOG" \
-            --map test/e2e/docs/parity-map.yaml
+            --map test/e2e/docs/parity-map.yaml \
+            --bucket "${{ github.event.inputs.bucket }}" \
+            --all-migrated "${{ github.event.inputs.all_migrated }}" \
+            --deferred-handling "${{ github.event.inputs.deferred_handling }}" \
+            --report "$REPORT" \
+            "${STRICT_ARGS[@]}"
+
+      - name: Render coverage report
+        if: always()
+        run: |
+          mkdir -p .e2e/parity
+          bash test/e2e/runtime/coverage-report.sh > .e2e/parity/coverage-report.md
 
       - name: Upload parity artifacts
         if: always()

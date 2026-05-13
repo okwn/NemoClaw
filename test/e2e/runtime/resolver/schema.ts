@@ -34,6 +34,8 @@ export interface SetupScenario {
   expected_state: string;
   suites: string[];
   overrides?: AnyRecord;
+  /** Explicit CI/hardware requirements for non-default platforms. */
+  runner_requirements?: string[];
   /**
    * Guard: the legacy array form `expected_states: [...]` must not reappear.
    * If present, the loader fails.
@@ -96,4 +98,5 @@ export interface ResolvedPlan {
   expected_state: ResolvedExpectedState;
   suites: ResolvedSuite[];
   overrides?: AnyRecord;
+  runner_requirements?: string[];
 }

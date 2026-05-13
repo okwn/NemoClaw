@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import yaml from "js-yaml";
 
 export type AssertionPolarity = "pass" | "fail";
 export type MappingStatus = "mapped" | "deferred" | "retired" | "unmapped";
@@ -98,69 +99,11 @@ function discoverLegacyEntrypoints(root: string): string[] {
   return scripts.map((name) => path.join(e2eDir, name));
 }
 
-function parseJsonParityMap(text: string): ParsedParityMap | null {
-  try {
-    return JSON.parse(text) as ParsedParityMap;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Narrow YAML reader for the parity statuses we need during inventory
- * generation. The full schema validator introduced in the next phase owns
- * comprehensive validation; this keeps inventory generation dependency-light.
- */
-function parseYamlParityMap(text: string): ParsedParityMap {
-  const result: ParsedParityMap = { scripts: {} };
-  let currentScript: string | null = null;
-  let currentAssertion: ParityAssertionEntry | null = null;
-
-  for (const raw of text.split("\n")) {
-    const line = raw.replace(/\s+$/, "");
-    const scriptMatch = line.match(/^\s{2}([^:#][^:]*):\s*$/);
-    if (scriptMatch) {
-      currentScript = scriptMatch[1].trim();
-      result.scripts![currentScript] = { assertions: [] };
-      currentAssertion = null;
-      continue;
-    }
-
-    if (!currentScript) continue;
-
-    const legacyMatch = line.match(/^\s{6}-\s+legacy:\s*(.*)$/);
-    if (legacyMatch) {
-      currentAssertion = { legacy: parseYamlScalar(legacyMatch[1]) };
-      const assertions = result.scripts![currentScript].assertions as ParityAssertionEntry[];
-      assertions.push(currentAssertion);
-      continue;
-    }
-
-    const statusMatch = line.match(/^\s{8}status:\s*(.*)$/);
-    if (statusMatch && currentAssertion) {
-      currentAssertion.status = parseYamlScalar(statusMatch[1]);
-    }
-  }
-
-  return result;
-}
-
-function parseYamlScalar(raw: string): string {
-  const value = raw.trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
 function loadMappedStatuses(root: string): Map<string, MappingStatus> {
   const mapPath = path.join(root, "test/e2e/docs/parity-map.yaml");
   if (!fs.existsSync(mapPath)) return new Map();
   const text = fs.readFileSync(mapPath, "utf8");
-  const parsed = parseJsonParityMap(text) ?? parseYamlParityMap(text);
+  const parsed = (yaml.load(text) ?? {}) as ParsedParityMap;
   const statuses = new Map<string, MappingStatus>();
 
   for (const [script, entry] of Object.entries(parsed.scripts ?? {})) {

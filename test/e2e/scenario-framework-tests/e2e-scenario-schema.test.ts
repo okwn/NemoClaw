@@ -3,8 +3,11 @@
 
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import yaml from "js-yaml";
+
+import { loadMetadataFromDir } from "../runtime/resolver/load.ts";
 
 const E2E_DIR = path.resolve(import.meta.dirname, "..");
 const SCENARIOS_PATH = path.join(E2E_DIR, "nemoclaw_scenarios", "scenarios.yaml");
@@ -97,6 +100,57 @@ describe("E2E scenario metadata schema", () => {
       "ollama-proxy",
     ]) {
       expect(s, `suite ${id} should be defined`).toHaveProperty(id);
+    }
+  });
+
+  it("platform_specific_scenarios_should_declare_runner_requirements", () => {
+    const scenarios = loadYaml(SCENARIOS_PATH);
+    const setup = scenarios.setup_scenarios as Record<string, AnyRecord>;
+    for (const id of [
+      "macos-repo-cloud-openclaw",
+      "wsl-repo-cloud-openclaw",
+      "gpu-repo-local-ollama-openclaw",
+      "brev-launchable-cloud-openclaw",
+    ]) {
+      expect(setup[id]?.runner_requirements, `${id} missing runner requirements`).toEqual(
+        expect.arrayContaining([expect.any(String)]),
+      );
+    }
+  });
+
+  it("should_reject_platform_specific_fixture_without_runner_requirements", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-schema-runner-"));
+    try {
+      fs.writeFileSync(
+        path.join(tmp, "scenarios.yaml"),
+        `
+platforms:
+  brev-launchable:
+    os: ubuntu
+    execution_target: remote
+installs:
+  launchable: {}
+runtimes:
+  docker-running: {}
+onboarding:
+  cloud-openclaw:
+    agent: openclaw
+setup_scenarios:
+  bad-brev:
+    dimensions:
+      platform: brev-launchable
+      install: launchable
+      runtime: docker-running
+      onboarding: cloud-openclaw
+    expected_state: ready
+    suites: [smoke]
+`,
+      );
+      fs.writeFileSync(tmp + "/expected-states.yaml", "expected_states:\n  ready: {}\n");
+      fs.writeFileSync(tmp + "/suites.yaml", "suites:\n  smoke:\n    steps: []\n");
+      expect(() => loadMetadataFromDir(tmp)).toThrow(/runner_requirements|bad-brev/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });

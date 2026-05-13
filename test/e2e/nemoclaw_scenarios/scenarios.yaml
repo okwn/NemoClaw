@@ -128,6 +128,9 @@ setup_scenarios:
       install: repo-current
       runtime: gpu-docker-cdi
       onboarding: local-ollama-openclaw
+    runner_requirements:
+      - self-hosted-gpu
+      - docker-cdi
     expected_state: local-ollama-openclaw-ready
     suites:
       - smoke
@@ -140,6 +143,8 @@ setup_scenarios:
       install: repo-current
       runtime: docker-running
       onboarding: cloud-openclaw
+    runner_requirements:
+      - macos-latest
     expected_state: cloud-openclaw-ready
     suites:
       - smoke
@@ -151,6 +156,9 @@ setup_scenarios:
       install: repo-current
       runtime: docker-running
       onboarding: cloud-openclaw
+    runner_requirements:
+      - windows-latest
+      - wsl2
     expected_state: cloud-openclaw-ready
     suites:
       - smoke
@@ -162,6 +170,10 @@ setup_scenarios:
       install: launchable
       runtime: docker-running
       onboarding: cloud-openclaw
+    runner_requirements:
+      - ubuntu-latest
+      - brev-api-token
+      - launchable-image
     expected_state: cloud-openclaw-ready
     # Remote gateway must bind to 0.0.0.0 so the GitHub runner can reach it
     # after ssh port-forward. Scenario-level overrides land alongside their
