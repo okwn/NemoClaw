@@ -133,7 +133,7 @@ describe("gateway liveness probe (#2020)", () => {
     );
   });
 
-  it("checks sandbox bridge reachability before every Docker-driver ready return (#3439)", () => {
+  it("Docker-driver gateway startup verifies sandbox bridge reachability before successful returns", () => {
     const dockerStart = content.indexOf("async function startDockerDriverGateway(");
     const dockerEnd = content.indexOf("\nasync function startGateway(", dockerStart);
     expect(dockerStart).toBeGreaterThanOrEqual(0);
