@@ -55,9 +55,10 @@ describe("agentSupportsWebSearch", () => {
     expect(agentSupportsWebSearch({ name: "openclaw", dockerfilePath: agentDockerfile }, null, root)).toBe(
       false,
     );
-    expect(agentSupportsWebSearch({ name: "openclaw", dockerfilePath: "/missing" }, null, root)).toBe(
-      true,
-    );
+    const missingDockerfile = path.join(root, "missing-dockerfile");
+    expect(
+      agentSupportsWebSearch({ name: "openclaw", dockerfilePath: missingDockerfile }, null, root),
+    ).toBe(true);
   });
 
   it("returns false when no candidate declares the web-search ARG", () => {
