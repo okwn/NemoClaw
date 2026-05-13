@@ -612,7 +612,7 @@ The post-create readiness wait defaults to 180 seconds (<code class="docutils li
 <span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard
 </pre></div>
 </div>
-<p>If onboard ends with <code class="docutils literal notranslate"><span class="pre">Sandbox</span> <span class="pre">'&lt;name&gt;'</span> <span class="pre">was</span> <span class="pre">created</span> <span class="pre">but</span> <span class="pre">did</span> <span class="pre">not</span> <span class="pre">become</span> <span class="pre">ready</span> <span class="pre">within</span> <span class="pre">180s</span></code>, the partially-created sandbox is deleted first, so the next attempt with the raised budget starts from a clean state.
+<p>If onboard ends with <code class="docutils literal notranslate"><span class="pre">Sandbox</span> <span class="pre">'&lt;name&gt;'</span> <span class="pre">was</span> <span class="pre">created</span> <span class="pre">but</span> <span class="pre">did</span> <span class="pre">not</span> <span class="pre">become</span> <span class="pre">ready</span> <span class="pre">within</span> <span class="pre">180s</span></code>, onboard deletes the partially-created sandbox first, so the next attempt with the raised budget starts from a clean state.
 For the inference-probe budget that runs earlier in onboarding, see <a class="reference internal" href="../inference/use-local-inference.html#timeout-configuration"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">NEMOCLAW_LOCAL_INFERENCE_TIMEOUT</span></code></span></a>.</p>
 </section>
 <section id="proxy-configuration">
