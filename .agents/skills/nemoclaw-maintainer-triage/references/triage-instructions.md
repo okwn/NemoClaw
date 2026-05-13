@@ -142,9 +142,3 @@ Items are classified as `quality_tier` or `standard_tier` before generation. Thi
 - Do not add generic closing filler phrases
 - If a "Spam signal:" line is present in the item metadata, assign only `status: needs-info` and ask for more detail politely
 - If a "Note: Author also opened..." line is present, briefly acknowledge if the relationship is plausible
-
----
-
-## Next Steps
-
-- [Agent Skills](resources/agent-skills.md) — all available maintainer and user skills
