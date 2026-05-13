@@ -144,9 +144,9 @@ run_backup_case() {
 
   local output="$CASE_DIR/command.out"
   HOME="$home" \
-  PATH="$bin_dir:$PATH" \
-  NEMOCLAW_FAKE_CASE_DIR="$CASE_DIR" \
-  "$@" >"$output" 2>&1
+    PATH="$bin_dir:$PATH" \
+    NEMOCLAW_FAKE_CASE_DIR="$CASE_DIR" \
+    "$@" >"$output" 2>&1
   return $?
 }
 
