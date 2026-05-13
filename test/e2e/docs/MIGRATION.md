@@ -3,14 +3,15 @@
 
 # E2E Migration Tracker
 
-This PR introduces the scenario-based E2E runner and Phase 1 migration
-infrastructure for gradually moving existing `test/e2e/test-*.sh` scripts into
-the matrix introduced by PR #3290. Legacy scripts remain in the repo while each
-wave is ported and verified; follow-up PRs retire them once parity is proven.
+This PR migrates all existing `test/e2e/test-*.sh` scripts into the
+scenario-based runner introduced by PR #3363. Full deep migration
+(Strategy B). Legacy scripts remain in the repo during this PR and run
+in parallel for 1–2 nightly cycles after merge; a follow-up PR retires
+them once parity is verified.
 
-**Merge gate for each migration wave:** every touched legacy entry point must
-have a scenario-based equivalent that produces the same PASS/FAIL outcomes as
-the legacy script in a side-by-side CI run.
+**Merge gate:** All 40 legacy entry points must have a scenario-based
+equivalent that produces the same PASS/FAIL outcomes as the legacy
+script in a side-by-side CI run.
 
 ## Reuse being absorbed
 
@@ -19,16 +20,16 @@ Each row maps to a Wave 0 item or an existing helper.
 
 | # | Category | Fan-in (legacy) | Target absorber | LOC |
 |---|---|---|---|---:|
-| 1 | Logging helpers (`section` / `info` / `pass` / `fail`) | 28–39 scripts redefine each | `lib/logging.sh` (Wave 0.B.5) | 1,556 |
-| 2 | Non-interactive env exports | 187 inlined lines across 40 scripts | `lib/env.sh::e2e_env_apply_noninteractive` + convention 0.G.1 | 175 |
+| 1 | Logging helpers (`section` / `info` / `pass` / `fail`) | 28–39 scripts redefine each | `runtime/lib/logging.sh` (Wave 0.B.5) | 1,556 |
+| 2 | Non-interactive env exports | 187 inlined lines across 40 scripts | `runtime/lib/env.sh::e2e_env_apply_noninteractive` + convention 0.G.1 | 175 |
 | 3 | Repo-root / `SCRIPT_DIR` discovery | 37 lines, 4 competing patterns | One convention (Wave 0.G.2) | 25 |
-| 4 | `nemoclaw list` / `status` / gateway state probes | 142 inlined sites | `lib/assert/{gateway,sandbox}-alive.sh` | 500 |
-| 5 | `bash install.sh ...` invocations | 24 scripts | `lib/setup/install.sh` dispatcher (Wave 0.C.1) | 300 |
-| 6 | `nemoclaw onboard ...` variants | 42 invocations, 8+ flag incantations | `lib/setup/onboard.sh` + profile handlers | 800 |
-| 7 | Docker older-base-image pattern | 3 hand-rolled implementations | `lib/fixtures/older-base-image.sh` (Wave 0.A.1) | 250 |
-| 8 | Trap / cleanup / teardown blocks | 112 lines, ~15 patterns | `lib/cleanup.sh` + convention 0.G.3 | 400 |
-| 9 | Fake-endpoint inline setups | 3 inline variants | `lib/fixtures/fake-{openai,telegram,discord,slack}.sh` (Wave 0.A.2–5) | 150 |
-| 10 | Sandbox-scoped exec (`nemoclaw shell <sb> -- ...`) | 15 scripts reimplement with drift | `lib/sandbox-exec.sh` (Wave 0.A.6) | 200 |
+| 4 | `nemoclaw list` / `status` / gateway state probes | 142 inlined sites | `validation_suites/assert/{gateway,sandbox}-alive.sh` | 500 |
+| 5 | `bash install.sh ...` invocations | 24 scripts | `nemoclaw_scenarios/install/dispatch.sh` dispatcher (Wave 0.C.1) | 300 |
+| 6 | `nemoclaw onboard ...` variants | 42 invocations, 8+ flag incantations | `nemoclaw_scenarios/onboard/dispatch.sh` + profile handlers | 800 |
+| 7 | Docker older-base-image pattern | 3 hand-rolled implementations | `nemoclaw_scenarios/fixtures/older-base-image.sh` (Wave 0.A.1) | 250 |
+| 8 | Trap / cleanup / teardown blocks | 112 lines, ~15 patterns | `runtime/lib/cleanup.sh` + convention 0.G.3 | 400 |
+| 9 | Fake-endpoint inline setups | 3 inline variants | `nemoclaw_scenarios/fixtures/fake-{openai,telegram,discord,slack}.sh` (Wave 0.A.2–5) | 150 |
+| 10 | Sandbox-scoped exec (`nemoclaw shell <sb> -- ...`) | 15 scripts reimplement with drift | `validation_suites/sandbox-exec.sh` (Wave 0.A.6) | 200 |
 | 11 | Hermes/OpenClaw pair-variant scripts | 7 paired scripts share ~70% | Shared suite steps; scenario agent via `expected_state.sandbox.agent` | 800 |
 | 12 | `section "Phase N: X"` markers | Every script inflates logs with phase text | Step-script filename carries the name (convention 0.G.4) | 300 |
 | 13 | Log-capture paths (`/tmp/*.log`) | 25 different conventions; CI artifact upload assumes one | `$E2E_CONTEXT_DIR/logs/` convention 0.G.5 | 300 |
@@ -42,7 +43,7 @@ again, it's a 1-file change instead of a 24-file change.
 
 | Bucket | Legacy LOC | Status |
 |---|---:|---|
-| Wave 0 — fixtures, asserts, setup splits, conventions, parity workflow | — | 🟨 in progress |
+| Wave 0 — fixtures, asserts, setup splits, conventions, parity workflow | — | ⬜ not started |
 | Wave 1 — onboarding baseline | 1,101 | ⬜ |
 | Wave 2 — onboarding lifecycle | 2,013 | ⬜ |
 | Wave 3 — sandbox lifecycle | 2,891 | ⬜ |
@@ -83,7 +84,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ migrated · 🔵 parity verif
 
 ### Wave 4 — rebuild / upgrade
 
-- ⬜ `test-rebuild-openclaw.sh` (453) → `sandbox/rebuild-openclaw/` (uses `lib/fixtures/older-base-image.sh`)
+- ⬜ `test-rebuild-openclaw.sh` (453) → `sandbox/rebuild-openclaw/` (uses `nemoclaw_scenarios/fixtures/older-base-image.sh`)
 - ⬜ `test-rebuild-hermes.sh` (401) → `sandbox/rebuild-hermes/`
 - ⬜ `test-upgrade-stale-sandbox.sh` (241) → `sandbox/upgrade-stale/`
 - ⬜ `test-sandbox-rebuild.sh` (197) → folded into `sandbox/rebuild-openclaw/`
@@ -137,7 +138,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ migrated · 🔵 parity verif
 
 Before merge, `.github/workflows/e2e-parity-compare.yaml` (Wave 0.F.1)
 will run each migrated scenario next to its legacy counterpart and diff
-PASS/FAIL per assertion via `test/e2e/parity-map.yaml` +
+PASS/FAIL per assertion via `test/e2e/docs/parity-map.yaml` +
 `scripts/e2e/compare-parity.sh`.
 
 Merge gate: **zero divergence**. Documented flaky assertions are

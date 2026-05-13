@@ -38,19 +38,6 @@ older_base_image_prepare() {
     esac
   done
 
-  case "${registry}" in
-    *[!A-Za-z0-9._/:@-]* | "" | *//* | */ | *:)
-      echo "older_base_image_prepare: invalid registry: ${registry}" >&2
-      return 2
-      ;;
-  esac
-  case "${tag}" in
-    *[!A-Za-z0-9._-]* | "")
-      echo "older_base_image_prepare: invalid tag: ${tag}" >&2
-      return 2
-      ;;
-  esac
-
   local dir
   dir="$(mktemp -d)"
   local dockerfile="${dir}/Dockerfile.older-base"

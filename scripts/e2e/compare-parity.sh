@@ -88,41 +88,36 @@ const [scriptName, legacyLog, scenarioLog, mapFile] = process.argv.slice(2);
 function loadYaml(file) {
   // Use the repo's vendored js-yaml (a root dependency) when available;
   // otherwise fall back to a tiny parser sufficient for the narrow schema.
-  let yaml = null;
   try {
-    yaml = require("js-yaml");
-  } catch (err) {
-    if (err?.code !== "MODULE_NOT_FOUND") throw err;
-  }
-  if (yaml) {
+    const yaml = require("js-yaml");
     return yaml.load(fs.readFileSync(file, "utf8")) ?? {};
+  } catch (_) {
+    // Ultra-minimal YAML fallback: only handles the parity-map shape.
+    const text = fs.readFileSync(file, "utf8");
+    const out = { scripts: {} };
+    let currentScript = null;
+    let currentEntry = null;
+    const lines = text.split("\n");
+    for (const raw of lines) {
+      if (raw.trimStart().startsWith("#")) continue;
+      if (/^scripts:\s*(\{\})?\s*$/.test(raw)) continue;
+      // scripts:
+      // <indent-2>name.sh:
+      let m = raw.match(/^\s{2}([\w.\-]+):\s*$/);
+      if (m) { currentScript = m[1]; out.scripts[currentScript] = { assertions: [] }; currentEntry = null; continue; }
+      m = raw.match(/^\s{4}scenario:\s*(.+?)\s*$/);
+      if (m && currentScript) { out.scripts[currentScript].scenario = m[1]; continue; }
+      m = raw.match(/^\s{4}assertions:\s*$/);
+      if (m && currentScript) { out.scripts[currentScript].assertions = []; continue; }
+      m = raw.match(/^\s{6}-\s*legacy:\s*"(.*)"\s*$/);
+      if (m && currentScript) { currentEntry = { legacy: m[1] }; out.scripts[currentScript].assertions.push(currentEntry); continue; }
+      m = raw.match(/^\s{8}id:\s*(.+?)\s*$/);
+      if (m && currentEntry) { currentEntry.id = m[1]; continue; }
+      m = raw.match(/^\s{8}flaky:\s*(true|false)\s*$/);
+      if (m && currentEntry) { currentEntry.flaky = m[1] === "true"; continue; }
+    }
+    return out;
   }
-
-  // Ultra-minimal YAML fallback: only handles the parity-map shape.
-  const text = fs.readFileSync(file, "utf8");
-  const out = { scripts: {} };
-  let currentScript = null;
-  let currentEntry = null;
-  const lines = text.split("\n");
-  for (const raw of lines) {
-    if (raw.trimStart().startsWith("#")) continue;
-    if (/^scripts:\s*(\{\})?\s*$/.test(raw)) continue;
-    // scripts:
-    // <indent-2>name.sh:
-    let m = raw.match(/^\s{2}([\w.\-]+):\s*$/);
-    if (m) { currentScript = m[1]; out.scripts[currentScript] = { assertions: [] }; currentEntry = null; continue; }
-    m = raw.match(/^\s{4}scenario:\s*(.+?)\s*$/);
-    if (m && currentScript) { out.scripts[currentScript].scenario = m[1]; continue; }
-    m = raw.match(/^\s{4}assertions:\s*$/);
-    if (m && currentScript) { out.scripts[currentScript].assertions = []; continue; }
-    m = raw.match(/^\s{6}-\s*legacy:\s*"(.*)"\s*$/);
-    if (m && currentScript) { currentEntry = { legacy: m[1] }; out.scripts[currentScript].assertions.push(currentEntry); continue; }
-    m = raw.match(/^\s{8}id:\s*(.+?)\s*$/);
-    if (m && currentEntry) { currentEntry.id = m[1]; continue; }
-    m = raw.match(/^\s{8}flaky:\s*(true|false)\s*$/);
-    if (m && currentEntry) { currentEntry.flaky = m[1] === "true"; continue; }
-  }
-  return out;
 }
 
 function readLog(file) {

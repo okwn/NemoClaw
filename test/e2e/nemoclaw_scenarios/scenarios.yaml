@@ -17,10 +17,10 @@
 #     dimension is genuinely new (e.g. a new platform runner).
 #   - Pick the expected_state that describes the completed environment.
 #   - List the suites to run against it, in the order they should execute.
-#   - Run `bash test/e2e/run-scenario.sh <id> --plan-only` once the
+#   - Run `bash test/e2e/runtime/run-scenario.sh <id> --plan-only` once the
 #     resolver lands to validate references.
 #
-# See `test/e2e/README.md` for the full reading guide and the sparse matrix
+# See `test/e2e/docs/README.md` for the full reading guide and the sparse matrix
 # design that drives the initial three scenarios.
 
 platforms:

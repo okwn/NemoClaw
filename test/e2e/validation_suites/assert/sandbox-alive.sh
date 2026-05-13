@@ -28,16 +28,10 @@ e2e_sandbox_assert_running() {
     echo "e2e_sandbox_assert_running: nemoclaw CLI not on PATH" >&2
     return 1
   fi
-  # Match ${name} as an exact whitespace-delimited token; avoid interpolating
-  # sandbox names into a regex because names may contain metacharacters.
-  if ! nemoclaw list 2>/dev/null | awk -v n="${name}" '
-    {
-      for (i = 1; i <= NF; i++) {
-        if ($i == n) { found = 1; exit }
-      }
-    }
-    END { exit(found ? 0 : 1) }
-  '; then
+  # Match ${name} as a whole token at start of line or surrounded by
+  # whitespace/line boundary (the earlier "^|..." regex had an empty
+  # first alternative that always matched — CodeRabbit review item #7).
+  if ! nemoclaw list 2>/dev/null | grep -qE "(^|[[:space:]])${name}([[:space:]]|$)"; then
     echo "e2e_sandbox_assert_running: sandbox '${name}' not found in 'nemoclaw list'" >&2
     return 1
   fi

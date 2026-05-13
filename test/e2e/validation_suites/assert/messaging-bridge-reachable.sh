@@ -45,7 +45,7 @@ e2e_assert_messaging_bridge_reachable() {
     return 1
   fi
 
-  e2e_env_trace "assert:messaging-bridge-reachable" "${provider}"
+  e2e_env_trace "assert:messaging-bridge-reachable" "${provider}" "${url}"
 
   local code
   code="$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 5 "${url}/ping" 2>/dev/null || echo 000)"

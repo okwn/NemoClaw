@@ -10,9 +10,9 @@
  * `test/e2e/test-*.sh` legacy frontier:
  *
  *   - Suite step scripts MUST NOT re-export non-interactive env vars
- *     (use lib/env.sh::e2e_env_apply_noninteractive instead).
+ *     (use runtime/lib/env.sh::e2e_env_apply_noninteractive instead).
  *   - Suite step scripts MUST NOT register their own traps
- *     (lib/cleanup.sh owns teardown).
+ *     (runtime/lib/cleanup.sh owns teardown).
  *   - Suite step scripts MUST NOT call `section "..."` — filenames carry
  *     the phase label, and e2e_section is emitted by the runner.
  *   - Suite step scripts MUST NOT write to `/tmp/*.log` — use
@@ -51,7 +51,7 @@ const STEP_RULES: Rule[] = [
       ];
       for (const p of patterns) {
         if (p.test(body))
-          return `matched ${p.source}; use lib/env.sh::e2e_env_apply_noninteractive`;
+          return `matched ${p.source}; use runtime/lib/env.sh::e2e_env_apply_noninteractive`;
       }
       return null;
     },
@@ -67,7 +67,7 @@ const STEP_RULES: Rule[] = [
         const line = raw.replace(/^\s+/, "");
         if (line.startsWith("#")) continue;
         if (/^trap\s+[^#]/.test(line)) {
-          return "registered own trap; cleanup lives in lib/cleanup.sh";
+          return "registered own trap; cleanup lives in runtime/lib/cleanup.sh";
         }
       }
       return null;
@@ -81,8 +81,8 @@ const STEP_RULES: Rule[] = [
       for (const raw of lines) {
         const line = raw.replace(/^\s+/, "");
         if (line.startsWith("#")) continue;
-        if (/^(e2e_)?section(\s|$)/.test(line)) {
-          return "calls section/e2e_section; filename carries the phase label";
+        if (/^section\s+["']/.test(line)) {
+          return "calls section; filename carries the phase label";
         }
       }
       return null;
@@ -143,13 +143,8 @@ function parseArgs(argv: string[]): { root: string } {
   const args = argv.slice(2);
   while (args.length > 0) {
     const a = args.shift()!;
-    if (a === "--root") {
-      root = args.shift();
-      if (!root) {
-        process.stderr.write("lint-conventions: --root requires a path\n");
-        process.exit(2);
-      }
-    } else if (a === "-h" || a === "--help") {
+    if (a === "--root") root = args.shift();
+    else if (a === "-h" || a === "--help") {
       process.stdout.write("tsx scripts/e2e/lint-conventions.ts [--root <repo-root>]\n");
       process.exit(0);
     } else {
@@ -181,7 +176,7 @@ function lintSuiteSteps(root: string): LintFinding[] {
 }
 
 /**
- * Read `test/e2e/parity-map.yaml` and return the set of legacy-script
+ * Read `test/e2e/docs/parity-map.yaml` and return the set of legacy-script
  * names that have an entry. Uses a narrow parser to avoid a runtime
  * dependency when js-yaml is not available.
  */

@@ -35,16 +35,11 @@ e2e_assert_policy_preset_applied() {
   local missing=()
   local p
   for p in "${expected[@]}"; do
-    # Match lines that start with the literal preset id (possibly followed by
-    # whitespace / a description / a marker column). Use awk string matching
-    # instead of grep -E so regex metacharacters in preset ids stay literal.
-    if ! printf '%s\n' "${active}" | awk -v preset="${p}" '
-      index($0, preset) == 1 {
-        nextChar = substr($0, length(preset) + 1, 1)
-        if (nextChar == "" || nextChar ~ /[[:space:]]/) found = 1
-      }
-      END { exit found ? 0 : 1 }
-    '; then
+    # Match lines that start with the preset id (possibly followed by
+    # whitespace / a description / a marker column). Anchor at line-start
+    # so a preset id that is a substring of another (e.g. `slack` vs
+    # `slack-app`) does not false-positive.
+    if ! printf '%s\n' "${active}" | grep -qE "^${p}([[:space:]]|$)"; then
       missing+=("${p}")
     fi
   done

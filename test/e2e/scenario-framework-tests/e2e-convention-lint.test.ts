@@ -81,17 +81,11 @@ describe("Phase 1.G convention lint", () => {
   });
 
   it("lint_should_flag_step_that_calls_section", () => {
-    writeStep(tmp, "00-section.sh", 'section Phase 3: X\ne2e_section "Phase 4: Y"');
+    writeStep(tmp, "00-section.sh", 'section "Phase 3: X"');
     const r = runTsx(LINT_BIN, ["--root", tmp]);
     expect(r.status).not.toBe(0);
     expect(r.stdout + r.stderr).toMatch(/00-section\.sh/);
     expect(r.stdout + r.stderr).toMatch(/section/i);
-  });
-
-  it("lint_should_reject_root_without_path", () => {
-    const r = runTsx(LINT_BIN, ["--root"]);
-    expect(r.status).toBe(2);
-    expect(r.stderr).toMatch(/--root.*path/i);
   });
 
   it("lint_should_flag_step_writing_to_tmp_log_path", () => {

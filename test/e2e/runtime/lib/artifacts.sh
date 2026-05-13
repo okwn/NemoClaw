@@ -29,10 +29,6 @@ e2e_artifact_collect_file() {
 e2e_artifact_collect_dir() {
   local src="${1:-}"
   local dst="${2:-}"
-  if [[ -z "${src}" || -z "${dst}" ]]; then
-    echo "e2e_artifact_collect_dir: missing src or dst" >&2
-    return 2
-  fi
   if [[ ! -d "${src}" ]]; then
     echo "e2e_artifact_collect_dir: ${src} not found, skipping" >&2
     return 0

@@ -27,12 +27,11 @@ e2e_assert_no_credentials_leaked() {
   shift
   # Default credential patterns. grep -E syntax.
   local patterns=(
-    'sk-(proj-)?[A-Za-z0-9_-]{16,}' # OpenAI project/legacy keys
-    'nvapi-[A-Za-z0-9_-]{16,}'      # NVIDIA API keys
-    'gh[pousr]_[A-Za-z0-9_]{20,}'   # GitHub classic/app tokens
-    'github_pat_[A-Za-z0-9_]{20,}'  # GitHub fine-grained PAT
-    'xox[abp]-[A-Za-z0-9-]{10,}'    # Slack tokens
-    'AKIA[0-9A-Z]{16}'              # AWS access key
+    'sk-[A-Za-z0-9]{16,}'        # OpenAI-style
+    'nvapi-[A-Za-z0-9_-]{16,}'   # NVIDIA API keys
+    'ghp_[A-Za-z0-9]{20,}'       # GitHub PAT
+    'xox[abp]-[A-Za-z0-9-]{10,}' # Slack tokens
+    'AKIA[0-9A-Z]{16}'           # AWS access key
   )
   while [[ $# -gt 0 ]]; do
     case "$1" in

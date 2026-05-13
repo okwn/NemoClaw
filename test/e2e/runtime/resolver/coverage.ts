@@ -27,7 +27,7 @@ export function renderCoverageReport(
   lines.push("# E2E Setup Scenario Coverage");
   lines.push("");
   lines.push(
-    "_Generated from `test/e2e/nemoclaw_scenarios/`, `test/e2e/validation_suites/`, and `test/e2e/expected-states.yaml`._",
+    "_Generated from `test/e2e/{scenarios,expected-states,suites}.yaml`._",
   );
   lines.push("");
   lines.push("## Scenarios");

@@ -59,11 +59,7 @@ function validateScenarios(doc: Record<string, unknown>, file: string): Scenario
     "onboarding",
     "setup_scenarios",
   ]);
-  const setupRaw = doc.setup_scenarios;
-  if (!setupRaw || typeof setupRaw !== "object" || Array.isArray(setupRaw)) {
-    throw new Error(`metadata file ${file} section 'setup_scenarios' must be a mapping`);
-  }
-  const setup = setupRaw as Record<string, unknown>;
+  const setup = doc.setup_scenarios as Record<string, unknown>;
   for (const [id, entry] of Object.entries(setup)) {
     if (!entry || typeof entry !== "object") {
       throw new Error(`scenario ${id} must be a mapping`);
@@ -103,11 +99,7 @@ function validateExpectedStates(
 
 function validateSuites(doc: Record<string, unknown>, file: string): SuitesFile {
   requireSections(doc, file, ["suites"]);
-  const suitesRaw = doc.suites;
-  if (!suitesRaw || typeof suitesRaw !== "object" || Array.isArray(suitesRaw)) {
-    throw new Error(`metadata file ${file} section 'suites' must be a mapping`);
-  }
-  const suites = suitesRaw as Record<string, unknown>;
+  const suites = doc.suites as Record<string, unknown>;
   for (const [id, entry] of Object.entries(suites)) {
     if (!entry || typeof entry !== "object") {
       throw new Error(`suite ${id} must be a mapping`);

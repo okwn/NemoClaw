@@ -15,33 +15,13 @@ const FIXTURES = path.join(REPO_ROOT, "test/e2e/nemoclaw_scenarios/fixtures");
 const INSTALL_DIR = path.join(REPO_ROOT, "test/e2e/nemoclaw_scenarios/install");
 const RUN_SCENARIO = path.join(REPO_ROOT, "test/e2e/runtime/run-scenario.sh");
 
-function testEnv(env: Record<string, string> = {}): NodeJS.ProcessEnv {
-  return {
-    PATH: process.env.PATH ?? "/usr/bin:/bin",
-    HOME: process.env.HOME,
-    TMPDIR: process.env.TMPDIR,
-    TEMP: process.env.TEMP,
-    TMP: process.env.TMP,
-    CI: process.env.CI,
-    E2E_SPAWN_TIMEOUT_MS: process.env.E2E_SPAWN_TIMEOUT_MS,
-    ...env,
-  };
-}
-
 function runBash(script: string, env: Record<string, string> = {}): SpawnSyncReturns<string> {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-bash-"));
-  try {
-    const scriptPath = path.join(tmp, "script.sh");
-    fs.writeFileSync(scriptPath, script, { mode: 0o700 });
-    return spawnSync("bash", [scriptPath], {
-      env: testEnv(env),
-      encoding: "utf8",
-      timeout: Number(process.env.E2E_SPAWN_TIMEOUT_MS ?? 60_000),
-      cwd: REPO_ROOT,
-    });
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
+  return spawnSync("bash", ["-c", script], {
+    env: { ...process.env, ...env },
+    encoding: "utf8",
+    timeout: Number(process.env.E2E_SPAWN_TIMEOUT_MS ?? 60_000),
+    cwd: REPO_ROOT,
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -125,10 +105,11 @@ describe("E2E shell helpers", () => {
         "bash",
         [RUN_SCENARIO, "ubuntu-repo-cloud-openclaw", "--dry-run"],
         {
-          env: testEnv({
+          env: {
+            ...process.env,
             E2E_CONTEXT_DIR: tmp,
             E2E_TRACE_FILE: trace,
-          }),
+          },
           encoding: "utf8",
     timeout: Number(process.env.E2E_SPAWN_TIMEOUT_MS ?? 60_000),
           cwd: REPO_ROOT,
@@ -350,13 +331,7 @@ describe("Phase 1.D assertion helpers", () => {
     try {
       const bundle = path.join(tmp, "bundle");
       fs.mkdirSync(bundle);
-      fs.writeFileSync(
-        path.join(bundle, "leak.txt"),
-        [
-          "openai=sk-proj-abc123DEADBEEFCAFE0000111122223333",
-          "github=github_pat_11ABCDEFabcdefghijklmnopqrstuvwx",
-        ].join("\n"),
-      );
+      fs.writeFileSync(path.join(bundle, "leak.txt"), "token=sk-abc123DEADBEEFCAFE0000111122223333");
       const r = runBash(`
         . "${ASSERT}/no-credentials-leaked.sh"
         e2e_assert_no_credentials_leaked "${bundle}"

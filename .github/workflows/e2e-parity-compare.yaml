@@ -79,19 +79,11 @@ jobs:
         run: |
           mkdir -p .e2e/parity
           LOG=".e2e/parity/legacy.log"
-          LEGACY_SCRIPT="${{ github.event.inputs.legacy_script }}"
-          case "${LEGACY_SCRIPT}" in
-            test-*.sh) ;;
-            *)
-              echo "::error::legacy_script must be a test-*.sh basename: ${LEGACY_SCRIPT}"
-              exit 1
-              ;;
-          esac
-          if [ ! -x "test/e2e/${LEGACY_SCRIPT}" ]; then
-            echo "::error::legacy script not found: test/e2e/${LEGACY_SCRIPT}"
+          if [ ! -x "test/e2e/${{ github.event.inputs.legacy_script }}" ]; then
+            echo "::error::legacy script not found: test/e2e/${{ github.event.inputs.legacy_script }}"
             exit 1
           fi
-          bash "test/e2e/${LEGACY_SCRIPT}" 2>&1 | tee "$LOG" || true
+          bash "test/e2e/${{ github.event.inputs.legacy_script }}" 2>&1 | tee "$LOG" || true
 
       - name: Run migrated scenario
         id: scenario
