@@ -80,6 +80,11 @@ To make the installer abort instead of continuing, set `NEMOCLAW_SINGLE_SESSION=
 $ NEMOCLAW_SINGLE_SESSION=1 curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 ```
 
+When existing sandboxes were created with OpenShell earlier than `0.0.37`, the installer prompts before running the new automatic gateway upgrade path.
+For scripted installs, set `NEMOCLAW_ACCEPT_EXPERIMENTAL_OPENSHELL_UPGRADE=1` to allow the installer to back up registered sandbox state, retire the old gateway, install the current supported OpenShell release, and restore state during onboarding.
+The automatic path is disabled if the existing `nemoclaw` CLI does not advertise `backup-all`; preserve sandbox state manually before retiring the old gateway in that case.
+To perform those steps manually, run `nemoclaw backup-all`, retire the old gateway with `openshell gateway destroy -g nemoclaw || openshell gateway destroy`, then rerun the installer as `curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_OPENSHELL_UPGRADE_PREPARED=1 bash`.
+
 The wizard prompts for a provider first, then collects the provider credential if needed.
 Supported non-experimental choices include NVIDIA Endpoints, OpenAI, Anthropic, Google Gemini, and compatible OpenAI or Anthropic endpoints.
 Credentials are registered with the OpenShell gateway and never persisted to host disk. See [Credential Storage](../security/credential-storage.md) for details on inspection, rotation, and migration from earlier releases.
@@ -91,8 +96,8 @@ Three tiers are available:
 | Tier | Description |
 |------|-------------|
 | Restricted | Base sandbox only. No third-party network access beyond inference and core agent tooling. |
-| Balanced (default) | Full dev tooling and web search. Package installs, model downloads, and inference. No messaging platform access. |
-| Open | Broad access across third-party services including messaging and productivity. |
+| Balanced (default) | Full dev tooling and web search when the active agent supports web search. Package installs, model downloads, and inference. No messaging platform access. |
+| Open | Broad access across third-party services including messaging and productivity. Agent-specific unsupported presets are filtered out. |
 
 After selecting a tier, the wizard shows a combined preset and access-mode screen where you can include or exclude individual presets and toggle each between read and read-write access.
 For details on tiers and the presets each includes, see [Network Policies](network-policies.md#policy-tiers).
@@ -109,6 +114,7 @@ Onboarding applies tier defaults and preserves any presets you previously added 
 Use `custom` with `NEMOCLAW_POLICY_PRESETS` when you want the explicit list to be authoritative.
 Onboarding removes any preset that is not in the list.
 `skip` leaves the applied set untouched and does not apply tier defaults.
+NemoClaw filters tier suggestions and resume selections by active agent support, so unsupported presets such as Brave Search are not reapplied to agents that do not support them.
 
 | Value | Behaviour |
 |-------|-----------|
@@ -184,6 +190,11 @@ Before creating the gateway, the wizard runs preflight checks.
 It verifies that Docker is reachable, warns on untested runtimes such as Podman, and prints host remediation guidance when prerequisites are missing.
 The preflight also enforces the OpenShell version range declared in the blueprint (`min_openshell_version` and `max_openshell_version`).
 If the installed OpenShell version falls outside this range, onboarding exits with an actionable error and a link to compatible releases.
+
+When NemoClaw finds an existing gateway to reuse, it probes the host gateway HTTP endpoint before declaring the gateway reusable.
+If the container is running but the upstream is still warming up (for example, immediately after a Docker daemon restart), NemoClaw rebuilds the gateway instead of trusting stale metadata.
+Tune the wait via `NEMOCLAW_REUSE_HEALTH_POLL_COUNT` (default `6`) and `NEMOCLAW_REUSE_HEALTH_POLL_INTERVAL` (default `5` seconds).
+The poll count is clamped to a minimum of `1` so the probe always runs at least once, and the interval is clamped to a minimum of `0` (no sleep between attempts).
 
 #### `--from <Dockerfile>`
 
@@ -529,6 +540,41 @@ If the preset is unknown or not currently applied, the command exits non-zero wi
 
 Unchecking a preset in the onboard TUI checkbox also removes it from the sandbox.
 
+### `nemoclaw <name> hosts-add`
+
+Add a host alias to the sandbox pod template.
+Use this when a sandbox needs a stable LAN-only name, such as a local SearXNG or internal model endpoint, without dropping to `docker exec` and `kubectl patch`.
+
+```console
+$ nemoclaw my-assistant hosts-add searxng.local 192.168.1.105
+```
+
+The command validates the hostname and IP address, rejects duplicate hostnames, and patches `spec.podTemplate.spec.hostAliases` on the sandbox resource.
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print the JSON patch for the resulting `hostAliases` list without applying it |
+
+### `nemoclaw <name> hosts-list`
+
+List host aliases configured on the sandbox resource.
+
+```console
+$ nemoclaw my-assistant hosts-list
+```
+
+### `nemoclaw <name> hosts-remove`
+
+Remove a hostname from the sandbox `hostAliases` list.
+
+```console
+$ nemoclaw my-assistant hosts-remove searxng.local
+```
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Print the JSON patch for the resulting `hostAliases` list without applying it |
+
 ### `nemoclaw <name> channels list`
 
 List the messaging channels NemoClaw knows about (`telegram`, `discord`, `slack`) with a short description.
@@ -867,6 +913,22 @@ $ nemoclaw status
 $ nemoclaw status --json
 ```
 
+When at least one sandbox is registered and the named NemoClaw gateway is unreachable, unhealthy, or attached to a different sandbox, the command prints a `gateway: down [state] (reason)` line between the sandbox list and the host-service list.
+The command suggests `openshell gateway start --name nemoclaw` or `nemoclaw onboard --resume` to recover.
+It exits with code `1` so shell scripts and CI can detect the degraded state from `$?`.
+For `--json`, the structured output includes `gatewayHealth`, and the exit code is set after the report is generated.
+A clean machine with no registered sandboxes keeps the legacy `0` exit because no gateway is expected to be configured yet.
+
+### `nemoclaw inference get`
+
+Show the active live inference provider and model from the NemoClaw-managed OpenShell gateway.
+Use this command when you want the direct runtime route without the rest of the sandbox status output.
+
+```console
+$ nemoclaw inference get
+$ nemoclaw inference get --json
+```
+
 ### `nemoclaw inference set`
 
 Switch the active inference provider or model for a NemoClaw-managed OpenClaw or Hermes sandbox.
@@ -1010,19 +1072,28 @@ All ports must be non-privileged integers between 1024 and 65535.
 
 | Variable | Default | Service |
 |----------|---------|---------|
-| `NEMOCLAW_GATEWAY_PORT` | 8080 | OpenShell gateway |
+| `NEMOCLAW_GATEWAY_PORT` | 8080 | OpenShell gateway port |
+| `NEMOCLAW_GATEWAY_BIND_ADDRESS` | 127.0.0.1 | OpenShell gateway bind address (`127.0.0.1` or `0.0.0.0`) |
 | `NEMOCLAW_DASHBOARD_PORT` | 18789 (auto-derived from `CHAT_UI_URL` port if set) | Dashboard UI |
 | `NEMOCLAW_VLLM_PORT` | 8000 | vLLM / NIM inference |
 | `NEMOCLAW_OLLAMA_PORT` | 11434 | Ollama inference |
 | `NEMOCLAW_OLLAMA_PROXY_PORT` | 11435 | Ollama auth proxy |
 
 If a port value is not a valid integer or falls outside the allowed range, the CLI exits with an error.
+`NEMOCLAW_GATEWAY_PORT` also cannot overlap the configured dashboard, vLLM, Ollama, or Ollama proxy ports, and cannot use the dashboard auto-allocation range `18789` through `18799` or the default inference/proxy ports `8000`, `11434`, and `11435`.
 On non-WSL hosts, `NEMOCLAW_OLLAMA_PORT` and `NEMOCLAW_OLLAMA_PROXY_PORT` must be different.
 If you run Ollama on port 11435, set `NEMOCLAW_OLLAMA_PROXY_PORT` to another free port before onboarding.
+
+`NEMOCLAW_GATEWAY_BIND_ADDRESS` accepts only `127.0.0.1` and `0.0.0.0`.
+Binding the OpenShell gateway to `0.0.0.0` may make it reachable from other hosts on the network.
 
 ```console
 $ export NEMOCLAW_DASHBOARD_PORT=19000
 $ nemoclaw onboard
+```
+
+```console
+$ NEMOCLAW_GATEWAY_BIND_ADDRESS=0.0.0.0 NEMOCLAW_GATEWAY_PORT=8990 nemoclaw onboard
 ```
 
 These overrides apply to onboarding, status checks, health probes, and the uninstaller.
@@ -1064,6 +1135,7 @@ These flags toggle optional behaviors during onboarding; set them before running
 | Variable | Format | Effect |
 |----------|--------|--------|
 | `NEMOCLAW_YES` | `1` to enable | Auto-accepts confirmation prompts (`--yes` equivalent) including in helpers like the Ollama proxy auth setup. |
+| `NEMOCLAW_NO_EXPRESS` | `1` to enable | Installer-only. Skips the DGX Spark and DGX Station express install prompt and continues with the normal interactive onboarding flow. |
 | `NEMOCLAW_EXPERIMENTAL` | `1` to enable | Surfaces experimental providers and flows in onboarding. |
 | `NEMOCLAW_IGNORE_RUNTIME_RESOURCES` | `1` to enable | Suppresses the under-provisioned runtime warning during preflight. Use only when you know the sandbox host meets the minimums. |
 | `NEMOCLAW_DISABLE_OVERLAY_FIX` | `1` to enable | Skips the Docker overlay-fix step during sandbox build. For environments where the fix is incompatible. |
