@@ -270,9 +270,8 @@ if command -v openshell >/dev/null 2>&1; then
   else
     if version_gte "$INSTALLED_VERSION" "$MIN_VERSION"; then
       if ! version_gte "$MAX_VERSION" "$INSTALLED_VERSION"; then
-        fail "openshell $INSTALLED_VERSION is above the maximum ($MAX_VERSION) supported by this NemoClaw release. Upgrade NemoClaw first."
-      fi
-      if ! required_driver_bins_present; then
+        warn "openshell $INSTALLED_VERSION is above the maximum ($MAX_VERSION) supported by this NemoClaw release — reinstalling pinned OpenShell ${PIN_VERSION}..."
+      elif ! required_driver_bins_present; then
         warn "openshell $INSTALLED_VERSION is missing Docker-driver binaries — reinstalling pinned OpenShell ${PIN_VERSION}..."
       elif ! openshell_has_required_messaging_features; then
         fail "${OPENSHELL_FEATURE_CHECK_ERROR:-openshell $INSTALLED_VERSION is missing required messaging credential rewrite support. Install an OpenShell build that includes provider aliases, WebSocket text rewrite, and request-body credential rewrite.}"

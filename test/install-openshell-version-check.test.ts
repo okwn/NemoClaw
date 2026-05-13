@@ -16,8 +16,8 @@ function writeExecutable(target: string, contents: string) {
 /**
  * Run install-openshell.sh with a fake `openshell` binary that reports the
  * given version. The download/install code path is never reached because we
- * either exit early (version + capability ok / too high / missing capability)
- * or hit the upgrade warn and then the script tries to download — so we stub
+ * either exit early (version + capability ok / missing capability)
+ * or hit an upgrade/reinstall warn and then the script tries to download — so we stub
  * curl and gh to fail fast.
  */
 function runWithInstalledVersion(
@@ -445,18 +445,20 @@ exit 0`,
     expect(result.stdout).toMatch(/below minimum.*upgrading/);
   });
 
-  it("fails with a clear error when openshell is above MAX_VERSION", () => {
+  it("reinstalls the pinned release when openshell is above MAX_VERSION", () => {
     const result = runWithInstalledVersion("0.0.40");
-    expect(result.status).toBe(1);
-    // `fail()` writes to stderr as of #3446; previously stdout.
-    expect(result.stderr).toMatch(/above the maximum/);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toMatch(/above the maximum.*reinstalling pinned OpenShell 0\.0\.39/);
+    expect(result.stdout).toMatch(/Installing OpenShell from release 'v0\.0\.39'/);
+    expect(result.stderr).not.toMatch(/Upgrade NemoClaw first/);
   });
 
-  it("fails with a clear error when openshell is at a much newer version", () => {
+  it("reinstalls the pinned release when openshell is at a much newer version", () => {
     const result = runWithInstalledVersion("0.1.0");
-    expect(result.status).toBe(1);
-    // `fail()` writes to stderr as of #3446; previously stdout.
-    expect(result.stderr).toMatch(/above the maximum/);
+    expect(result.status).not.toBe(0);
+    expect(result.stdout).toMatch(/above the maximum.*reinstalling pinned OpenShell 0\.0\.39/);
+    expect(result.stdout).toMatch(/Installing OpenShell from release 'v0\.0\.39'/);
+    expect(result.stderr).not.toMatch(/Upgrade NemoClaw first/);
   });
 
   it("accepts an installed OpenShell dev-channel Docker-driver build", () => {
