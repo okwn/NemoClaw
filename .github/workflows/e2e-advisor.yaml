@@ -72,12 +72,16 @@ jobs:
     name: Pi semantic E2E recommendation
     if: ${{ github.repository == 'NVIDIA/NemoClaw' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'NVIDIA/NemoClaw') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       # Pin the Pi coding agent to a known-good version. Updates should go through
       # the normal dependency-review path (e.g. Dependabot) so a compromised
       # upstream release cannot execute automatically in this secret-bearing job.
       PI_AGENT_VERSION: "0.73.1"
+      # Keep Pi's own timeout shorter than the GitHub job timeout so the
+      # analyzer can write failure artifacts, summaries, and PR comments.
+      PI_E2E_ADVISOR_TIMEOUT_MS: "900000"
+      PI_E2E_ADVISOR_HEARTBEAT_MS: "60000"
       # The trusted checkout always lives at this path and is the only source
       # of code executed in this job. The PR content, if any, is mounted as
       # read-only analysis data under PR_WORKDIR.
