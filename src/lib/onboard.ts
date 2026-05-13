@@ -10394,10 +10394,8 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
 
     const canReuseHealthyGateway = gatewayReuseState === "healthy";
 
-    // Verify legacy reusable gateways have GPU passthrough when needed. The
-    // openshell-cluster-* Docker container only exists on the legacy gateway
-    // path; Docker-driver/package-managed gateways use the live CLI health
-    // check as the reuse signal.
+    // Verify legacy reusable gateways have GPU passthrough. Docker-driver/package-managed
+    // gateways use live CLI health, not openshell-cluster-* DeviceRequests.
     if (
       shouldInspectLegacyGatewayGpuPassthrough(
         gatewayReuseState,
