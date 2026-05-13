@@ -191,13 +191,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node --experimental-strip-types "$ADVISOR_DIR/tools/e2e-advisor/dispatch.mts" \
-            --result "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-final-result.json" \
-            --workflow nightly-e2e.yaml \
-            --workflow-path "$ADVISOR_DIR/.github/workflows/nightly-e2e.yaml" \
-            --out-dir "$GITHUB_WORKSPACE/artifacts/e2e-advisor"
-          if [ -f "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-dispatch-summary.md" ]; then
-            cat "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-dispatch-summary.md" >> "$GITHUB_STEP_SUMMARY"
+          DISPATCH_RESULT="$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-dispatch-result.json"
+          DISPATCH_SUMMARY="$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-dispatch-summary.md"
+          if [ -f "$ADVISOR_DIR/tools/e2e-advisor/dispatch.mts" ]; then
+            node --experimental-strip-types "$ADVISOR_DIR/tools/e2e-advisor/dispatch.mts" \
+              --result "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-final-result.json" \
+              --workflow nightly-e2e.yaml \
+              --workflow-path "$ADVISOR_DIR/.github/workflows/nightly-e2e.yaml" \
+              --out-dir "$GITHUB_WORKSPACE/artifacts/e2e-advisor"
+          else
+            echo "Skipping E2E auto-dispatch: trusted main checkout does not yet contain dispatch.mts"
+            mkdir -p "$GITHUB_WORKSPACE/artifacts/e2e-advisor"
+            printf '{\n  "status": "skipped",\n  "reason": "trusted main checkout does not yet contain dispatch.mts",\n  "workflow": "nightly-e2e.yaml"\n}\n' > "$DISPATCH_RESULT"
+            printf '# E2E Advisor Auto-dispatch\n\nStatus: **skipped**\nReason: trusted main checkout does not yet contain dispatch.mts\nWorkflow: `nightly-e2e.yaml`\n' > "$DISPATCH_SUMMARY"
+          fi
+          if [ -f "$DISPATCH_SUMMARY" ]; then
+            cat "$DISPATCH_SUMMARY" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Post E2E advisor PR comment
@@ -207,12 +216,20 @@ jobs:
           GH_TOKEN: ${{ secrets.E2E_ADVISOR_GITHUB_TOKEN || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          node --experimental-strip-types "$ADVISOR_DIR/tools/e2e-advisor/comment.mts" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pr "$PR_NUMBER" \
-            --summary "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-pi-summary.md" \
-            --result "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-final-result.json" \
+          COMMENT_ARGS=(
+            --repo "$GITHUB_REPOSITORY"
+            --pr "$PR_NUMBER"
+            --summary "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-pi-summary.md"
+            --result "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-final-result.json"
             --dispatch "$GITHUB_WORKSPACE/artifacts/e2e-advisor/e2e-advisor-dispatch-result.json"
+          )
+          if [ -f "$ADVISOR_DIR/tools/e2e-advisor/comment.mts" ]; then
+            node --experimental-strip-types "$ADVISOR_DIR/tools/e2e-advisor/comment.mts" "${COMMENT_ARGS[@]}"
+          elif [ -f "$ADVISOR_DIR/tools/e2e-advisor/comment.mjs" ]; then
+            node "$ADVISOR_DIR/tools/e2e-advisor/comment.mjs" "${COMMENT_ARGS[@]}"
+          else
+            echo "Skipping E2E advisor comment: trusted main checkout does not contain comment.mts or comment.mjs"
+          fi
 
       - name: Upload advisor artifacts
         if: always()
