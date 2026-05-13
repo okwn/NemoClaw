@@ -39,7 +39,7 @@ describe("selection drift helpers", () => {
   });
 
   it("returns null when the sandbox download fails", () => {
-    const runOpenshell = vi.fn(() => ({ status: 1 }));
+    const runOpenshell = vi.fn((_args: string[]) => ({ status: 1 }));
 
     expect(readSandboxSelectionConfig("alpha", { runOpenshell })).toBeNull();
     expect(runOpenshell).toHaveBeenCalledWith(
@@ -48,10 +48,24 @@ describe("selection drift helpers", () => {
         "download",
         "alpha",
         "/sandbox/.nemoclaw/config.json",
-        expect.stringMatching(/nemoclaw-selection-.*\/$/),
+        expect.any(String),
       ],
       { ignoreError: true, stdio: ["ignore", "ignore", "ignore"] },
     );
+    const downloadDir = String(runOpenshell.mock.calls[0]?.[0]?.[4] ?? "");
+    expect(path.basename(downloadDir)).toMatch(/^nemoclaw-selection-/);
+  });
+
+  it("returns null when the temp directory cannot be created", () => {
+    const root = tmpRoot();
+    const notDirectory = path.join(root, "not-a-directory");
+    fs.writeFileSync(notDirectory, "", "utf-8");
+    const runOpenshell = vi.fn(() => ({ status: 0 }));
+
+    expect(
+      readSandboxSelectionConfig("alpha", { runOpenshell, tmpDir: notDirectory }),
+    ).toBeNull();
+    expect(runOpenshell).not.toHaveBeenCalled();
   });
 
   it("reads a downloaded selection config and cleans up the temp directory", () => {

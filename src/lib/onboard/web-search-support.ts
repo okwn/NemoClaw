@@ -4,6 +4,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { ROOT } from "../state/paths";
+
 export type WebSearchAgent = {
   name?: string | null;
   displayName?: string | null;
@@ -22,7 +24,7 @@ export type WebSearchAgent = {
 export function agentSupportsWebSearch(
   agent: WebSearchAgent,
   dockerfilePathOverride: string | null = null,
-  rootDir = process.cwd(),
+  rootDir = ROOT,
 ): boolean {
   // Hermes has native web tools, but the NemoClaw onboarding wizard wires the
   // OpenClaw Brave provider path. Do not offer a Brave prompt for Hermes until

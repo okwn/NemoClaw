@@ -80,10 +80,10 @@ fi
 # PATH was already locked down at the top of this script (before the
 # early stderr capture). This comment marks the original location.
 
-# Redirect tool caches and state to /tmp so they don't fail on the read-only
-# /sandbox home directory (#804). Without these, tools would try to create
-# dotfiles (~/.npm, ~/.cache, ~/.bash_history, ~/.gitconfig, ~/.local, ~/.claude)
-# in the Landlock read-only home and fail.
+# Redirect tool caches and state to /tmp so transient package-manager and
+# shell state stays outside the agent's durable workspace. Without these, tools
+# would create noisy dotfiles (~/.npm, ~/.cache, ~/.bash_history, ~/.gitconfig,
+# ~/.local, ~/.claude) under /sandbox.
 #
 # IMPORTANT: This array is the single source of truth for tool-cache redirects.
 # The same entries are emitted into /tmp/nemoclaw-proxy-env.sh (see below) so
@@ -331,6 +331,159 @@ restore_openclaw_config_after_write() {
   lock_config_after_write "$config_file" "$hash_file"
 }
 
+# ── Empty-config recovery and baseline (#3118) ──────────────────
+# Upstream OpenShell's `openshell inference set` (run inside the sandbox to
+# change the runtime model) can truncate /sandbox/.openclaw/openclaw.json to
+# 0 bytes when its write fails partway through. The corrupted file then
+# breaks `openclaw doctor --fix` (its own JSON5.parse crashes on empty
+# input) and any other consumer of the config.
+#
+# These two functions are NemoClaw's defensive recovery — they don't fix the
+# upstream bugs (which still need to be filed against OpenShell and OpenClaw)
+# but they let a sandbox restart restore working state instead of leaving the
+# sandbox unusable. Both are scoped to mutable-default mode: in shields-up
+# mode openclaw.json is root-owned and immutable, so an empty file there
+# implies tampering (which integrity check should catch) rather than the
+# #3118 trigger (which requires a writable config).
+
+# Capture a known-good copy of openclaw.json for later restore. Idempotent:
+# only writes the baseline once. Runs at root after apply_model_override and
+# apply_cors_override so the baseline reflects the post-override config that
+# the user actually started with. Refuses to capture broken state (empty,
+# whitespace-only, or unparseable input).
+write_openclaw_config_baseline() {
+  local config_dir="/sandbox/.openclaw"
+  local config_file="$config_dir/openclaw.json"
+  local baseline_file="$config_dir/openclaw.json.nemoclaw-baseline"
+
+  [ -d "$config_dir" ] || return 0
+  [ -f "$config_file" ] || return 0
+  [ "$(id -u)" -eq 0 ] || return 0
+
+  # Refuse to act through symlinks (mirrors apply_model_override's stance).
+  if [ -L "$config_dir" ] || [ -L "$config_file" ] || [ -L "$baseline_file" ]; then
+    return 0
+  fi
+
+  # Skip in shields-up mode — config is supposed to be locked, baseline
+  # capture is unnecessary and the prepare/restore permission dance is
+  # already owned by the override paths.
+  if [ "$(openclaw_config_dir_owner "$config_dir")" = "root" ]; then
+    return 0
+  fi
+
+  # Idempotent — only capture once per sandbox.
+  [ -f "$baseline_file" ] && return 0
+
+  # Refuse to capture broken state. grep -q '[^[:space:]]' is false for both
+  # 0-byte and whitespace-only files.
+  if ! grep -q '[^[:space:]]' "$config_file" 2>/dev/null; then
+    return 0
+  fi
+
+  # Refuse to capture content that doesn't parse as JSON5 — keeps the
+  # baseline a known-good restore target. openclaw.json is JSON5 (comments,
+  # trailing commas) everywhere else in the stack — OpenClaw uses
+  # JSON5.parse / parseJsonWithJson5Fallback, and migration-state.ts uses
+  # JSON5.parse — so the validator here matches that contract instead of
+  # rejecting JSON5 features as the strict json.load would.
+  if ! python3 - "$config_file" 2>/dev/null <<'PY_VALIDATE'; then
+import json, re, sys
+src = open(sys.argv[1]).read()
+src = re.sub(r'//[^\n]*', '', src)              # line comments
+src = re.sub(r'/\*[\s\S]*?\*/', '', src)        # block comments
+src = re.sub(r',(\s*[}\]])', r'\1', src)        # trailing commas
+json.loads(src)
+PY_VALIDATE
+    return 0
+  fi
+
+  if ! cp "$config_file" "$baseline_file" 2>/dev/null; then
+    return 0
+  fi
+  # 0440 root:sandbox so the gateway/sandbox user can READ for recovery but
+  # cannot truncate or rewrite the baseline through the same path that
+  # corrupts the active config.
+  chown root:sandbox "$baseline_file" 2>/dev/null || true
+  chmod 0440 "$baseline_file" 2>/dev/null || true
+  printf '[config] Baseline snapshot created: %s\n' "$baseline_file" >&2
+}
+
+# Restore openclaw.json from a baseline when the active file has been
+# truncated to 0 bytes / whitespace-only. Runs at startup before
+# verify_config_integrity_if_locked. Prefers OpenClaw's own
+# openclaw.json.last-good (if it exists and is non-empty) over our
+# nemoclaw-baseline so we ride OpenClaw's recovery convention when both
+# are available. Recomputes .config-hash on success so subsequent
+# integrity checks pass.
+recover_openclaw_config_if_empty() {
+  local config_dir="/sandbox/.openclaw"
+  local config_file="$config_dir/openclaw.json"
+  local hash_file="$config_dir/.config-hash"
+  local baseline_file="$config_dir/openclaw.json.nemoclaw-baseline"
+  local last_good_file="$config_dir/openclaw.json.last-good"
+
+  [ -d "$config_dir" ] || return 0
+  [ -f "$config_file" ] || return 0
+
+  # Refuse to act through symlinks.
+  if [ -L "$config_dir" ] || [ -L "$config_file" ] || [ -L "$hash_file" ]; then
+    return 0
+  fi
+
+  # Skip in shields-up mode — see header comment.
+  if [ "$(openclaw_config_dir_owner "$config_dir")" = "root" ]; then
+    return 0
+  fi
+
+  # Active file is non-empty → no-op.
+  if grep -q '[^[:space:]]' "$config_file" 2>/dev/null; then
+    return 0
+  fi
+
+  local source=""
+  if [ -f "$last_good_file" ] && [ ! -L "$last_good_file" ] \
+    && grep -q '[^[:space:]]' "$last_good_file" 2>/dev/null; then
+    source="$last_good_file"
+  elif [ -f "$baseline_file" ] && [ ! -L "$baseline_file" ] \
+    && grep -q '[^[:space:]]' "$baseline_file" 2>/dev/null; then
+    source="$baseline_file"
+  fi
+
+  # Recovery failures must be loud, not silent. In mutable-default mode the
+  # downstream verify_config_integrity_if_locked is intentionally a no-op,
+  # so a soft-fail here would let startup continue with an empty (or
+  # restored-but-unhashed) config and crash much later in a less obvious
+  # place. Return non-zero so `set -e` aborts startup with the diagnostic
+  # already on stderr.
+  if [ -z "$source" ]; then
+    printf '[config] ERROR: openclaw.json is empty (%s). No baseline available; restart cannot recover. See issue #3118.\n' "$config_file" >&2
+    return 1
+  fi
+
+  if ! cp "$source" "$config_file" 2>/dev/null; then
+    printf '[config] ERROR: Failed to restore openclaw.json from %s (see #3118)\n' "$source" >&2
+    return 1
+  fi
+  chown sandbox:sandbox "$config_file" 2>/dev/null || true
+  chmod 660 "$config_file" 2>/dev/null || true
+
+  if (cd "$config_dir" && sha256sum openclaw.json >".config-hash") 2>/dev/null; then
+    chown sandbox:sandbox "$hash_file" 2>/dev/null || true
+    chmod 660 "$hash_file" 2>/dev/null || true
+  else
+    printf '[config] ERROR: Restored openclaw.json from %s but failed to recompute %s (see #3118)\n' "$source" "$hash_file" >&2
+    return 1
+  fi
+
+  printf '[config] openclaw.json restored from %s (was empty — see #3118)\n' "$source" >&2
+}
+
+# Refresh the mutable-default .config-hash so it matches the current
+# openclaw.json. Independent of the #3118 recovery above — this runs on
+# every start after the override pipeline to keep the hash in sync with
+# any in-flight config edits (model override, CORS override, provider
+# placeholder refresh).
 ensure_mutable_openclaw_config_hash() {
   local config_dir="/sandbox/.openclaw"
   local config_file="${config_dir}/openclaw.json"
@@ -750,38 +903,6 @@ PYPLACEHOLDERS
 
   restore_openclaw_config_after_write "$config_file" "$hash_file"
   [ "$_write_rc" -eq 0 ] || return "$_write_rc"
-}
-
-# ── Slack token rewriter (Bolt-shape → canonical placeholder) ────
-# Installs a Node preload that translates the Bolt-compatible placeholder
-# (xoxb|xapp)-OPENSHELL-RESOLVE-ENV-VAR — emitted into openclaw.json by
-# generate-openclaw-config.py — into the active openshell:resolve:env:*
-# placeholder on outbound HTTP. OpenShell's L7 proxy then substitutes the
-# real token from env on the wire, the same path Discord/Telegram/Brave
-# already take. No real Slack token ever touches openclaw.json, /tmp, or
-# any other disk surface readable by the sandbox uid.
-#
-# Ref: https://github.com/NVIDIA/NemoClaw/issues/2085
-
-_SLACK_REWRITER_SCRIPT="/tmp/nemoclaw-slack-token-rewriter.js"
-_SLACK_REWRITER_SOURCE="/usr/local/lib/nemoclaw/preloads/slack-token-rewriter.js"
-
-install_slack_token_rewriter() {
-  local config_file="/sandbox/.openclaw/openclaw.json"
-
-  # Only install if a Slack channel placeholder is present in the config.
-  # Same conditional shape as install_slack_channel_guard — both are no-ops
-  # for sandboxes without Slack configured.
-  if ! grep -q 'OPENSHELL-RESOLVE-ENV-SLACK_' "$config_file" 2>/dev/null; then
-    return 0
-  fi
-
-  printf '[channels] Installing Slack token rewriter (Bolt-shape → OpenShell placeholder)\n' >&2
-
-  emit_sandbox_sourced_file "$_SLACK_REWRITER_SCRIPT" <"$_SLACK_REWRITER_SOURCE"
-
-  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require $_SLACK_REWRITER_SCRIPT"
-  printf '[channels] Slack token rewriter installed (NODE_OPTIONS updated)\n' >&2
 }
 
 # ── Slack secrets-on-disk tripwire ────────────────────────────────
@@ -1371,10 +1492,8 @@ GUARDENVEOF
     # by install_slack_channel_guard() — conditional on the file existing at
     # source-time so connect sessions started before Slack is configured are safe.
     echo "[ -f \"$_SLACK_GUARD_SCRIPT\" ] && export NODE_OPTIONS=\"\${NODE_OPTIONS:+\$NODE_OPTIONS }--require $_SLACK_GUARD_SCRIPT\""
-    # Slack token rewriter for connect sessions — same conditional pattern.
-    echo "[ -f \"$_SLACK_REWRITER_SCRIPT\" ] && export NODE_OPTIONS=\"\${NODE_OPTIONS:+\$NODE_OPTIONS }--require $_SLACK_REWRITER_SCRIPT\""
     # Tool cache redirects — generated from _TOOL_REDIRECTS (single source of truth)
-    echo '# Tool cache redirects — /sandbox is Landlock read-only (#804)'
+    echo '# Tool cache redirects — keep transient tool state under /tmp'
     for _redir in "${_TOOL_REDIRECTS[@]}"; do
       echo "export ${_redir?}"
     done
@@ -1767,6 +1886,10 @@ fi
 if [ "$(id -u)" -ne 0 ]; then
   echo "[gateway] Running as non-root (uid=$(id -u)) — privilege separation disabled" >&2
   export HOME=/sandbox
+  # Empty-config recovery runs before integrity check so a #3118 truncation
+  # (openshell inference set inside the sandbox) is restored from baseline
+  # rather than failing the integrity hash for the empty file.
+  recover_openclaw_config_if_empty
   if ! verify_config_integrity_if_locked /sandbox/.openclaw; then
     echo "[SECURITY] Config integrity check failed — refusing to start (non-root mode)" >&2
     exit 1
@@ -1777,6 +1900,10 @@ if [ "$(id -u)" -ne 0 ]; then
   apply_cors_override
   refresh_openclaw_provider_placeholders
   ensure_mutable_openclaw_config_hash
+  # Capture baseline for next start's recovery — only after overrides and
+  # placeholder refresh have produced the post-startup config the user
+  # actually runs with.
+  write_openclaw_config_baseline
   export_gateway_token
   write_runtime_shell_env
   ensure_runtime_shell_env_shim
@@ -1788,7 +1915,6 @@ if [ "$(id -u)" -ne 0 ]; then
 
   configure_messaging_channels
   install_telegram_diagnostics
-  install_slack_token_rewriter
   install_slack_channel_guard
   verify_no_slack_secrets_on_disk
 
@@ -1813,7 +1939,7 @@ if [ "$(id -u)" -ne 0 ]; then
   }
   fix_openclaw_ownership
   normalize_mutable_config_perms
-  seed_default_workspace_templates
+  seed_default_workspace_templates /sandbox/.openclaw/workspace "" /sandbox/.openclaw/openclaw.json
   write_auth_profile
   harden_auth_profiles
 
@@ -1832,7 +1958,7 @@ if [ "$(id -u)" -ne 0 ]; then
   # Pass the HTTP proxy-fix path so it is validated alongside proxy-env.sh
   # (both are trust-boundary files; tampering would let the sandbox user
   # inject code into any Node process via NODE_OPTIONS).
-  validate_tmp_permissions "$_SANDBOX_SAFETY_NET" "$_PROXY_FIX_SCRIPT" "$_NEMOTRON_FIX_SCRIPT" "$_WS_FIX_SCRIPT" "$_SECCOMP_GUARD_SCRIPT" "$_CIAO_GUARD_SCRIPT" "$_TELEGRAM_DIAGNOSTICS_SCRIPT" "$_SLACK_GUARD_SCRIPT" "$_SLACK_REWRITER_SCRIPT"
+  validate_tmp_permissions "$_SANDBOX_SAFETY_NET" "$_PROXY_FIX_SCRIPT" "$_NEMOTRON_FIX_SCRIPT" "$_WS_FIX_SCRIPT" "$_SECCOMP_GUARD_SCRIPT" "$_CIAO_GUARD_SCRIPT" "$_TELEGRAM_DIAGNOSTICS_SCRIPT" "$_SLACK_GUARD_SCRIPT"
 
   # Start gateway in background, auto-pair, then wait
   nohup "$OPENCLAW" gateway run --port "${_DASHBOARD_PORT}" >/tmp/gateway.log 2>&1 &
@@ -1863,6 +1989,10 @@ fi
 
 # ── Root path (full privilege separation via setpriv) ──────────
 
+# Empty-config recovery runs before integrity check so a #3118 truncation
+# (openshell inference set inside the sandbox) is restored from baseline
+# rather than failing the integrity hash for the empty file.
+recover_openclaw_config_if_empty
 # Verify locked config integrity before starting anything. Mutable-default
 # config is intentionally writable and is not a trust anchor until shields-up.
 verify_config_integrity_if_locked /sandbox/.openclaw
@@ -1872,6 +2002,10 @@ reconcile_agent_model_with_provider
 apply_cors_override
 refresh_openclaw_provider_placeholders
 ensure_mutable_openclaw_config_hash
+# Capture baseline for next start's recovery — only after overrides and
+# placeholder refresh have produced the post-startup config the user
+# actually runs with.
+write_openclaw_config_baseline
 export_gateway_token
 write_runtime_shell_env
 ensure_runtime_shell_env_shim
@@ -1882,7 +2016,6 @@ lock_rc_files "$_SANDBOX_HOME"
 # BEFORE chattr +i (which locks the config permanently).
 configure_messaging_channels
 install_telegram_diagnostics
-install_slack_token_rewriter
 install_slack_channel_guard
 verify_no_slack_secrets_on_disk
 
@@ -1992,13 +2125,13 @@ provision_agent_workspaces
 # Run as the sandbox user so the seeded files inherit sandbox:sandbox
 # ownership (the function's own cp calls would otherwise produce
 # root-owned files in this branch). See function comment for context.
-gosu sandbox bash -c "$(declare -f seed_default_workspace_templates); seed_default_workspace_templates"
+gosu sandbox bash -c "$(declare -f seed_default_workspace_templates); seed_default_workspace_templates /sandbox/.openclaw/workspace '' /sandbox/.openclaw/openclaw.json"
 
 # Defence-in-depth: verify /tmp file permissions before launching services.
 # Pass the HTTP proxy-fix path so it is validated alongside proxy-env.sh
 # (both are trust-boundary files; tampering would let the sandbox user
 # inject code into any Node process via NODE_OPTIONS).
-validate_tmp_permissions "$_SANDBOX_SAFETY_NET" "$_PROXY_FIX_SCRIPT" "$_NEMOTRON_FIX_SCRIPT" "$_WS_FIX_SCRIPT" "$_SECCOMP_GUARD_SCRIPT" "$_CIAO_GUARD_SCRIPT" "$_TELEGRAM_DIAGNOSTICS_SCRIPT" "$_SLACK_GUARD_SCRIPT" "$_SLACK_REWRITER_SCRIPT"
+validate_tmp_permissions "$_SANDBOX_SAFETY_NET" "$_PROXY_FIX_SCRIPT" "$_NEMOTRON_FIX_SCRIPT" "$_WS_FIX_SCRIPT" "$_SECCOMP_GUARD_SCRIPT" "$_CIAO_GUARD_SCRIPT" "$_TELEGRAM_DIAGNOSTICS_SCRIPT" "$_SLACK_GUARD_SCRIPT"
 
 # Start the gateway as the 'gateway' user.
 # SECURITY: The sandbox user cannot kill this process because it runs

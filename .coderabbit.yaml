@@ -492,6 +492,25 @@ reviews:
         gh workflow run nightly-e2e.yaml --ref <branch> -f jobs=openshell-gateway-upgrade-e2e
         ```
 
+    - path: "test/e2e/test-gateway-health-honest.sh"
+      instructions: |
+        This script is the coverage guard for #3111. It sabotages the
+        openshell-gateway binary with a shim that crashes on startup and
+        asserts onboard does NOT falsely log "Docker-driver gateway is
+        healthy" and does exit non-zero. Exercises the NemoClaw-side
+        false-positive (detached-zombie isPidAlive + metadata-only
+        isGatewayHealthy) regardless of OpenShell packaging choices.
+
+        **Regression E2E test recommendation:**
+        - Run `regression-e2e.yaml` with the jobs input set to
+          gateway-health-honest-e2e to validate false-positive health
+          checks when the gateway binary crashes on startup (#3111).
+
+        To run selectively:
+        ```
+        gh workflow run regression-e2e.yaml --ref <branch> -f 'jobs=gateway-health-honest-e2e'
+        ```
+
     - path: ".github/workflows/nightly-e2e.yaml"
       instructions: |
         This is the nightly E2E workflow definition. Changes here affect

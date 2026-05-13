@@ -163,7 +163,7 @@ function printConnectOrderHint(candidate: string | null): void {
 }
 
 const VALID_SANDBOX_ACTIONS =
-  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
+  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, hosts-add, hosts-list, hosts-remove, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
 
 function printDispatchUsageError(
   result: Extract<DispatchResult, { kind: "usageError" }>,
