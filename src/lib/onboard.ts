@@ -1853,7 +1853,6 @@ const {
 } = validation;
 
 const {
-  validateBraveSearchApiKey,
   ensureValidatedBraveSearchCredential,
   configureWebSearch,
 } = createWebSearchConfigHelpers({
