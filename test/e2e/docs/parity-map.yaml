@@ -37,9 +37,6 @@ scripts:
   test-dashboard-remote-bind.sh:
     scenario: ""
     assertions: []
-  test-dashboard-remote-bind.sh:
-    scenario: ""
-    assertions: []
   test-deployment-services.sh:
     scenario: ""
     assertions: []
@@ -62,9 +59,6 @@ scripts:
     scenario: ""
     assertions: []
   test-gpu-double-onboard.sh:
-    scenario: ""
-    assertions: []
-  test-gateway-health-honest.sh:
     scenario: ""
     assertions: []
   test-gpu-e2e.sh:
