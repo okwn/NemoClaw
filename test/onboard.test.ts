@@ -106,6 +106,10 @@ type OnboardTestInternals = {
     desiredEnv: Record<string, string>;
     gatewayBin?: string | null;
   }) => { reason: string } | null;
+  hasOpenShellVmDriverChildProcessFromPsOutput: (
+    gatewayPid: number,
+    psOutput: string,
+  ) => boolean;
   isLinuxDockerDriverGatewayEnabled: (
     platform?: NodeJS.Platform,
     arch?: NodeJS.Architecture,
@@ -229,6 +233,7 @@ function isOnboardTestInternals(
     typeof value.getGatewayStartEnv === "function" &&
     typeof value.shouldRequireDockerDriverEnv === "function" &&
     typeof value.getDockerDriverGatewayRuntimeDriftFromSnapshot === "function" &&
+    typeof value.hasOpenShellVmDriverChildProcessFromPsOutput === "function" &&
     typeof value.isLinuxDockerDriverGatewayEnabled === "function" &&
     typeof value.areRequiredDockerDriverBinariesPresent === "function" &&
     typeof value.isDockerDriverGatewayPortListener === "function" &&
@@ -289,6 +294,7 @@ const {
   getGatewayStartEnv,
   shouldRequireDockerDriverEnv,
   getDockerDriverGatewayRuntimeDriftFromSnapshot,
+  hasOpenShellVmDriverChildProcessFromPsOutput,
   isLinuxDockerDriverGatewayEnabled,
   isDockerDriverGatewayPortListener,
   findReadableNvidiaCdiSpecFiles,
@@ -537,6 +543,18 @@ network_policies:
     expect(shouldRequireDockerDriverEnv("linux")).toBe(true);
     expect(shouldRequireDockerDriverEnv("darwin")).toBe(false);
     expect(shouldRequireDockerDriverEnv("win32")).toBe(false);
+  });
+
+  it("detects VM-driver children attached to a macOS standalone gateway", () => {
+    const psOutput = [
+      " 1000     1 /Users/me/.local/bin/openshell-gateway",
+      " 1001  1000 /Users/me/.local/bin/openshell-driver-vm --bind-socket /tmp/compute.sock",
+      " 1002  1001 /Users/me/.local/bin/openshell-driver-vm --internal-run-vm",
+      " 1003  1000 /usr/bin/other-process",
+    ].join("\n");
+    expect(hasOpenShellVmDriverChildProcessFromPsOutput(1000, psOutput)).toBe(true);
+    expect(hasOpenShellVmDriverChildProcessFromPsOutput(1001, psOutput)).toBe(true);
+    expect(hasOpenShellVmDriverChildProcessFromPsOutput(1003, psOutput)).toBe(false);
   });
 
   it("detects stale Docker-driver gateway runtime state before reuse", () => {

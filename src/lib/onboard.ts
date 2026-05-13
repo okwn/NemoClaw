@@ -3348,6 +3348,33 @@ function hasDockerDriverGatewayEnv(pid: number): boolean {
   );
 }
 
+function hasOpenShellVmDriverChildProcessFromPsOutput(
+  gatewayPid: number,
+  psOutput: string,
+): boolean {
+  if (!Number.isInteger(gatewayPid) || gatewayPid <= 0) return false;
+  return psOutput.split(/\r?\n/).some((line) => {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match) return false;
+    const childPid = Number.parseInt(match[1], 10);
+    const parentPid = Number.parseInt(match[2], 10);
+    const command = match[3];
+    return (
+      Number.isInteger(childPid) &&
+      childPid > 0 &&
+      parentPid === gatewayPid &&
+      command.includes("openshell-driver-vm")
+    );
+  });
+}
+
+function hasOpenShellVmDriverChildProcess(gatewayPid: number): boolean {
+  const psOutput = runCapture(["ps", "-axo", "pid=,ppid=,command="], {
+    ignoreError: true,
+  });
+  return hasOpenShellVmDriverChildProcessFromPsOutput(gatewayPid, psOutput);
+}
+
 function readProcessExe(pid: number): string | null {
   try {
     const procExePath = `/proc/${pid}/exe`;
@@ -3417,6 +3444,13 @@ function getDockerDriverGatewayRuntimeDrift(
   gatewayBin?: string | null,
   platform: NodeJS.Platform = process.platform,
 ): DockerDriverGatewayRuntimeDrift | null {
+  if (
+    platform === "darwin" &&
+    desiredEnv.OPENSHELL_DRIVERS === "docker" &&
+    hasOpenShellVmDriverChildProcess(pid)
+  ) {
+    return { reason: "VM driver child process is still attached to the gateway" };
+  }
   if (!shouldRequireDockerDriverEnv(platform)) return null;
   return getDockerDriverGatewayRuntimeDriftFromSnapshot({
     processEnv: readProcessEnv(pid),
@@ -11013,6 +11047,7 @@ module.exports = {
   getGatewayStartEnv,
   getDockerDriverGatewayEnv,
   getDockerDriverGatewayRuntimeDriftFromSnapshot,
+  hasOpenShellVmDriverChildProcessFromPsOutput,
   getGatewayClusterContainerState,
   getGatewayHealthWaitConfig,
   getGatewayReuseHealthWaitConfig,

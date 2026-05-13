@@ -63,6 +63,8 @@ describe("isSandboxBridgeGatewayReachable", () => {
     });
     expect(seen.args).toContain("custom-net");
     expect(seen.args).toContain("--pull=missing");
+    expect(seen.args).toContain("--add-host");
+    expect(seen.args).toContain("host.openshell.internal:host-gateway");
     expect(seen.args.join(" ")).toContain("nc -zw7 host.openshell.internal 9090");
   });
 });

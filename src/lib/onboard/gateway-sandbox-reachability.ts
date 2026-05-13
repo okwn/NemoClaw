@@ -125,7 +125,8 @@ export async function isSandboxBridgeGatewayReachable(
 
   const result = runImpl(
     [
-      "run", "--rm", "--pull=missing", "--network", networkName, probeImage,
+      "run", "--rm", "--pull=missing", "--network", networkName,
+      "--add-host", `${HOST_INTERNAL_NAME}:host-gateway`, probeImage,
       "sh", "-c", `nc -zw${timeoutSec} ${HOST_INTERNAL_NAME} ${port}`,
     ],
     timeoutSec * 1000 + PROBE_RUN_OVERHEAD_MS,
