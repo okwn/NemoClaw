@@ -187,7 +187,7 @@ Rules:
 - Each assertion must have exactly one status.
 - `mapped` assertions require both `legacy` and `id`.
 - `deferred` assertions require `legacy`, `reason`, `owner`, and either `runner_requirement` or `secret_requirement`.
-- `retired` assertions require `legacy`, `reason`, and reviewer/evidence metadata before wrapper conversion.
+- `retired` assertions require `legacy`, `reason`, `reviewer`, and `approved_at` before wrapper conversion.
 - Empty `assertions: []` is allowed only for `status: not-started` during early phases.
 
 ### Assertion Inventory
@@ -316,7 +316,7 @@ Make `parity-map.yaml` structurally reliable before mapping work begins.
 ### Acceptance Criteria
 
 - `npm test -- --project e2e-scenario-framework` validates the parity map in non-strict mode.
-- `node scripts/e2e/check-parity-map.ts --strict` fails until all assertions are mapped/deferred/retired.
+- `npx tsx scripts/e2e/check-parity-map.ts --strict` fails until all assertions are mapped/deferred/retired.
 - Typos in legacy assertion strings are caught by comparing against the generated inventory.
 - Duplicate scenario assertion IDs within a script are rejected unless explicitly marked reusable.
 
@@ -464,9 +464,12 @@ Finish the remaining legacy buckets.
    - `test-spark-install.sh`
    - `test-launchable-smoke.sh`
    - `brev-e2e.test.ts`
+   - `test-brave-search-e2e.sh`
+   - `test-dashboard-remote-bind.sh`
+   - `test-gateway-health-honest.sh`
    - `test-skill-agent-e2e.sh`
    - `test-docs-validation.sh`
-2. Add suites for security policy, credential hygiene, Spark install, Launchable/Brev remote, skill agent, and docs validation.
+2. Add suites for security policy, credential hygiene, Spark install, Launchable/Brev remote, Brave search, remote dashboard bind, honest gateway health, skill agent, and docs validation.
 3. Extend scenario metadata for DGX Spark or remote runners only when required.
 4. Populate parity mappings and compare.
 
@@ -508,7 +511,7 @@ Prevent accidental removal of legacy coverage.
    - all mapped assertions have at least one zero-divergence parity run,
    - deferred assertions have documented runner/secret requirements,
    - no active workflow references the old script.
-3. Record zero-divergence evidence in `parity-map.yaml` under each `parity-verified` script using deterministic fields: `run_id`, `workflow`, `commit`, and `completed_at`.
+3. Record zero-divergence evidence in `parity-map.yaml` under each `parity-verified` script using deterministic fields: `run_id`, `workflow`, `commit`, and `completed_at`; local/manual evidence may use `workflow: local` and a reviewer-approved `run_id`.
 4. Update `test/e2e/docs/MIGRATION.md` with retirement status per script.
 5. Add workflow/docs reference scanning.
 
