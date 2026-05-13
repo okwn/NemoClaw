@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -401,6 +401,7 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -631,6 +632,8 @@ For JetPack 7 (L4T 39.x), bridge netfilter is loaded only when the host is missi
 <p>The NemoClaw dashboard uses port <code class="docutils literal notranslate"><span class="pre">18789</span></code> by default and the gateway uses port <code class="docutils literal notranslate"><span class="pre">8080</span></code>.
 If another sandbox already owns the dashboard port, onboarding scans ports <code class="docutils literal notranslate"><span class="pre">18789</span></code> through <code class="docutils literal notranslate"><span class="pre">18799</span></code> and uses the next free port.
 If all ports in that range are occupied, the error lists the owner for each port and suggests using <code class="docutils literal notranslate"><span class="pre">--control-ui-port</span></code> with a port outside the range.</p>
+<p>When a previous onboard, upgrade, or sandbox crash leaves a stale <code class="docutils literal notranslate"><span class="pre">openclaw-gateway</span></code> host process holding the dashboard port, <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span> <span class="pre">--fresh</span></code>, <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">destroy</span></code> (when destroying the last sandbox), and <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">uninstall</span></code> automatically sweep the dashboard port range and signal <code class="docutils literal notranslate"><span class="pre">SIGTERM</span></code> then <code class="docutils literal notranslate"><span class="pre">SIGKILL</span></code> to recover.
+The sweep only targets processes owned by the current user whose command line matches <code class="docutils literal notranslate"><span class="pre">openclaw-gateway</span></code> or <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">forward</span></code> markers, and skips dashboard ports owned by other live sandboxes.</p>
 <p>If a non-NemoClaw process is already bound to the dashboard port or the gateway port, identify the conflicting process, verify it is safe to stop, and terminate it:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>sudo<span class="w"> </span>lsof<span class="w"> </span>-i<span class="w"> </span>:18789
 <span class="gp">$ </span><span class="nb">kill</span><span class="w"> </span>&lt;PID&gt;
@@ -651,6 +654,18 @@ Pass <code class="docutils literal notranslate"><span class="pre">--control-ui-p
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_DASHBOARD_PORT</span><span class="o">=</span><span class="m">19000</span><span class="w"> </span>nemoclaw<span class="w"> </span>onboard
 </pre></div>
 </div>
+<p>For an OpenShell gateway port conflict, set <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_GATEWAY_PORT</span></code> to a free
+non-privileged port that does not overlap NemoClaw’s dashboard, vLLM, Ollama,
+or Ollama proxy ports:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_GATEWAY_PORT</span><span class="o">=</span><span class="m">8990</span><span class="w"> </span>nemoclaw<span class="w"> </span>onboard
+</pre></div>
+</div>
+<p>Remote/headless hosts can bind the OpenShell gateway to all IPv4 interfaces:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_GATEWAY_BIND_ADDRESS</span><span class="o">=</span><span class="m">0</span>.0.0.0<span class="w"> </span><span class="nv">NEMOCLAW_GATEWAY_PORT</span><span class="o">=</span><span class="m">8990</span><span class="w"> </span>nemoclaw<span class="w"> </span>onboard
+</pre></div>
+</div>
+<p>Use <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_GATEWAY_BIND_ADDRESS=0.0.0.0</span></code> only when other hosts on the
+network should be able to reach the gateway.</p>
 <p>See <a class="reference internal" href="commands.html#environment-variables"><span class="std std-ref">Environment Variables</span></a> for the full list of port overrides.</p>
 </section>
 <section id="running-multiple-sandboxes-simultaneously">
@@ -1013,6 +1028,17 @@ A fresh <code class="docutils literal notranslate"><span class="pre">nemoclaw</s
 Changing or exporting it later does not rewrite the baked <code class="docutils literal notranslate"><span class="pre">openclaw.json</span></code> inside an existing sandbox.</p>
 <p>If you need a different device-auth setting, rerun onboarding so NemoClaw rebuilds the sandbox image with the desired configuration.
 For the security trade-offs, refer to <a class="reference internal" href="../security/best-practices.html"><span class="std std-doc">Security Best Practices</span></a>.</p>
+</section>
+<section id="openclaw-json-is-empty-after-changing-inference">
+<h3><code class="docutils literal notranslate"><span class="pre">openclaw.json</span></code> is empty after changing inference<a class="headerlink" href="#openclaw-json-is-empty-after-changing-inference" title="Link to this heading">#</a></h3>
+<p>Some runtime inference changes can leave <code class="docutils literal notranslate"><span class="pre">/sandbox/.openclaw/openclaw.json</span></code> empty if the write fails partway through.
+When that happens, OpenClaw commands may report that the config is empty instead of showing a raw JSON parse error.</p>
+<p>Current NemoClaw sandboxes capture a known-good config baseline after a successful startup.
+On the next sandbox startup, NemoClaw restores <code class="docutils literal notranslate"><span class="pre">openclaw.json</span></code> from OpenClaw’s last-good copy when available, or from the NemoClaw baseline.
+If the sandbox still cannot start or reports that no baseline is available, rebuild it from the host:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>&lt;name&gt;<span class="w"> </span>rebuild
+</pre></div>
+</div>
 </section>
 <section id="openclaw-channels-add-or-remove-is-blocked-inside-the-sandbox">
 <h3><code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">add</span></code> or <code class="docutils literal notranslate"><span class="pre">remove</span></code> is blocked inside the sandbox<a class="headerlink" href="#openclaw-channels-add-or-remove-is-blocked-inside-the-sandbox" title="Link to this heading">#</a></h3>
@@ -1512,6 +1538,7 @@ To install a skill dependency, add it to the sandbox image and rebuild:</p>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#inference-requests-time-out">Inference requests time out</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#agent-fails-at-runtime-after-onboarding-succeeds-with-a-compatible-endpoint">Agent fails at runtime after onboarding succeeds with a compatible endpoint</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#nemoclaw-disable-device-auth-1-does-not-change-an-existing-sandbox"><code class="docutils literal notranslate"><span class="pre">NEMOCLAW_DISABLE_DEVICE_AUTH=1</span></code> does not change an existing sandbox</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openclaw-json-is-empty-after-changing-inference"><code class="docutils literal notranslate"><span class="pre">openclaw.json</span></code> is empty after changing inference</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openclaw-channels-add-or-remove-is-blocked-inside-the-sandbox"><code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">add</span></code> or <code class="docutils literal notranslate"><span class="pre">remove</span></code> is blocked inside the sandbox</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openclaw-config-set-or-unset-is-blocked-inside-the-sandbox"><code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">config</span> <span class="pre">set</span></code> or <code class="docutils literal notranslate"><span class="pre">unset</span></code> is blocked inside the sandbox</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#openclaw-doctor-fix-cannot-repair-discord-channel-config-inside-the-sandbox"><code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">doctor</span> <span class="pre">--fix</span></code> cannot repair Discord channel config inside the sandbox</a></li>

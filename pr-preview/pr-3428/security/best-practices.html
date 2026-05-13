@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -492,7 +492,7 @@ window.runMermaid = runMermaid;</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -837,6 +837,7 @@ window.runMermaid = runMermaid;</script>
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -1313,33 +1314,6 @@ For sensitive workloads, use a reviewed host-side immutability workflow after in
 </table>
 </div>
 </section>
-<section id="locking-config-with-shields">
-<h3>Locking Config with Shields<a class="headerlink" href="#locking-config-with-shields" title="Link to this heading">#</a></h3>
-<p>NemoClaw exposes the reviewed host-side immutability workflow through shields commands:</p>
-<div class="pst-scrollable-table-container"><table class="table">
-<thead>
-<tr class="row-odd"><th class="head"><p>Command</p></th>
-<th class="head"><p>Purpose</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">shields</span> <span class="pre">status</span></code></p></td>
-<td><p>Show whether the sandbox is in default mutable mode, locked mode, or temporarily unlocked mode.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">shields</span> <span class="pre">up</span></code></p></td>
-<td><p>Opt into lockdown for sensitive workloads by locking config and state entry points with root ownership, read-only modes, and the immutable flag where available.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">shields</span> <span class="pre">down</span> <span class="pre">--timeout</span> <span class="pre">5m</span> <span class="pre">--reason</span> <span class="pre">&quot;&lt;reason&gt;&quot;</span></code></p></td>
-<td><p>Temporarily return a previously locked sandbox to the mutable default for maintenance, then auto-restore lockdown.</p></td>
-</tr>
-</tbody>
-</table>
-</div>
-<p>Run shields commands from the host.
-They use privileged OpenShell and Kubernetes paths that do not inherit the sandbox process’s Landlock context.
-Landlock itself stays fixed at sandbox creation; <code class="docutils literal notranslate"><span class="pre">shields</span> <span class="pre">up</span></code> does not rewrite the Landlock policy.
-Instead, it layers DAC permissions and <code class="docutils literal notranslate"><span class="pre">chattr</span> <span class="pre">+i</span></code> over paths that the default Landlock policy intentionally leaves writable.</p>
-</section>
 <section id="writable-paths">
 <h3>Writable Paths<a class="headerlink" href="#writable-paths" title="Link to this heading">#</a></h3>
 <p>The agent has read-write access to <code class="docutils literal notranslate"><span class="pre">/sandbox</span></code>, <code class="docutils literal notranslate"><span class="pre">/tmp</span></code>, and <code class="docutils literal notranslate"><span class="pre">/dev/null</span></code>.</p>
@@ -1670,6 +1644,32 @@ NemoClaw hardens these defaults at image build time.</p>
 </tr>
 <tr class="row-odd"><td><p>Recommendation</p></td>
 <td><p>Keep device auth enabled (the default). Only disable it for headless or development environments where no untrusted devices can reach the gateway.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="gateway-bind-address">
+<h3>Gateway Bind Address<a class="headerlink" href="#gateway-bind-address" title="Link to this heading">#</a></h3>
+<p>NemoClaw binds the OpenShell gateway to loopback by default.</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Aspect</p></th>
+<th class="head"><p>Detail</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Default</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">NEMOCLAW_GATEWAY_BIND_ADDRESS=127.0.0.1</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>What you can change</p></td>
+<td><p>Set <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_GATEWAY_BIND_ADDRESS=0.0.0.0</span></code> before onboarding to listen on all IPv4 interfaces.</p></td>
+</tr>
+<tr class="row-even"><td><p>Risk if relaxed</p></td>
+<td><p>Other hosts on the network may be able to reach the OpenShell gateway.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Recommendation</p></td>
+<td><p>Keep the loopback default unless the gateway must be reachable from another host.</p></td>
 </tr>
 </tbody>
 </table>
@@ -2065,7 +2065,6 @@ They provide guidance on which controls to keep tight or relax.</p>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#filesystem-controls">Filesystem Controls</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#read-only-system-paths">Read-Only System Paths</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#agent-config-directory">Agent Config Directory</a></li>
-<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#locking-config-with-shields">Locking Config with Shields</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#writable-paths">Writable Paths</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#landlock-lsm-enforcement">Landlock LSM Enforcement</a></li>
 </ul>
@@ -2084,6 +2083,7 @@ They provide guidance on which controls to keep tight or relax.</p>
 </li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#gateway-authentication-controls">Gateway Authentication Controls</a><ul class="nav section-nav flex-column">
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#device-authentication">Device Authentication</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#gateway-bind-address">Gateway Bind Address</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#insecure-auth-derivation">Insecure Auth Derivation</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#auto-pair-client-allowlist">Auto-Pair Client Allowlist</a></li>
 <li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#cli-secret-redaction">CLI Secret Redaction</a></li>

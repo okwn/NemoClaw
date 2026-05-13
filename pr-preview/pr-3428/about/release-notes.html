@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -401,6 +401,7 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -506,6 +507,21 @@
 <section class="tex2jax_ignore mathjax_ignore" id="release-notes">
 <h1>Release Notes<a class="headerlink" href="#release-notes" title="Link to this heading">#</a></h1>
 <p>NVIDIA NemoClaw is available in early preview starting March 16, 2026. Use this page to track changes.</p>
+<section id="v0-0-40">
+<h2>v0.0.40<a class="headerlink" href="#v0-0-40" title="Link to this heading">#</a></h2>
+<p>NemoClaw v0.0.40 improves onboarding reliability, local inference setup, and sandbox recovery:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> uses the Docker-driver OpenShell gateway path on macOS with OpenShell 0.0.37, repairs incomplete Docker-driver installs before startup, and installs the platform-specific gateway asset it needs.</p></li>
+<li><p>The Docker-driver gateway startup check waits for the gateway port to accept TCP connections before it reports the gateway as healthy, and startup failures now include child process exit details.</p></li>
+<li><p>Local Ollama setup requires the authenticated reverse proxy token on every native Ollama API route, including <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/api/tags</span></code>.</p></li>
+<li><p>The Linux Ollama install path preflights <code class="docutils literal notranslate"><span class="pre">zstd</span></code> before running the official installer and explains why each sudo-backed setup step needs elevated privileges.</p></li>
+<li><p>The onboarding provider menu offers an already-running local vLLM server directly when <code class="docutils literal notranslate"><span class="pre">localhost:8000</span></code> responds, while managed vLLM install and start options remain behind the experimental opt-in.</p></li>
+<li><p>Policy tier defaults are filtered by active agent support, so presets such as Brave Search are not reapplied to agents that do not support that integration.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">connect</span></code> checks dashboard forward reachability with a TCP probe before it reports a forward as stale.</p></li>
+<li><p>Sandbox startup captures a known-good OpenClaw config baseline and restores it on restart if <code class="docutils literal notranslate"><span class="pre">/sandbox/.openclaw/openclaw.json</span></code> becomes empty.</p></li>
+<li><p>The NemoClaw OpenClaw plugin package declares compatibility metadata for OpenClaw package tooling.</p></li>
+</ul>
+</section>
 <section id="v0-0-39">
 <h2>v0.0.39<a class="headerlink" href="#v0-0-39" title="Link to this heading">#</a></h2>
 <p>NemoClaw v0.0.39 improves several day-two workflows:</p>
@@ -611,6 +627,7 @@ See <a class="reference internal" href="../reference/commands.html#checking-the-
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#v0-0-40">v0.0.40</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#v0-0-39">v0.0.39</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#v0-0-38">v0.0.38</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#v0-0-34">v0.0.34</a></li>

@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -401,6 +401,7 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -742,7 +743,7 @@ For example, Slack bot tokens must start with <code class="docutils literal notr
 <section id="choose-network-policy-presets">
 <h3>Choose Network Policy Presets<a class="headerlink" href="#choose-network-policy-presets" title="Link to this heading">#</a></h3>
 <p>After the sandbox image builds and OpenClaw starts inside the sandbox, NemoClaw asks which network policy tier to apply.
-The default <strong>Balanced</strong> tier includes common development presets such as npm, PyPI, Hugging Face, Homebrew, and Brave Search.
+The default <strong>Balanced</strong> tier includes common development presets such as npm, PyPI, Hugging Face, Homebrew, and Brave Search when the selected agent supports web search.
 Use the arrow keys or <code class="docutils literal notranslate"><span class="pre">j</span></code> and <code class="docutils literal notranslate"><span class="pre">k</span></code> to move, Space to select, and Enter to confirm.</p>
 <p>The preset selector lets you include more destinations, such as GitHub, Jira, Slack, Telegram, or local inference.
 Press <code class="docutils literal notranslate"><span class="pre">r</span></code> to toggle a selected preset between read-only and read-write when the preset supports both modes.</p>
@@ -759,6 +760,10 @@ Run:         nemoclaw my-gpt-claw connect
 Status:      nemoclaw my-gpt-claw status
 Logs:        nemoclaw my-gpt-claw logs --follow
 ──────────────────────────────────────────────────
+
+To change settings later:
+  Model:       nemoclaw inference get
+               nemoclaw inference set --model &lt;model&gt; --provider &lt;provider&gt; --sandbox my-gpt-claw
 
 [INFO]  === Installation complete ===
 </pre></div>

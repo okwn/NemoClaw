@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -401,6 +401,7 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -607,9 +608,7 @@ The agent’s home directory (<code class="docutils literal notranslate"><span c
 </div>
 <p>This writable default is intentional.
 Seeing the sandbox user create files under <code class="docutils literal notranslate"><span class="pre">/sandbox</span></code> or <code class="docutils literal notranslate"><span class="pre">/sandbox/.openclaw</span></code> in a fresh sandbox does not mean Landlock failed.
-Landlock still enforces the fixed read-only system paths below.
-Use <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">shields</span> <span class="pre">up</span></code> from the host to opt into config lockdown for sensitive workloads.
-That host-side command layers root ownership, read-only modes, and the immutable flag where available; it does not change the Landlock policy after sandbox creation.</p>
+Landlock still enforces the fixed read-only system paths below.</p>
 <p>System paths remain read-only to prevent agents from:</p>
 <ul class="simple">
 <li><p>Replacing system binaries with trojanized versions</p></li>

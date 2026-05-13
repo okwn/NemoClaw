@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Install OpenClaw Plugins &#8212; NVIDIA NemoClaw Developer Guide</title>
+    <title>Tool-Calling Reliability for Local Inference &#8212; NVIDIA NemoClaw Developer Guide</title>
   
   
   
@@ -52,7 +52,7 @@
     <script src="../_static/copybutton.js?v=6dbb43f8"></script>
     <script src="../_static/search-assets.bundle.js?v=099b119e"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'deployment/install-openclaw-plugins';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'inference/tool-calling-reliability';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
@@ -61,12 +61,12 @@
             false;
         </script>
 
-    <link rel="canonical" href="https://docs.nvidia.com/nemoclaw/latest/deployment/install-openclaw-plugins.html" />
+    <link rel="canonical" href="https://docs.nvidia.com/nemoclaw/latest/inference/tool-calling-reliability.html" />
     <link rel="icon" href="../_static/favicon.png"/>
 
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Sandbox Image Hardening" href="sandbox-hardening.html" />
-    <link rel="prev" title="Launch NemoClaw with the Brev Web UI" href="brev-web-ui.html" />
+    <link rel="next" title="Switch Inference Models at Runtime" href="switch-inference-providers.html" />
+    <link rel="prev" title="Use a Local Inference Server" href="use-local-inference.html" />
 
 
 
@@ -398,12 +398,12 @@
 <li class="toctree-l1"><a class="reference internal" href="../get-started/quickstart-hermes.html">Quickstart with Hermes</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Inference</span></p>
-<ul class="nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="inference-options.html">Inference Options</a></li>
+<li class="toctree-l1"><a class="reference internal" href="use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1 current active"><a class="current reference internal" href="#">Tool-Calling Reliability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="switch-inference-providers.html">Switch Inference Providers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Manage Sandboxes</span></p>
 <ul class="nav bd-sidenav">
@@ -419,11 +419,11 @@
 <li class="toctree-l1"><a class="reference internal" href="../network-policy/integration-policy-examples.html">Integration Policy Examples</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Deployment</span></p>
-<ul class="current nav bd-sidenav">
-<li class="toctree-l1"><a class="reference internal" href="deploy-to-remote-gpu.html">Deploy to a Remote GPU Instance</a></li>
-<li class="toctree-l1"><a class="reference internal" href="brev-web-ui.html">Brev Web UI</a></li>
-<li class="toctree-l1 current active"><a class="current reference internal" href="#">Install OpenClaw Plugins</a></li>
-<li class="toctree-l1"><a class="reference internal" href="sandbox-hardening.html">Sandbox Hardening</a></li>
+<ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../deployment/deploy-to-remote-gpu.html">Deploy to a Remote GPU Instance</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/brev-web-ui.html">Brev Web UI</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/install-openclaw-plugins.html">Install OpenClaw Plugins</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/sandbox-hardening.html">Sandbox Hardening</a></li>
 </ul>
 <p aria-level="2" class="caption" role="heading"><span class="caption-text">Monitoring</span></p>
 <ul class="nav bd-sidenav">
@@ -483,7 +483,7 @@
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
-    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Install OpenClaw Plugins</span></li>
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Tool-Calling Reliability for Local Inference</span></li>
   </ul>
 </nav>
 </div>
@@ -504,92 +504,179 @@
   SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   SPDX-License-Identifier: Apache-2.0
 -->
-<section class="tex2jax_ignore mathjax_ignore" id="install-openclaw-plugins">
-<h1>Install OpenClaw Plugins<a class="headerlink" href="#install-openclaw-plugins" title="Link to this heading">#</a></h1>
-<p>OpenClaw plugins extend the OpenClaw runtime with hooks, services, tools, or
-provider integrations. They are different from NemoClaw-managed agent skills:</p>
+<section class="tex2jax_ignore mathjax_ignore" id="tool-calling-reliability-for-local-inference">
+<h1>Tool-Calling Reliability for Local Inference<a class="headerlink" href="#tool-calling-reliability-for-local-inference" title="Link to this heading">#</a></h1>
+<p>Local inference is useful for privacy, cost control, and offline development, but
+tool-calling agents place stricter demands on the model server than simple chat.
+The model server must return structured <code class="docutils literal notranslate"><span class="pre">tool_calls</span></code>, not a JSON-looking string
+inside normal assistant text.</p>
+<p>Use this page when the TUI shows raw JSON such as:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="nt">&quot;arguments&quot;</span><span class="p">:{</span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="s2">&quot;robotics&quot;</span><span class="p">},</span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="s2">&quot;memory_search&quot;</span><span class="p">}</span>
+</pre></div>
+</div>
+<p>If that appears as text in the assistant reply, OpenClaw cannot dispatch the
+tool because the inference response did not include a structured tool call.</p>
+<section id="quick-choice-guide">
+<h2>Quick Choice Guide<a class="headerlink" href="#quick-choice-guide" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Workload</p></th>
+<th class="head"><p>Ollama is usually sufficient</p></th>
+<th class="head"><p>Prefer vLLM with a parser</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Plain chat</p></td>
+<td><p>Yes</p></td>
+<td><p>Optional</p></td>
+</tr>
+<tr class="row-odd"><td><p>Embeddings-only or retrieval setup</p></td>
+<td><p>Yes</p></td>
+<td><p>Optional</p></td>
+</tr>
+<tr class="row-even"><td><p>One simple tool with short prompts</p></td>
+<td><p>Often</p></td>
+<td><p>Optional</p></td>
+</tr>
+<tr class="row-odd"><td><p>Agent loops with several tools</p></td>
+<td><p>Risky</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p>Long system prompts or sender metadata</p></td>
+<td><p>Risky</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>Multi-turn tool dispatch</p></td>
+<td><p>Risky</p></td>
+<td><p>Yes</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Ollama can work well for lightweight local chat and some simple tool surfaces.
+For OpenClaw-style agent loops with multiple tools, long instructions, or
+multi-turn dispatch, use a server that exposes OpenAI-compatible
+<code class="docutils literal notranslate"><span class="pre">/v1/chat/completions</span></code> with a tool-call parser. vLLM is the common local choice.</p>
+</section>
+<section id="symptom">
+<h2>Symptom<a class="headerlink" href="#symptom" title="Link to this heading">#</a></h2>
+<p>The common failure mode is:</p>
 <ul class="simple">
-<li><p><strong>Plugins</strong> are code packages loaded by OpenClaw.</p></li>
-<li><p><strong>Skills</strong> are <code class="docutils literal notranslate"><span class="pre">SKILL.md</span></code> directories that teach an agent how to perform a task.</p></li>
-<li><p><strong>Policy presets</strong> are network-egress rules that control what sandboxed code can reach.</p></li>
+<li><p>The model emits text that looks like a tool call.</p></li>
+<li><p>The response does not include a structured <code class="docutils literal notranslate"><span class="pre">tool_calls</span></code> field.</p></li>
+<li><p>The gateway treats the response as normal text.</p></li>
+<li><p>No tool runs, and the user sees raw JSON in the TUI.</p></li>
 </ul>
-<p>Today, the supported NemoClaw path for OpenClaw plugins is to bake the plugin
-into a custom sandbox image and onboard from that Dockerfile.</p>
-<section id="prepare-a-build-directory">
-<h2>Prepare a Build Directory<a class="headerlink" href="#prepare-a-build-directory" title="Link to this heading">#</a></h2>
-<p>Put the Dockerfile and everything it needs to <code class="docutils literal notranslate"><span class="pre">COPY</span></code> in one directory.
-<code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span> <span class="pre">--from</span> <span class="pre">&lt;Dockerfile&gt;</span></code> uses the Dockerfile’s parent directory as
-the Docker build context.</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>my-plugin-sandbox/
-├── Dockerfile
-└── my-plugin/
-    ├── package.json
-    └── src/
+<p>This is different from a network or policy block. <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">status</span></code>,
+<code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">logs</span></code>, and <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">debug</span> <span class="pre">--quick</span></code> can all look healthy while
+tool dispatch still fails inside the conversation.</p>
+</section>
+<section id="recommended-fix">
+<h2>Recommended Fix<a class="headerlink" href="#recommended-fix" title="Link to this heading">#</a></h2>
+<p>For persistent NemoClaw use, start vLLM with auto tool choice and the parser that
+matches your model family, then rerun onboarding and select <strong>Local vLLM
+[experimental]</strong> or <strong>Other OpenAI-compatible endpoint</strong>.</p>
+<p>For Hermes 3 style models, a known-good vLLM command shape is:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>vllm<span class="w"> </span>serve<span class="w"> </span>/models/Hermes-3-Llama-3.1-8B<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--served-model-name<span class="w"> </span>hermes-3-llama-3.1-8b<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--enable-auto-tool-choice<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--tool-call-parser<span class="w"> </span>hermes<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--port<span class="w"> </span><span class="m">8000</span>
 </pre></div>
 </div>
-</section>
-<section id="example-dockerfile">
-<h2>Example Dockerfile<a class="headerlink" href="#example-dockerfile" title="Link to this heading">#</a></h2>
-<p>Use the custom image to copy the plugin into the OpenClaw extensions directory
-and let OpenClaw refresh its config before NemoClaw starts the sandbox.</p>
-<div class="highlight-dockerfile notranslate"><div class="highlight"><pre><span></span><span class="k">ARG</span><span class="w"> </span><span class="nv">SANDBOX_BASE</span><span class="o">=</span>ghcr.io/nvidia/nemoclaw/sandbox-base:latest
-<span class="k">FROM</span><span class="w"> </span><span class="s">${SANDBOX_BASE}</span>
-
-<span class="k">COPY</span><span class="w"> </span>my-plugin/<span class="w"> </span>/opt/my-plugin/
-<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/opt/my-plugin</span>
-<span class="k">RUN</span><span class="w"> </span>npm<span class="w"> </span>ci<span class="w"> </span>--no-audit<span class="w"> </span>--no-fund<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>run<span class="w"> </span>build
-
-<span class="k">RUN</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/sandbox/.openclaw/extensions<span class="w"> </span><span class="se">\</span>
-<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>-a<span class="w"> </span>/opt/my-plugin<span class="w"> </span>/sandbox/.openclaw/extensions/my-plugin<span class="w"> </span><span class="se">\</span>
-<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>openclaw<span class="w"> </span>doctor<span class="w"> </span>--fix
-
-<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/opt/nemoclaw</span>
+<p>For a Docker Compose setup:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">services</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">vllm-nemoclaw</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vllm/vllm-openai:latest</span>
+<span class="w">    </span><span class="nt">container_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">vllm-nemoclaw</span>
+<span class="w">    </span><span class="nt">restart</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">unless-stopped</span>
+<span class="w">    </span><span class="nt">ports</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;8002:8000&quot;</span>
+<span class="w">    </span><span class="nt">volumes</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/models:/models:ro</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/path/to/hf-cache:/root/.cache/huggingface</span>
+<span class="w">    </span><span class="nt">ipc</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">host</span>
+<span class="w">    </span><span class="nt">deploy</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">resources</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">reservations</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">devices</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">capabilities</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">gpu</span><span class="p p-Indicator">]</span>
+<span class="w">              </span><span class="nt">count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">all</span>
+<span class="w">    </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<span class="w">      </span><span class="no">--model /models/Hermes-3-Llama-3.1-8B</span>
+<span class="w">      </span><span class="no">--served-model-name hermes-3-llama-3.1-8b</span>
+<span class="w">      </span><span class="no">--enable-auto-tool-choice</span>
+<span class="w">      </span><span class="no">--tool-call-parser hermes</span>
+<span class="w">      </span><span class="no">--gpu-memory-utilization 0.20</span>
+<span class="w">      </span><span class="no">--max-model-len 32768</span>
+<span class="w">      </span><span class="no">--api-key ${VLLM_API_KEY}</span>
 </pre></div>
 </div>
-<p>If the plugin needs configuration in <code class="docutils literal notranslate"><span class="pre">openclaw.json</span></code>, apply it after
-<code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">doctor</span> <span class="pre">--fix</span></code> so the base config exists first.</p>
-</section>
-<section id="create-the-sandbox">
-<h2>Create the Sandbox<a class="headerlink" href="#create-the-sandbox" title="Link to this heading">#</a></h2>
-<p>Point <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span> <span class="pre">--from</span></code> at the Dockerfile in the build directory.</p>
-<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span>--from<span class="w"> </span>./my-plugin-sandbox/Dockerfile
+<p>Then onboard against that endpoint:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_PROVIDER</span><span class="o">=</span>custom<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">NEMOCLAW_ENDPOINT_URL</span><span class="o">=</span>http://localhost:8002/v1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">NEMOCLAW_MODEL</span><span class="o">=</span>hermes-3-llama-3.1-8b<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">COMPATIBLE_API_KEY</span><span class="o">=</span><span class="nv">$VLLM_API_KEY</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span>--non-interactive
 </pre></div>
 </div>
-<p>If you need a second sandbox alongside an existing one, use a dedicated build
-directory and rerun onboarding with the sandbox name and ports you intend to
-use.</p>
+<p>If the endpoint does not require authentication, set <code class="docutils literal notranslate"><span class="pre">COMPATIBLE_API_KEY</span></code> to any
+non-empty placeholder, such as <code class="docutils literal notranslate"><span class="pre">dummy</span></code>.</p>
 </section>
-<section id="network-access">
-<h2>Network Access<a class="headerlink" href="#network-access" title="Link to this heading">#</a></h2>
-<p>Plugins still run inside the sandbox policy boundary. If a plugin needs network
-egress, add or update a policy preset for the required hostnames and binaries
-before rebuilding the sandbox.</p>
-<p>For example, see <a class="reference internal" href="../reference/network-policies.html"><span class="std std-doc">Network Policies</span></a> for
-policy concepts and <a class="reference internal" href="../network-policy/customize-network-policy.html"><span class="std std-doc">Customize Network Policy</span></a>
-for custom preset workflows.</p>
+<section id="advanced-temporary-repointing">
+<h2>Advanced Temporary Repointing<a class="headerlink" href="#advanced-temporary-repointing" title="Link to this heading">#</a></h2>
+<p>NemoClaw-managed sandboxes normally block direct <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">config</span> <span class="pre">set</span></code> writes
+inside the sandbox because those edits do not survive rebuilds. Prefer rerunning
+<code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> for a persistent provider change.</p>
+<p>If you are intentionally testing a mutable OpenClaw config, prepare a batch file
+like this:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;models&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;providers&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;vllm-local&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;baseUrl&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;http://host.openshell.internal:8002/v1&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;api&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;openai&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;apiKey&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;${VLLM_API_KEY}&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;agents&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;defaults&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;primary&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vllm-local/hermes-3-llama-3.1-8b&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Apply it only in environments where OpenClaw config writes are allowed:</p>
+<div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>openclaw<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--batch-file<span class="w"> </span>/sandbox/.openclaw/vllm-tool-calls.json
+</pre></div>
+</div>
+<p>After testing, persist the working provider through <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> so the
+sandbox image, OpenShell inference route, and host-managed credentials stay in
+sync.</p>
 </section>
-<section id="common-mistakes">
-<h2>Common Mistakes<a class="headerlink" href="#common-mistakes" title="Link to this heading">#</a></h2>
-<p>These are the most common places where plugin installation gets mixed up with
-other NemoClaw extension paths.</p>
+<section id="verify-the-fix">
+<h2>Verify the Fix<a class="headerlink" href="#verify-the-fix" title="Link to this heading">#</a></h2>
+<p>After switching to vLLM, ask for an action that should use a tool. Good signs:</p>
 <ul class="simple">
-<li><p>Do not use <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;sandbox&gt;</span> <span class="pre">skill</span> <span class="pre">install</span></code> for OpenClaw plugins. That
-command only installs <code class="docutils literal notranslate"><span class="pre">SKILL.md</span></code> agent skills.</p></li>
-<li><p>Do not put a Dockerfile in a broad directory such as <code class="docutils literal notranslate"><span class="pre">/tmp</span></code> unless you intend
-to send that whole directory as the Docker build context.</p></li>
-<li><p>Keep plugin dependencies in the build stage or plugin directory; avoid copying
-unrelated host files into the sandbox image.</p></li>
+<li><p>The TUI does not show JSON blobs as assistant text.</p></li>
+<li><p>The gateway log shows tool dispatch and a follow-up answer.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">status</span></code> reports the local vLLM or compatible endpoint as the
+active provider.</p></li>
 </ul>
+<p>If JSON still appears as text, confirm that vLLM was started with both
+<code class="docutils literal notranslate"><span class="pre">--enable-auto-tool-choice</span></code> and the correct <code class="docutils literal notranslate"><span class="pre">--tool-call-parser</span></code> value for your
+model.</p>
 </section>
 <section id="next-steps">
 <h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">#</a></h2>
 <ul class="simple">
-<li><p>Review <a class="reference internal" href="sandbox-hardening.html"><span class="std std-doc">Sandbox Hardening</span></a> before adding plugin code to a
-shared or long-lived sandbox.</p></li>
-<li><p>Review <a class="reference internal" href="../reference/network-policies.html"><span class="std std-doc">Network Policies</span></a> to plan plugin
-egress rules.</p></li>
-<li><p>Follow <a class="reference internal" href="../network-policy/customize-network-policy.html"><span class="std std-doc">Customize Network Policy</span></a>
-if the plugin needs a custom preset.</p></li>
+<li><p><a class="reference internal" href="use-local-inference.html"><span class="std std-doc">Use a Local Inference Server</span></a></p></li>
+<li><p><a class="reference internal" href="inference-options.html"><span class="std std-doc">Inference Options</span></a></p></li>
+<li><p><a class="reference internal" href="switch-inference-providers.html"><span class="std std-doc">Switch Inference Models</span></a></p></li>
 </ul>
 </section>
 </section>
@@ -605,20 +692,20 @@ if the plugin needs a custom preset.</p></li>
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="brev-web-ui.html"
+       href="use-local-inference.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">Launch NemoClaw with the Brev Web UI</p>
+        <p class="prev-next-title">Use a Local Inference Server</p>
       </div>
     </a>
     <a class="right-next"
-       href="sandbox-hardening.html"
+       href="switch-inference-providers.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Sandbox Image Hardening</p>
+        <p class="prev-next-title">Switch Inference Models at Runtime</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -643,11 +730,11 @@ if the plugin needs a custom preset.</p></li>
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#prepare-a-build-directory">Prepare a Build Directory</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#example-dockerfile">Example Dockerfile</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#create-the-sandbox">Create the Sandbox</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#network-access">Network Access</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#common-mistakes">Common Mistakes</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#quick-choice-guide">Quick Choice Guide</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#symptom">Symptom</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#recommended-fix">Recommended Fix</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#advanced-temporary-repointing">Advanced Temporary Repointing</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#verify-the-fix">Verify the Fix</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#next-steps">Next Steps</a></li>
 </ul>
   </nav></div>

@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -401,6 +401,7 @@
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -578,7 +579,7 @@ NemoClaw uses provider-specific local tokens for those routes, and rebuilds of l
 <tr class="row-odd"><td><p>Local vLLM</p></td>
 <td><p>Experimental</p></td>
 <td><p>Local OpenAI-compatible</p></td>
-<td><p>Appears when a vLLM server is already running on <code class="docutils literal notranslate"><span class="pre">localhost:8000</span></code>; managed install/start requires <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_EXPERIMENTAL=1</span></code></p></td>
+<td><p>Requires <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_EXPERIMENTAL=1</span></code> and a server already running on <code class="docutils literal notranslate"><span class="pre">localhost:8000</span></code></p></td>
 </tr>
 </tbody>
 </table>
@@ -759,6 +760,7 @@ Other provider credentials, such as <code class="docutils literal notranslate"><
 <h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p><a class="reference internal" href="use-local-inference.html"><span class="std std-doc">Use a Local Inference Server</span></a> for Ollama, vLLM, NIM, and compatible-endpoint setup details.</p></li>
+<li><p><a class="reference internal" href="tool-calling-reliability.html"><span class="std std-doc">Tool-Calling Reliability</span></a> for deciding when Ollama is enough and when vLLM with a parser is safer.</p></li>
 <li><p><a class="reference internal" href="switch-inference-providers.html"><span class="std std-doc">Switch Inference Models</span></a> for changing the model at runtime without re-onboarding.</p></li>
 </ul>
 </section>

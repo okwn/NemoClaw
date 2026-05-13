@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -65,7 +65,7 @@
     <link rel="icon" href="../_static/favicon.png"/>
 
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Switch Inference Models at Runtime" href="switch-inference-providers.html" />
+    <link rel="next" title="Tool-Calling Reliability for Local Inference" href="tool-calling-reliability.html" />
     <link rel="prev" title="Inference Options" href="inference-options.html" />
 
 
@@ -401,6 +401,7 @@
 <ul class="current nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="inference-options.html">Inference Options</a></li>
 <li class="toctree-l1 current active"><a class="current reference internal" href="#">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -524,13 +525,17 @@ Refer to the <a class="reference internal" href="../get-started/quickstart.html"
 The onboard wizard detects Ollama automatically when it is installed or running on the host.</p>
 <p>If Ollama is installed but not running, NemoClaw starts it for you.
 On macOS and Linux, the wizard can also offer to install Ollama when it is not present.
-On WSL, the wizard can use, start, restart, or install Ollama on the Windows host through PowerShell interop.</p>
+On WSL, the wizard can use, start, restart, or install Ollama on the Windows host through PowerShell interop.
+On Debian and Ubuntu, the native Linux install path checks for <code class="docutils literal notranslate"><span class="pre">zstd</span></code> before it runs the Ollama installer.
+If <code class="docutils literal notranslate"><span class="pre">zstd</span></code> is missing, NemoClaw installs it with <code class="docutils literal notranslate"><span class="pre">apt-get</span></code> and explains the sudo prompt before continuing.
+On non-apt Linux distributions, install <code class="docutils literal notranslate"><span class="pre">zstd</span></code> first, then rerun onboarding.</p>
 <p>Run the onboard wizard.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>onboard
 </pre></div>
 </div>
 <p>Select <strong>Local Ollama</strong> from the provider list.
 NemoClaw lists installed models or offers starter models if none are installed.
+On hosts with at least 32 GiB of detected GPU memory, the starter list includes <code class="docutils literal notranslate"><span class="pre">qwen3.6:35b</span></code> and selects it by default.
 It pulls the selected model, loads it into memory, and validates it before continuing.
 If the selected model declares that it does not support tool calling, onboarding stops with guidance to choose a model whose <code class="docutils literal notranslate"><span class="pre">ollama</span> <span class="pre">show</span> <span class="pre">&lt;model&gt;</span></code> capabilities include <code class="docutils literal notranslate"><span class="pre">tools</span></code>.
 The validation also requires structured chat-completions tool calls.
@@ -550,6 +555,14 @@ After an install or restart action, NemoClaw relaunches Ollama from the detected
 If the daemon does not become reachable, onboarding prints PowerShell commands you can run to inspect the Windows-side process and port state.
 Use one Ollama instance on port <code class="docutils literal notranslate"><span class="pre">11434</span></code> at a time.
 If both WSL and Windows-host Ollama are running, pick the intended menu entry during onboarding so NemoClaw validates and pulls models against the right daemon.</p>
+<div class="admonition caution">
+<p class="admonition-title">Caution</p>
+<p>Ollama is convenient for local chat, but some model/template combinations can
+return tool calls as plain text under realistic agent load. If the TUI shows raw
+JSON such as <code class="docutils literal notranslate"><span class="pre">{&quot;name&quot;:&quot;memory_search&quot;,&quot;arguments&quot;:{...}}</span></code> instead of running a
+tool, switch to vLLM with <code class="docutils literal notranslate"><span class="pre">--enable-auto-tool-choice</span></code> and the correct
+<code class="docutils literal notranslate"><span class="pre">--tool-call-parser</span></code>. See <a class="reference internal" href="tool-calling-reliability.html"><span class="std std-doc">Tool-Calling Reliability</span></a>.</p>
+</div>
 </section>
 <section id="authenticated-reverse-proxy">
 <h3>Authenticated Reverse Proxy<a class="headerlink" href="#authenticated-reverse-proxy" title="Link to this heading">#</a></h3>
@@ -847,6 +860,7 @@ Refer to <a class="reference internal" href="switch-inference-providers.html"><s
 <h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading">#</a></h2>
 <ul class="simple">
 <li><p><a class="reference internal" href="inference-options.html"><span class="std std-doc">Inference Options</span></a> for the full list of providers available during onboarding.</p></li>
+<li><p><a class="reference internal" href="tool-calling-reliability.html"><span class="std std-doc">Tool-Calling Reliability</span></a> for diagnosing raw JSON tool-call output with local models.</p></li>
 <li><p><a class="reference internal" href="switch-inference-providers.html"><span class="std std-doc">Switch Inference Models</span></a> for runtime model switching.</p></li>
 <li><p><a class="reference internal" href="../get-started/quickstart.html"><span class="std std-doc">Quickstart</span></a> for first-time installation.</p></li>
 </ul>
@@ -873,11 +887,11 @@ Refer to <a class="reference internal" href="switch-inference-providers.html"><s
       </div>
     </a>
     <a class="right-next"
-       href="switch-inference-providers.html"
+       href="tool-calling-reliability.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Switch Inference Models at Runtime</p>
+        <p class="prev-next-title">Tool-Calling Reliability for Local Inference</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>

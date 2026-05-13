@@ -45,7 +45,7 @@
 
 
 
-    <script src="../_static/documentation_options.js?v=454be4fe"></script>
+    <script src="../_static/documentation_options.js?v=3f434bd6"></script>
     <script src="../_static/doctools.js?v=9a2dae69"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
@@ -56,7 +56,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.16.1';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = '../versions1.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.39';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.0.40';
         DOCUMENTATION_OPTIONS.show_version_warning_banner =
             false;
         </script>
@@ -401,6 +401,7 @@
 <ul class="nav bd-sidenav">
 <li class="toctree-l1"><a class="reference internal" href="../inference/inference-options.html">Inference Options</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/use-local-inference.html">Use Local Inference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../inference/tool-calling-reliability.html">Tool-Calling Reliability</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/switch-inference-providers.html">Switch Inference Providers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../inference/set-up-sub-agent.html">Set Up Task-Specific Sub-Agents</a></li>
 </ul>
@@ -610,18 +611,20 @@ The baseline policy is always applied regardless of the selected tier.</p>
 <td><p>Base sandbox only. No third-party network access beyond inference and core agent tooling.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Balanced (default)</p></td>
-<td><p>npm, pypi, huggingface, brew, brave</p></td>
-<td><p>Full dev tooling and web search. No messaging platform access.</p></td>
+<td><p>npm, pypi, huggingface, brew, brave when supported</p></td>
+<td><p>Full dev tooling and web search for agents that support web search. No messaging platform access.</p></td>
 </tr>
 <tr class="row-even"><td><p>Open</p></td>
-<td><p>npm, pypi, huggingface, brew, brave, slack, discord, telegram, jira, outlook</p></td>
+<td><p>npm, pypi, huggingface, brew, brave when supported, slack, discord, telegram, jira, outlook</p></td>
 <td><p>Broad access across third-party services including messaging and productivity.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <p>After selecting a tier, a combined preset and access-mode screen lets you include or exclude individual presets and toggle each between read (GET only) and read-write (GET + POST/PUT/PATCH) access.
-Tier-default presets are pre-selected; additional presets can be added from the full list.</p>
+Tier-default presets are pre-selected; additional presets can be added from the full list.
+NemoClaw filters tier defaults by the active agent’s supported integrations.
+For example, Hermes onboarding omits the Brave Search preset because Hermes does not use NemoClaw’s OpenClaw web-search configuration.</p>
 <p>Tier definitions are stored in <code class="docutils literal notranslate"><span class="pre">nemoclaw-blueprint/policies/tiers.yaml</span></code>.</p>
 <p>In non-interactive mode, set the tier with <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_POLICY_TIER</span></code>:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span><span class="nv">NEMOCLAW_POLICY_TIER</span><span class="o">=</span>open<span class="w"> </span>nemoclaw<span class="w"> </span>onboard<span class="w"> </span>--non-interactive<span class="w"> </span>--yes-i-accept-third-party-software
