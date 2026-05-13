@@ -1175,7 +1175,9 @@ $ export NEMOCLAW_SANDBOX_READY_TIMEOUT=600
 $ nemoclaw onboard
 ```
 
-If a timeout fires, onboarding emits the elapsed budget plus a hint to raise the relevant variable. The Ollama pull preserves its partial download for the next attempt; the readiness wait deletes the orphaned sandbox first so the next `nemoclaw onboard` starts clean.
+If a timeout fires, onboarding emits the elapsed budget plus a hint to raise the relevant variable.
+The Ollama pull preserves its partial download for the next attempt.
+The readiness wait deletes the orphaned sandbox first so the next `nemoclaw onboard` starts clean.
 
 ### Lifecycle Behavior Flags
 

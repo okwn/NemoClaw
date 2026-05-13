@@ -143,7 +143,7 @@ $ export NEMOCLAW_SANDBOX_READY_TIMEOUT=600
 $ nemoclaw onboard
 ```
 
-If onboard ends with `Sandbox '<name>' was created but did not become ready within 180s`, the partially-created sandbox is deleted first, so the next attempt with the raised budget starts from a clean state.
+If onboard ends with `Sandbox '<name>' was created but did not become ready within 180s`, onboard deletes the partially-created sandbox first, so the next attempt with the raised budget starts from a clean state.
 For the inference-probe budget that runs earlier in onboarding, see [`NEMOCLAW_LOCAL_INFERENCE_TIMEOUT`](../inference/use-local-inference.md#timeout-configuration).
 
 ## Proxy Configuration
