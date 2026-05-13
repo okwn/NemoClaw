@@ -19,6 +19,9 @@
 # every legacy `pass`/`fail` string has a mapping.
 
 scripts:
+  brev-e2e.test.ts:
+    scenario: ""
+    assertions: []
   test-brave-search-e2e.sh:
     scenario: ""
     assertions: []

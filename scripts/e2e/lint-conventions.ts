@@ -36,6 +36,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildLegacyAssertionInventory } from "./extract-legacy-assertions";
+import { validateParityMap } from "./check-parity-map";
 
 interface Rule {
   id: string;
@@ -244,7 +245,15 @@ function lintParityInventory(root: string): LintFinding[] {
 
 function main(): number {
   const { root } = parseArgs(process.argv);
-  const findings = [...lintSuiteSteps(root), ...lintLegacyFrontier(root), ...lintParityInventory(root)];
+  const inventoryPath = path.join(root, "test/e2e/docs/parity-inventory.generated.json");
+  const parityErrors = fs.existsSync(inventoryPath)
+    ? validateParityMap({ root, strict: false }).map((message) => ({
+        file: "test/e2e/docs/parity-map.yaml",
+        rule: "parity-map-schema",
+        message,
+      }))
+    : [];
+  const findings = [...lintSuiteSteps(root), ...lintLegacyFrontier(root), ...lintParityInventory(root), ...parityErrors];
   if (findings.length === 0) {
     return 0;
   }
