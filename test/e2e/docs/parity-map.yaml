@@ -19,6 +19,9 @@
 # every legacy `pass`/`fail` string has a mapping.
 
 scripts:
+  test-brave-search-e2e.sh:
+    scenario: ""
+    assertions: []
   test-cloud-inference-e2e.sh:
     scenario: ""
     assertions: []
@@ -29,6 +32,12 @@ scripts:
     scenario: ""
     assertions: []
   test-credential-sanitization.sh:
+    scenario: ""
+    assertions: []
+  test-dashboard-remote-bind.sh:
+    scenario: ""
+    assertions: []
+  test-dashboard-remote-bind.sh:
     scenario: ""
     assertions: []
   test-deployment-services.sh:
@@ -49,7 +58,13 @@ scripts:
   test-full-e2e.sh:
     scenario: ""
     assertions: []
+  test-gateway-health-honest.sh:
+    scenario: ""
+    assertions: []
   test-gpu-double-onboard.sh:
+    scenario: ""
+    assertions: []
+  test-gateway-health-honest.sh:
     scenario: ""
     assertions: []
   test-gpu-e2e.sh:
