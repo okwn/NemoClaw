@@ -38,6 +38,7 @@ const {
 const {
   agentSupportsWebSearch,
 }: typeof import("./onboard/web-search-support") = require("./onboard/web-search-support");
+const dashboardAccess: typeof import("./onboard/dashboard-access") = require("./onboard/dashboard-access");
 const {
   createWebSearchConfigHelpers,
 }: typeof import("./onboard/web-search-config") = require("./onboard/web-search-config");
@@ -9613,172 +9614,75 @@ function fetchGatewayAuthTokenFromSandbox(sandboxName: string): string | null {
 
 function buildDashboardChain(
   chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: {
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-  } = {},
+  options: Parameters<typeof dashboardAccess.buildDashboardChain>[1] = {},
 ) {
-  return buildChain({
-    chatUiUrl,
-    isWsl: isWsl(options),
-    wslHostAddress: getWslHostAddress(options),
-  });
+  return dashboardAccess.buildDashboardChain(chatUiUrl, { ...options, runCapture: options.runCapture || runCapture });
 }
 
 function getDashboardForwardPort(
   chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: {
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-  } = {},
+  options: Parameters<typeof dashboardAccess.getDashboardForwardPort>[1] = {},
 ): string {
-  return String(buildDashboardChain(chatUiUrl, options).port);
+  return dashboardAccess.getDashboardForwardPort(chatUiUrl, {
+    ...options,
+    runCapture: options.runCapture || runCapture,
+  });
 }
 
 function getDashboardForwardTarget(
   chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: {
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-    chatUiUrl?: string;
-    token?: string | null;
-  } = {},
+  options: Parameters<typeof dashboardAccess.getDashboardForwardTarget>[1] = {},
 ): string {
-  return buildDashboardChain(chatUiUrl, options).forwardTarget;
+  return dashboardAccess.getDashboardForwardTarget(chatUiUrl, {
+    ...options,
+    runCapture: options.runCapture || runCapture,
+  });
 }
 
 function getDashboardForwardStartCommand(
   sandboxName: string,
-  options: {
-    chatUiUrl?: string;
-    openshellBinary?: string;
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-    token?: string | null;
-  } = {},
+  options: Parameters<typeof dashboardAccess.getDashboardForwardStartCommand>[1] = {},
 ): string {
-  const chatUiUrl =
-    options.chatUiUrl || process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`;
-  const forwardTarget = getDashboardForwardTarget(chatUiUrl, options);
-  return `${openshellShellCommand(
-    ["forward", "start", "--background", forwardTarget, sandboxName],
-    options,
-  )}`;
+  return dashboardAccess.getDashboardForwardStartCommand(sandboxName, {
+    ...options,
+    runCapture: options.runCapture || runCapture,
+    openshellShellCommand,
+  });
 }
 
 function buildAuthenticatedDashboardUrl(baseUrl: string, token: string | null = null): string {
-  if (!token) return baseUrl;
-  return `${baseUrl}#token=${encodeURIComponent(token)}`;
+  return dashboardAccess.buildAuthenticatedDashboardUrl(baseUrl, token);
 }
 
 function dashboardUrlForDisplay(url: string): string {
-  return redact(url.replace(/#token=[^\s'"]*$/i, ""));
+  return dashboardAccess.dashboardUrlForDisplay(url, redact);
 }
 
 function getWslHostAddress(
-  options: {
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-  } = {},
+  options: Parameters<typeof dashboardAccess.getWslHostAddress>[0] = {},
 ): string | null {
-  if (options.wslHostAddress) {
-    return options.wslHostAddress;
-  }
-  if (!isWsl(options)) {
-    return null;
-  }
-  const runCaptureFn = options.runCapture || runCapture;
-  const output = runCaptureFn(["hostname", "-I"], { ignoreError: true });
-  return (
-    String(output || "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean)[0] || null
-  );
+  return dashboardAccess.getWslHostAddress({ ...options, runCapture: options.runCapture || runCapture });
 }
 
 function getDashboardAccessInfo(
   sandboxName: string,
-  options: {
-    token?: string | null;
-    chatUiUrl?: string;
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-  } = {},
+  options: Parameters<typeof dashboardAccess.getDashboardAccessInfo>[1] = {},
 ) {
-  const token = Object.prototype.hasOwnProperty.call(options, "token")
-    ? options.token
-    : fetchGatewayAuthTokenFromSandbox(sandboxName);
-  const chatUiUrl =
-    options.chatUiUrl || process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`;
-  const chain = buildDashboardChain(chatUiUrl, options);
-  const dashboardAccess = buildControlUiUrls(token, chain.port, chain.accessUrl).map(
-    (url, index) => ({
-      label: index === 0 ? "Dashboard" : `Alt ${index}`,
-      url: buildAuthenticatedDashboardUrl(url, null),
-    }),
-  );
-
-  const wslHostAddress = getWslHostAddress(options);
-  if (wslHostAddress) {
-    const wslUrl = buildAuthenticatedDashboardUrl(`http://${wslHostAddress}:${chain.port}/`, token);
-    if (!dashboardAccess.some((access) => access.url === wslUrl)) {
-      dashboardAccess.push({ label: "VS Code/WSL", url: wslUrl });
-    }
-  }
-
-  return dashboardAccess;
+  return dashboardAccess.getDashboardAccessInfo(sandboxName, {
+    ...options,
+    runCapture: options.runCapture || runCapture,
+    fetchGatewayAuthToken: fetchGatewayAuthTokenFromSandbox,
+  });
 }
 
 function getDashboardGuidanceLines(
-  dashboardAccess: Array<{ label: string; url: string }> = [],
-  options: {
-    chatUiUrl?: string;
-    wslHostAddress?: string | null;
-    runCapture?: typeof runCapture;
-    env?: NodeJS.ProcessEnv;
-    platform?: NodeJS.Platform;
-    release?: string;
-    isWsl?: boolean;
-  } = {},
+  access: Parameters<typeof dashboardAccess.getDashboardGuidanceLines>[0] = [],
+  options: Parameters<typeof dashboardAccess.getDashboardGuidanceLines>[1] = {},
 ): string[] {
-  const chatUiUrl =
-    options.chatUiUrl || process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`;
-  const chain = buildDashboardChain(chatUiUrl, options);
-  const guidance = [`Port ${String(chain.port)} must be forwarded before opening these URLs.`];
-  if (isWsl(options)) {
-    guidance.push(
-      "WSL detected: if localhost fails in Windows, use the WSL host IP shown by `hostname -I`.",
-    );
-  }
-  if (dashboardAccess.length === 0) {
-    guidance.push("No dashboard URLs were generated.");
-  }
-  return guidance;
+  return dashboardAccess.getDashboardGuidanceLines(access, {
+    ...options,
+    runCapture: options.runCapture || runCapture,
+  });
 }
 /** Print the post-onboard dashboard with sandbox status and reconfiguration hints. */
 function printDashboard(
