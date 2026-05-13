@@ -61,6 +61,10 @@ const {
 const {
   getSelectionDrift,
 }: typeof import("./onboard/selection-drift") = require("./onboard/selection-drift");
+const {
+  formatOllamaProxyUnreachableMessage,
+  probeOllamaProxySandboxReachability,
+}: typeof import("./onboard/ollama-proxy-reachability") = require("./onboard/ollama-proxy-reachability");
 const crypto = require("node:crypto");
 const fs = require("fs");
 const os = require("os");
@@ -8006,6 +8010,18 @@ async function setupInference(
     if (!probe.ok) {
       console.error(`  ${probe.message}`);
       process.exit(1);
+    }
+    if (!isWsl()) {
+      const reach = await probeOllamaProxySandboxReachability();
+      if (!reach.ok) {
+        const msg = formatOllamaProxyUnreachableMessage(reach);
+        if (reach.reason === "tcp_failed") {
+          console.error(msg);
+          process.exit(1);
+        } else if (msg) {
+          console.warn(msg);
+        }
+      }
     }
     // Do not mutate ~/.nemoclaw/credentials.json here: local Ollama now uses
     // OLLAMA_PROXY_CREDENTIAL_ENV, so any saved OPENAI_API_KEY remains available
