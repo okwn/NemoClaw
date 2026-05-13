@@ -7,7 +7,7 @@
 #    the current install/onboard path must back up the old claw before replacing
 #    the incompatible OpenShell gateway, recreate it under the current gateway,
 #    restore durable agent state, and leave the same agent type running.
-# 2. If a macOS arm64 user already has the OpenShell 0.0.37 CLI but not the
+# 2. If a macOS arm64 user already has the current OpenShell CLI but not the
 #    standalone openshell-gateway binary, the installer must fetch the Darwin
 #    gateway asset instead of accepting the incomplete CLI-only install.
 
@@ -52,7 +52,7 @@ STATE_DIR="${NEMOCLAW_OPENSHELL_GATEWAY_STATE_DIR:-$HOME/.local/state/nemoclaw/o
 PID_FILE="${STATE_DIR}/openshell-gateway.pid"
 OLD_NEMOCLAW_REF="${NEMOCLAW_OLD_NEMOCLAW_REF:-v0.0.36}"
 OLD_OPENSHELL_VERSION="${NEMOCLAW_OLD_OPENSHELL_VERSION:-0.0.36}"
-CURRENT_OPENSHELL_VERSION="${NEMOCLAW_CURRENT_OPENSHELL_VERSION:-0.0.37}"
+CURRENT_OPENSHELL_VERSION="${NEMOCLAW_CURRENT_OPENSHELL_VERSION:-0.0.39}"
 SURVIVOR_SANDBOX="${NEMOCLAW_GATEWAY_UPGRADE_SURVIVOR_NAME:-e2e-gateway-upgrade-survivor}"
 SURVIVOR_MARKER="gateway-upgrade-survivor-$(date +%s)"
 SURVIVOR_MARKER_PATH="/sandbox/.openclaw/workspace/nemoclaw-gateway-upgrade-marker"
@@ -143,7 +143,7 @@ EOF
   cat >"$fake_bin/openshell" <<'EOF'
 #!/usr/bin/env bash
 if [ "${1:-}" = "--version" ]; then
-  printf 'openshell 0.0.37\n'
+  printf 'openshell 0.0.39\n'
   exit 0
 fi
 exit 99
@@ -205,7 +205,7 @@ EOF
   fi
 
   rm -rf "$tmp"
-  pass "macOS OpenShell 0.0.37 incomplete install fetches Darwin gateway and VM driver assets"
+  pass "macOS OpenShell ${CURRENT_OPENSHELL_VERSION} incomplete install fetches Darwin gateway and VM driver assets"
 }
 
 exercise_macos_vm_driver_entitlement_repair() {
@@ -230,7 +230,7 @@ EOF
   cat >"$fake_bin/openshell" <<'EOF'
 #!/usr/bin/env bash
 if [ "${1:-}" = "--version" ]; then
-  printf 'openshell 0.0.37\n'
+  printf 'openshell 0.0.39\n'
   exit 0
 fi
 exit 99
@@ -289,7 +289,7 @@ EOF
   fi
 
   rm -rf "$tmp"
-  pass "macOS OpenShell 0.0.37 installer repairs missing VM driver Hypervisor entitlement"
+  pass "macOS OpenShell ${CURRENT_OPENSHELL_VERSION} installer repairs missing VM driver Hypervisor entitlement"
 }
 
 exercise_macos_vm_rootfs_permission_regression() {

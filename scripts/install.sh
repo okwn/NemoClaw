@@ -1609,7 +1609,7 @@ abort_unsupported_automatic_openshell_upgrade() {
   local old_openshell_version="$1"
   warn "Existing sandbox sessions use OpenShell ${old_openshell_version}, but the current ${_CLI_BIN} CLI does not support '${_CLI_BIN} backup-all'."
   cat <<EOF
-  The automatic OpenShell 0.0.37 gateway upgrade is disabled for this install.
+  The automatic legacy OpenShell gateway upgrade is disabled for this install.
   Upgrade from a ${_CLI_BIN} version that supports '${_CLI_BIN} backup-all', or
   manually preserve sandbox state before retiring the old OpenShell gateway.
 
@@ -1635,12 +1635,13 @@ confirm_experimental_openshell_gateway_upgrade() {
   cat <<EOF
 
   Existing NemoClaw sandbox state uses OpenShell ${old_openshell_version}.
-  This release upgrades OpenShell to 0.0.37, which uses a different gateway layout.
+  This release upgrades OpenShell to the current supported version, which uses a
+  different gateway layout than pre-0.0.37 gateways.
 
   NemoClaw can run the new automatic upgrade path now:
     1. back up registered sandbox state
     2. retire the old OpenShell gateway while the old CLI is still available
-    3. install OpenShell 0.0.37
+    3. install the current supported OpenShell
     4. recreate and restore the registered sandbox during onboarding
 
   This upgrade path is new. Durable workspace and agent configuration state
@@ -1651,7 +1652,7 @@ EOF
   printf "\n"
 
   if installer_non_interactive; then
-    error "OpenShell 0.0.37 gateway upgrade requires explicit opt-in. Set NEMOCLAW_ACCEPT_EXPERIMENTAL_OPENSHELL_UPGRADE=1 to continue automatically, or run the manual commands above."
+    error "OpenShell gateway upgrade requires explicit opt-in. Set NEMOCLAW_ACCEPT_EXPERIMENTAL_OPENSHELL_UPGRADE=1 to continue automatically, or run the manual commands above."
   fi
 
   local answer=""
@@ -1664,7 +1665,7 @@ EOF
     IFS= read -r answer <&3 || answer=""
     exec 3<&-
   else
-    error "OpenShell 0.0.37 gateway upgrade requires a TTY prompt. Set NEMOCLAW_ACCEPT_EXPERIMENTAL_OPENSHELL_UPGRADE=1 to continue automatically, or run the manual commands above."
+    error "OpenShell gateway upgrade requires a TTY prompt. Set NEMOCLAW_ACCEPT_EXPERIMENTAL_OPENSHELL_UPGRADE=1 to continue automatically, or run the manual commands above."
   fi
 
   answer="$(printf "%s" "$answer" | tr '[:upper:]' '[:lower:]')"
@@ -1729,11 +1730,11 @@ preinstall_backup_and_retire_legacy_gateway() {
   fi
   export NEMOCLAW_RESTORE_LATEST_BACKUP_ON_RECREATE=1
 
-  # OpenShell 0.0.37 is not compatible with pre-0.0.37 gateway state, and the
-  # 0.0.37 CLI no longer has lifecycle verbs for destroying that old gateway.
+  # Current OpenShell builds are not compatible with pre-0.0.37 gateway state,
+  # and those CLIs no longer have lifecycle verbs for destroying that old gateway.
   # Retire the old gateway while the old CLI can still do it, after backup.
   if [[ -n "$old_openshell_version" ]] && ! version_gte "$old_openshell_version" "0.0.37"; then
-    info "Retiring OpenShell ${old_openshell_version} gateway before installing OpenShell 0.0.37…"
+    info "Retiring OpenShell ${old_openshell_version} gateway before installing current OpenShell…"
     openshell gateway destroy -g nemoclaw >/dev/null 2>&1 \
       || openshell gateway destroy >/dev/null 2>&1 \
       || warn "Could not destroy the legacy OpenShell gateway before upgrade; onboarding will clean up stale runtime state."
