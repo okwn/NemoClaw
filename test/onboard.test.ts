@@ -9160,7 +9160,7 @@ const { createSandbox } = require(${onboardPath});
 
   it("ensureDashboardForward clears stale preferred-port forwards before reallocating", () => {
     const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
+      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "dashboard-forward.ts"),
       "utf-8",
     );
 
