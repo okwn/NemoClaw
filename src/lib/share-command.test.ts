@@ -13,12 +13,17 @@ vi.mock("child_process", () => ({
   spawnSync: spawnSyncMock,
 }));
 
+vi.mock("node:child_process", () => ({
+  spawnSync: spawnSyncMock,
+}));
+
 import {
   defaultShareMountDir,
   isMountPoint,
   resolveLinuxUnmount,
   runShareMount,
   runShareStatus,
+  runShareUnmount,
 } from "./share-command";
 import type { ShareCommandDeps } from "./share-command-deps";
 
@@ -102,6 +107,35 @@ describe("share-command helpers", () => {
 
       expect(isMountPoint("/tmp/nemoclaw-share-not-mounted")).toBe(false);
     });
+  });
+
+  it("uses mount output directly on macOS", () => {
+    withProcessPlatform("darwin", () => {
+      const dir = "/tmp/nemoclaw-share-darwin";
+      spawnSyncMock.mockImplementation((cmd: string) => {
+        if (cmd === "mountpoint") throw new Error("mountpoint should not run on macOS");
+        if (cmd === "mount") return { status: 0, stdout: mountedAt(dir) };
+        return { status: 1, stdout: "", stderr: "" };
+      });
+
+      expect(isMountPoint(dir)).toBe(true);
+    });
+  });
+
+  it("returns false when mount output cannot be read", () => {
+    withProcessPlatform("darwin", () => {
+      spawnSyncMock.mockImplementation((cmd: string) => {
+        if (cmd === "mount") return { status: 1, stdout: "", stderr: "permission denied" };
+        return { status: 1, stdout: "", stderr: "" };
+      });
+
+      expect(isMountPoint("/tmp/not-mounted")).toBe(false);
+    });
+  });
+
+  it("returns null when no Linux unmount helper is available", () => {
+    spawnSyncMock.mockReturnValue({ status: 1, stdout: "" });
+    expect(resolveLinuxUnmount()).toBeNull();
   });
 
   it("prefers fusermount3 over fusermount on Linux", () => {
@@ -232,6 +266,112 @@ describe("ShareCommand mount/status actions", () => {
     } finally {
       fs.rmSync(localMount, { recursive: true, force: true });
     }
+  });
+
+  it("exits when the target local mount is already mounted", async () => {
+    const deps = makeDeps();
+    spawnSyncMock.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === "sh" && args[1] === "command -v sshfs") return { status: 0, stdout: "sshfs\n" };
+      if (cmd === "mountpoint") return { status: 0, stdout: "", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    });
+
+    await expect(runShareMount({ sandboxName: "alpha", localMount: "/tmp/mounted" }, deps)).rejects.toThrow(
+      "process.exit:1",
+    );
+    expect(deps.ensureLive).not.toHaveBeenCalled();
+  });
+
+  it("exits when SSH config cannot be obtained", async () => {
+    const deps = makeDeps({ getSshConfig: vi.fn(() => ({ status: 1, output: "" })) });
+    spawnSyncMock.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === "sh" && args[1] === "command -v sshfs") return { status: 0, stdout: "sshfs\n" };
+      if (cmd === "mountpoint") return { status: 1, stdout: "", stderr: "" };
+      if (cmd === "mount") return { status: 0, stdout: "", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    });
+
+    await expect(runShareMount({ sandboxName: "alpha" }, deps)).rejects.toThrow("process.exit:1");
+    expect(deps.ensureLive).toHaveBeenCalledWith("alpha");
+  });
+
+  it("unmounts with fusermount on Linux", () => {
+    withProcessPlatform("linux", () => {
+      spawnSyncMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === "sh" && args[1].includes("fusermount3")) {
+          return { status: 0, stdout: "/usr/bin/fusermount3\n" };
+        }
+        if (cmd === "/usr/bin/fusermount3") {
+          expect(args).toEqual(["-u", "/tmp/share"]);
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        return { status: 1, stdout: "", stderr: "" };
+      });
+
+      runShareUnmount({ sandboxName: "alpha", localMount: "/tmp/share" }, makeDeps());
+      expect(logSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n")).toContain(
+        "Unmounted /tmp/share",
+      );
+    });
+  });
+
+  it("uses umount on macOS", () => {
+    withProcessPlatform("darwin", () => {
+      spawnSyncMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === "umount") {
+          expect(args).toEqual(["/tmp/share"]);
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        return { status: 1, stdout: "", stderr: "" };
+      });
+
+      runShareUnmount({ sandboxName: "alpha", localMount: "/tmp/share" }, makeDeps());
+      expect(logSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n")).toContain(
+        "Unmounted /tmp/share",
+      );
+    });
+  });
+
+  it("prints an install hint when no Linux unmount helper exists", () => {
+    withProcessPlatform("linux", () => {
+      spawnSyncMock.mockReturnValue({ status: 1, stdout: "", stderr: "" });
+      expect(() => runShareUnmount({ sandboxName: "alpha" }, makeDeps())).toThrow("process.exit:1");
+      expect(errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n")).toContain(
+        "Could not find fusermount3 or fusermount",
+      );
+    });
+  });
+
+  it("prints not-mounted feedback when unmount reports an absent mount", () => {
+    withProcessPlatform("linux", () => {
+      spawnSyncMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === "sh" && args[1].includes("fusermount3")) return { status: 0, stdout: "fusermount3\n" };
+        if (cmd === "fusermount3") return { status: 1, stdout: "", stderr: "not mounted" };
+        return { status: 1, stdout: "", stderr: "" };
+      });
+      expect(() => runShareUnmount({ sandboxName: "alpha", localMount: "/tmp/share" }, makeDeps())).toThrow(
+        "process.exit:1",
+      );
+      expect(errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n")).toContain(
+        "is not currently mounted",
+      );
+    });
+  });
+
+  it("prints unmount remediation for generic Linux unmount failures", () => {
+    withProcessPlatform("linux", () => {
+      spawnSyncMock.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === "sh" && args[1].includes("fusermount3")) return { status: 0, stdout: "fusermount3\n" };
+        if (cmd === "fusermount3") return { status: 1, stdout: "", stderr: "busy" };
+        return { status: 1, stdout: "", stderr: "" };
+      });
+      expect(() => runShareUnmount({ sandboxName: "alpha", localMount: "/tmp/share" }, makeDeps())).toThrow(
+        "process.exit:1",
+      );
+      const stderr = errorSpy.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
+      expect(stderr).toContain("Unmount failed: busy");
+      expect(stderr).toContain("Try: fusermount3 -uz /tmp/share");
+    });
   });
 
   it("prints mounted status when the local mount point is active", () => {

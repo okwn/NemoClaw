@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { getProbeRecovery, getTransportRecoveryMessage } from "./validation-recovery";
+import { getProbeRecovery, getTransportRecoveryMessage } from "../../dist/lib/validation-recovery";
 
 describe("validation-recovery helpers", () => {
   it("classifies local curl invocation errors separately from network timeouts", () => {
@@ -13,6 +13,16 @@ describe("validation-recovery helpers", () => {
     expect(getTransportRecoveryMessage({ curlStatus: 28, message: "operation timed out" })).toContain(
       "timed out",
     );
+  });
+
+  it("returns targeted transport guidance for HTTP and connectivity failures", () => {
+    expect(getTransportRecoveryMessage({ httpStatus: 429 })).toContain("rate limiting");
+    expect(getTransportRecoveryMessage({ httpStatus: 503 })).toContain("failing upstream");
+    expect(getTransportRecoveryMessage({ curlStatus: 7, stderr: "connection refused" })).toContain(
+      "could not connect",
+    );
+    expect(getTransportRecoveryMessage({ message: "proxy connect aborted" })).toContain("proxy");
+    expect(getTransportRecoveryMessage({ message: "unexpected reset" })).toContain("network or transport");
   });
 
   it("returns targeted transport guidance for DNS and TLS failures", () => {
@@ -41,6 +51,14 @@ describe("validation-recovery helpers", () => {
       kind: "transport",
       retry: "retry",
       failure,
+    });
+  });
+
+  it("handles empty and endpoint-oriented probe failures", () => {
+    expect(getProbeRecovery({ failures: [] })).toEqual({ kind: "unknown", retry: "selection" });
+    expect(getProbeRecovery({ failures: [{ httpStatus: 404, message: "not found" }] })).toEqual({
+      kind: "endpoint",
+      retry: "selection",
     });
   });
 

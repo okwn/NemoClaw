@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { checkStaleDist, warnIfStale } from "../src/lib/stale-dist-check";
+import { checkStaleDist, warnIfStale } from "../dist/lib/stale-dist-check";
 
 function mkRepo() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "stale-dist-"));
