@@ -46,7 +46,15 @@ e2e_install_repo() {
         exit "${build_status}"
       fi
     fi
-    bash scripts/npm-link-or-shim.sh
+    set +e
+    bash scripts/npm-link-or-shim.sh >.e2e/npm-link-or-shim.log 2>&1
+    build_status=$?
+    set -e
+    if [ "${build_status}" -ne 0 ]; then
+      cat .e2e/npm-link-or-shim.log >&2
+      echo "npm link/shim failed with status ${build_status}" >&2
+      exit "${build_status}"
+    fi
   )
   nemoclaw_refresh_install_env
 }
