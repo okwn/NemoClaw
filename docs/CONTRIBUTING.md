@@ -102,26 +102,28 @@ For full usage details and all flags, see the docstring at the top of `scripts/d
 
 Verify the docs are built correctly by building them and checking the output.
 
-To build the docs, run:
+The public site is built with Fern. To validate the Fern configuration and migrated MDX pages, run:
 
-```bash
-make docs
+```console
+$ make docs
 ```
 
 To serve the docs locally and automatically rebuild on changes, run:
 
-```bash
-make docs-live
+```console
+$ make docs-live
 ```
+
+During the migration from MyST/Sphinx to Fern, legacy `.md` pages remain in `docs/` as the source for generated user skills and parity checks. Migrated Fern pages use `.mdx`, and site navigation lives in `docs/index.yml`.
 
 ## Doc-Only PR Verification
 
 Doc-only pull requests do not need the full test suite by default.
 Before opening a doc-only PR, run:
 
-```bash
-npx prek run --all-files
-make docs
+```console
+$ npx prek run --all-files
+$ make docs
 ```
 
 Leave `npm test` unchecked in the PR verification checklist unless you actually ran it.
@@ -131,18 +133,37 @@ Run the full tests only when the change also touches code, generated behavior, o
 
 ### Format
 
-- Docs use [MyST Markdown](https://myst-parser.readthedocs.io/), a Sphinx-compatible superset of CommonMark.
-- Every page starts with YAML frontmatter (title, description.main, description.agent, topics, tags, content type).
-- Include the SPDX license header after frontmatter:
+- Fern pages use MDX with YAML frontmatter. Use a flat `title`, `description`, optional `sidebar-title`, `keywords`, and `position`.
+- Do not duplicate the page title as a body H1 in MDX pages because Fern renders the title from frontmatter.
+- Legacy MyST Markdown pages still use the nested frontmatter shape consumed by `scripts/docs-to-skills.py` until those pages are migrated.
+- Include the SPDX license header in MDX frontmatter as comments:
 
-  ```html
-  <!--
-    SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-    SPDX-License-Identifier: Apache-2.0
-  -->
+  ```yaml
+  ---
+  # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  # SPDX-License-Identifier: Apache-2.0
+  title: "NemoClaw Page Title"
+  description: "One-sentence summary for readers, SEO, and doc search snippets."
+  ---
   ```
 
-### Frontmatter Template
+### MDX Frontmatter Template
+
+```yaml
+---
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+title: "NemoClaw Page Title: Subtitle with Context"
+sidebar-title: "Short Nav Title"
+description: "One-sentence summary for readers, SEO, and doc search snippets."
+keywords: "primary keyword, secondary keyword phrase"
+position: 1
+---
+```
+
+### Legacy Skill Frontmatter Template
+
+Keep this nested shape on legacy `.md` pages until the docs-to-skills pipeline reads Fern MDX directly.
 
 ```yaml
 ---
@@ -171,10 +192,10 @@ For example, set the OpenClaw quickstart to `10` and the Hermes quickstart to `2
 
 ### Page Structure
 
-1. H1 heading matching the `title.page` value.
-2. A one- or two-sentence introduction stating what the page covers.
-3. Sections organized by task or concept, using H2 and H3. Start each section with an introductory sentence that orients the reader.
-4. A "Next Steps" section at the bottom linking to related pages.
+1. Start MDX pages with a one- or two-sentence introduction stating what the page covers.
+2. Organize sections by task or concept, using H2 and H3. Start each section with an introductory sentence that orients the reader.
+3. Use Fern components like `<Note>`, `<Tip>`, `<Warning>`, `<Cards>`, and `<Card>` for callouts and landing-page navigation.
+4. Add a "Next Steps" or "Related Topics" section at the bottom when it helps users continue.
 
 ## Style Guide
 
@@ -212,7 +233,8 @@ These patterns are common in LLM-generated text and erode trust with technical r
   ```
 
 - Use tables for structured comparisons. Keep tables simple (no nested formatting).
-- Use MyST admonitions (`:::{tip}`, `:::{note}`, `:::{warning}`) for callouts, not bold text.
+- Use Fern callout components (`<Note>`, `<Tip>`, `<Warning>`) for callouts in MDX pages, not bold text.
+- Use MyST admonitions (`:::{tip}`, `:::{note}`, `:::{warning}`) only in legacy `.md` pages that have not migrated yet.
 - Avoid nested admonitions.
 - Do not number section titles. Write "Deploy a Gateway" not "Section 1: Deploy a Gateway" or "Step 3: Verify."
 - Do not use colons in titles. Write "Deploy and Manage Gateways" not "Gateways: Deploy and Manage."

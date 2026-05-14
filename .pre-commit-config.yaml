@@ -281,7 +281,7 @@ repos:
           bash -c 'node -e "require(\"node:fs\").rmSync(\"dist\", { recursive: true, force: true })" && npm run build:cli && npx tsx scripts/check-dist-sourcemaps.ts dist && npx vitest run --project cli --coverage --coverage.reporter=text-summary --coverage.reporter=json-summary --coverage.reportsDirectory=coverage/cli --coverage.include="bin/**/*.js" --coverage.include="dist/lib/**/*.js" --coverage.exclude="test/**/*.js" --coverage.exclude="test/**/*.ts" && npx tsx scripts/check-coverage-ratchet.ts coverage/cli/coverage-summary.json ci/coverage-threshold-cli.json "CLI coverage"'
         language: system
         pass_filenames: false
-        files: ^(bin/|src/|test/)
+        files: ^(bin/|src/.*\.(ts|tsx|js|mjs|cjs)$|test/.*\.(ts|tsx|js|mjs|cjs)$)
         priority: 20
 
       - id: test-plugin

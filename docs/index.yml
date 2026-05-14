@@ -1,0 +1,108 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+landing-page:
+  page: "Home"
+  path: index.mdx
+
+navigation:
+  - section: "About NemoClaw"
+    slug: about
+    contents:
+      - page: "Overview"
+        path: about/overview.mdx
+      - page: "How It Works"
+        path: about/how-it-works.mdx
+      - page: "Ecosystem"
+        path: about/ecosystem.mdx
+      - page: "Release Notes"
+        path: about/release-notes.mdx
+  - section: "Get Started"
+    slug: get-started
+    contents:
+      - page: "Prerequisites"
+        path: get-started/prerequisites.mdx
+      - page: "Windows Preparation"
+        path: get-started/windows-preparation.mdx
+      - page: "Quickstart with OpenClaw"
+        path: get-started/quickstart.mdx
+      - page: "Quickstart with Hermes"
+        path: get-started/quickstart-hermes.mdx
+  - section: "Inference"
+    slug: inference
+    contents:
+      - page: "Inference Options"
+        path: inference/inference-options.mdx
+      - page: "Use Local Inference"
+        path: inference/use-local-inference.mdx
+      - page: "Tool-Calling Reliability"
+        path: inference/tool-calling-reliability.mdx
+      - page: "Switch Inference Providers"
+        path: inference/switch-inference-providers.mdx
+      - page: "Set Up Task-Specific Sub-Agents"
+        path: inference/set-up-sub-agent.mdx
+  - section: "Manage Sandboxes"
+    slug: manage-sandboxes
+    contents:
+      - page: "Manage Sandbox Lifecycle"
+        path: manage-sandboxes/lifecycle.mdx
+      - page: "Set Up Messaging Channels"
+        path: manage-sandboxes/messaging-channels.mdx
+      - page: "Workspace Files"
+        path: manage-sandboxes/workspace-files.mdx
+      - page: "Backup and Restore"
+        path: manage-sandboxes/backup-restore.mdx
+  - section: "Network Policy"
+    slug: network-policy
+    contents:
+      - page: "Approve or Deny Network Requests"
+        path: network-policy/approve-network-requests.mdx
+      - page: "Customize the Network Policy"
+        path: network-policy/customize-network-policy.mdx
+      - page: "Integration Policy Examples"
+        path: network-policy/integration-policy-examples.mdx
+  - section: "Deployment"
+    slug: deployment
+    contents:
+      - page: "Deploy to a Remote GPU Instance"
+        path: deployment/deploy-to-remote-gpu.mdx
+      - page: "Brev Web UI"
+        path: deployment/brev-web-ui.mdx
+      - page: "Install OpenClaw Plugins"
+        path: deployment/install-openclaw-plugins.mdx
+      - page: "Sandbox Hardening"
+        path: deployment/sandbox-hardening.mdx
+  - section: "Monitoring"
+    slug: monitoring
+    contents:
+      - page: "Monitor Sandbox Activity"
+        path: monitoring/monitor-sandbox-activity.mdx
+  - section: "Security"
+    slug: security
+    contents:
+      - page: "Security Best Practices"
+        path: security/best-practices.mdx
+      - page: "Credential Storage"
+        path: security/credential-storage.mdx
+      - page: "OpenClaw Controls"
+        path: security/openclaw-controls.mdx
+  - section: "Reference"
+    slug: reference
+    contents:
+      - page: "Architecture"
+        path: reference/architecture.mdx
+      - page: "CLI Commands Reference"
+        path: reference/commands.mdx
+      - page: "CLI Selection Guide"
+        path: reference/cli-selection-guide.mdx
+      - page: "Network Policies"
+        path: reference/network-policies.mdx
+      - page: "Troubleshooting"
+        path: reference/troubleshooting.mdx
+  - section: "Resources"
+    slug: resources
+    contents:
+      - page: "Agent Skills"
+        path: resources/agent-skills.mdx
+      - page: "License"
+        path: resources/license.mdx
