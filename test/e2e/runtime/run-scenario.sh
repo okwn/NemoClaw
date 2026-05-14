@@ -181,6 +181,30 @@ ONBOARDING_ID="$(read_plan_string dimensions.onboarding.id)"
 # the resolved method.
 e2e_env_trace "install:${INSTALL_ID}"
 e2e_install "${INSTALL_METHOD}"
+
+# Negative preflight scenarios intentionally model a missing container daemon.
+# CI runners normally have Docker available, so force the Docker client at an
+# unreachable socket and assert onboarding fails before any sandbox is created.
+if [[ "$(read_plan_string expected_state.id)" == "preflight-failure-no-sandbox" ]]; then
+  negative_log="${E2E_CONTEXT_DIR}/negative-preflight.log"
+  sandbox_name="$(e2e_context_get E2E_SANDBOX_NAME)"
+  if DOCKER_HOST="unix:///tmp/nemoclaw-e2e-missing-docker.sock" e2e_onboard "${ONBOARDING_ID}" >"${negative_log}" 2>&1; then
+    echo "run-scenario: expected preflight failure, but onboarding succeeded" >&2
+    exit 4
+  fi
+  if ! grep -Eiq "docker|container|daemon|socket|preflight" "${negative_log}"; then
+    echo "run-scenario: negative preflight failed without a clear Docker/preflight reason" >&2
+    cat "${negative_log}" >&2
+    exit 4
+  fi
+  if openshell sandbox list 2>/dev/null | grep -Fq "${sandbox_name}"; then
+    echo "run-scenario: negative preflight left behind sandbox ${sandbox_name}" >&2
+    exit 4
+  fi
+  echo "run-scenario: negative preflight passed; Docker daemon unavailable and no sandbox was created"
+  exit 0
+fi
+
 e2e_onboard "${ONBOARDING_ID}"
 e2e_gateway_assert_healthy
 e2e_sandbox_assert_running
