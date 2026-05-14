@@ -1,6 +1,6 @@
 ---
 name: nemoclaw-maintainer-quick-wins
-description: Reviewer autopilot — ranks open PRs by blended merge-readiness × impact × staleness, runs a two-lens judgment chain (scope/coverage + size/sequencing) → Karpathy review lens → tiered testing → verdict + draft RFR. Trigger keywords - quick wins, quickest win, highest-leverage PR, what to review, next PR, visibility throughput.
+description: Ranks open PRs by blended merge-readiness × impact × staleness, runs a two-lens judgment chain (Scope/Coverage + Sequencing), then a Karpathy review lens, then tiered local testing. Resolves reviewer slots from .github/CODEOWNERS with reviewer-load awareness. Produces a verdict (APPROVE / REQUEST_CHANGES / BLOCK / RESHAPE / SEQUENCE / CLOSE-AS-SUPERSEDED) plus a draft PR comment and, for APPROVE, a draft RFR. Use when looking for the next PR to review, when the queue feels overwhelming, or when prioritizing visibility throughput. Local-only by default — drafts only, never posts.
 user_invocable: true
 ---
 
