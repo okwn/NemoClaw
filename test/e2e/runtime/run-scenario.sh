@@ -191,6 +191,11 @@ if [[ "$(read_plan_string dimensions.platform.profile.gpu)" == "nvidia" ]] && ! 
   exit 0
 fi
 
+if [[ "${INSTALL_METHOD}" == "brev-launchable" ]] && [[ -z "${BREV_API_TOKEN:-}" ]]; then
+  echo "run-scenario: unsupported live scenario gate: brev-launchable-cloud-openclaw requires BREV_API_TOKEN and a pre-provisioned launchable image; this workflow has no Brev token"
+  exit 0
+fi
+
 e2e_install "${INSTALL_METHOD}"
 
 # Negative preflight scenarios intentionally model a missing container daemon.
