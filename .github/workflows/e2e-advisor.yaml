@@ -36,16 +36,6 @@ on:
         required: false
         type: boolean
         default: true
-      provider:
-        description: Provider name for the advisor API key
-        required: false
-        type: string
-        default: openai
-      model:
-        description: Optional model pattern, for example openai/openai/gpt-5.5
-        required: false
-        type: string
-        default: ""
 
 permissions:
   contents: read
@@ -171,15 +161,10 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || (github.event_name == 'workflow_dispatch' && inputs.target_repo != '' && inputs.target_pr != '' && format('target/{0}', inputs.target_base) || inputs.base_ref) }}
           HEAD_REF: ${{ github.event_name == 'pull_request' && 'HEAD' || (github.event_name == 'workflow_dispatch' && inputs.target_repo != '' && inputs.target_pr != '' && 'HEAD' || inputs.head_ref) }}
           E2E_ADVISOR_RUN_ANALYSIS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_analysis == false && '0' || '1' }}
-          E2E_ADVISOR_PROVIDER: ${{ github.event_name == 'workflow_dispatch' && inputs.provider || 'openai' }}
-          E2E_ADVISOR_MODEL: ${{ github.event_name == 'workflow_dispatch' && inputs.model || '' }}
-          # Preferred E2E advisor secret. The script maps this generic key to the selected provider's
-          # expected env var before creating the SDK session.
+          # Preferred E2E advisor secret.
           E2E_ADVISOR_API_KEY: ${{ secrets.PI_E2E_ADVISOR_API_KEY }}
-          # Also support standard provider env vars for future upstream/external-advisor use.
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Optional local-provider-compatible fallback for future upstream/external-advisor use.
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           cd "$ADVISOR_WORKDIR"
           node --experimental-strip-types "$ADVISOR_DIR/tools/e2e-advisor/analyze.mts" \

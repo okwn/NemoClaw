@@ -44,11 +44,7 @@ Configure this repository secret for E2E recommendations:
 
 - `PI_E2E_ADVISOR_API_KEY`
 
-The workflow also accepts standard provider variables if configured later:
-
-- `ANTHROPIC_API_KEY`
-- `OPENAI_API_KEY`
-- `GEMINI_API_KEY`
+The analyzer uses the fixed `openai/openai/gpt-5.5` advisor model and also accepts `OPENAI_API_KEY` for local runs.
 
 If advisor credentials are unavailable, the advisor writes a low-confidence unavailable result instead of
 making deterministic recommendations.
@@ -82,7 +78,7 @@ node --experimental-strip-types tools/e2e-advisor/analyze.mts \
   --out-dir artifacts/e2e-advisor
 ```
 
-Set `E2E_ADVISOR_API_KEY` locally, or configure the repository `PI_E2E_ADVISOR_API_KEY` secret, or use a provider-specific key. Run `npm install` first so the Pi SDK dependency is available.
+Set `E2E_ADVISOR_API_KEY` or `OPENAI_API_KEY` locally, or configure the repository `PI_E2E_ADVISOR_API_KEY` secret. Run `npm install` first so the Pi SDK dependency is available.
 
 ## Output contract
 

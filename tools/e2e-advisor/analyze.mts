@@ -19,10 +19,10 @@ import {
 
 const root = process.cwd();
 const ADVISOR_PROVIDER = "openai";
+const ADVISOR_MODEL = "openai/openai/gpt-5.5";
 const READ_ONLY_TOOLS = ["read", "grep", "find", "ls"];
 
 type ParsedArgs = Record<string, string | undefined>;
-type AdvisorModel = ReturnType<ModelRegistry["getAll"]>[number];
 type AdvisorProviderConfig = Parameters<ModelRegistry["registerProvider"]>[1];
 type RunAdvisorResult = {
   text: string;
@@ -150,17 +150,13 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const provider = process.env.E2E_ADVISOR_PROVIDER || ADVISOR_PROVIDER;
-  const modelPattern = process.env.E2E_ADVISOR_MODEL || defaultModelForProvider(provider);
-  logProgress(`Launching advisor SDK: provider=${provider} model=${modelPattern || "<default>"}`);
+  logProgress(`Launching advisor SDK: provider=${ADVISOR_PROVIDER} model=${ADVISOR_MODEL}`);
   logProgress("Advisor tools enabled: read,grep,find,ls; repository commands remain disabled by prompt policy");
 
   let sdkResult: RunAdvisorResult | undefined;
   try {
     sdkResult = await runAdvisor({
       cwd: root,
-      provider,
-      modelPattern,
       prompt,
       configDir,
       htmlExportPath: artifacts.sessionHtml,
@@ -233,8 +229,6 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 
 async function runAdvisor(options: {
   cwd: string;
-  provider: string;
-  modelPattern: string;
   prompt: string;
   configDir: string;
   htmlExportPath: string;
@@ -243,20 +237,10 @@ async function runAdvisor(options: {
   maxCaptureBytes: number;
 }): Promise<RunAdvisorResult> {
   fs.mkdirSync(options.configDir, { recursive: true });
-  const { authStorage, modelRegistry } = prepareAdvisorConfig(options.provider);
-  const model = selectModel(modelRegistry, options.provider, options.modelPattern);
-  if (!model) {
-    const available = modelRegistry
-      .getAvailable()
-      .filter((candidate) => candidate.provider === options.provider)
-      .map((candidate) => `${candidate.provider}/${candidate.id}`)
-      .slice(0, 8)
-      .join(", ");
-    throw new Error(
-      `Could not find configured advisor model '${options.modelPattern || "<default>"}' for provider '${
-        options.provider
-      }'${available ? `; available: ${available}` : ""}`,
-    );
+  const { authStorage, modelRegistry } = prepareAdvisorConfig();
+  const model = modelRegistry.find(ADVISOR_PROVIDER, ADVISOR_MODEL);
+  if (!model || !modelRegistry.hasConfiguredAuth(model)) {
+    throw new Error(`Could not configure advisor model ${ADVISOR_PROVIDER}/${ADVISOR_MODEL}`);
   }
 
   const settingsManager = SettingsManager.inMemory({
@@ -716,66 +700,18 @@ function truncate(text: string, maxChars: number): string {
 }
 
 function hasLikelyAdvisorCredential(): boolean {
-  const credentialEnv = [
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_OAUTH_TOKEN",
-    "OPENAI_API_KEY",
-    "AZURE_OPENAI_API_KEY",
-    "GEMINI_API_KEY",
-    "GOOGLE_GENERATIVE_AI_API_KEY",
-    "GOOGLE_API_KEY",
-    "AWS_BEARER_TOKEN_BEDROCK",
-  ];
-  return (
-    Boolean(process.env.E2E_ADVISOR_API_KEY) ||
-    credentialEnv.some((name) => Boolean(process.env[name])) ||
-    Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY)
-  );
+  return Boolean(process.env.E2E_ADVISOR_API_KEY || process.env.OPENAI_API_KEY);
 }
 
-function prepareAdvisorConfig(provider: string): { authStorage: AuthStorage; modelRegistry: ModelRegistry } {
+function prepareAdvisorConfig(): { authStorage: AuthStorage; modelRegistry: ModelRegistry } {
   const authStorage = AuthStorage.inMemory();
   const modelRegistry = ModelRegistry.inMemory(authStorage);
-  const genericApiKey = process.env.E2E_ADVISOR_API_KEY;
-  if (!genericApiKey) {
-    return { authStorage, modelRegistry };
-  }
-
-  authStorage.setRuntimeApiKey(provider, genericApiKey);
-  if (provider === ADVISOR_PROVIDER) {
-    modelRegistry.registerProvider(provider, ADVISOR_PROVIDER_CONFIG);
+  const apiKey = process.env.E2E_ADVISOR_API_KEY || process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    authStorage.setRuntimeApiKey(ADVISOR_PROVIDER, apiKey);
+    modelRegistry.registerProvider(ADVISOR_PROVIDER, ADVISOR_PROVIDER_CONFIG);
   }
   return { authStorage, modelRegistry };
-}
-
-function selectModel(modelRegistry: ModelRegistry, provider: string, modelPattern: string): AdvisorModel | undefined {
-  const candidates = modelRegistry.getAvailable().filter((model) => model.provider === provider);
-  if (modelPattern) {
-    const exact = candidates.find(
-      (model) => model.id === modelPattern || `${model.provider}/${model.id}` === modelPattern || model.name === modelPattern,
-    );
-    if (exact) return exact;
-
-    const normalizedPattern = modelPattern.toLowerCase();
-    return candidates.find(
-      (model) =>
-        model.id.toLowerCase().includes(normalizedPattern) ||
-        `${model.provider}/${model.id}`.toLowerCase().includes(normalizedPattern) ||
-        model.name.toLowerCase().includes(normalizedPattern),
-    );
-  }
-
-  const defaultModel = defaultModelForProvider(provider);
-  if (defaultModel) {
-    const found = candidates.find((model) => model.id === defaultModel || `${model.provider}/${model.id}` === defaultModel);
-    if (found) return found;
-  }
-
-  return candidates[0];
-}
-
-function defaultModelForProvider(provider: string): string {
-  return provider.toLowerCase().includes(ADVISOR_PROVIDER) ? "openai/openai/gpt-5.5" : "";
 }
 
 function unavailableResult(metadata: AdvisorMetadata, reason: string, failed: boolean): AdvisorResult {
