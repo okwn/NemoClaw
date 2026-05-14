@@ -1,20 +1,3 @@
----
-title:
-  page: "OpenShell Shared Agent Memory MVP"
-  nav: "Shared Memory MVP"
-description:
-  main: "Reference design and implementation record for a Redis-backed OpenShell shared memory driver that lets heterogeneous agents exchange durable, scoped memory events."
-  agent: "Describes the OpenShell shared agent memory MVP, including ownership boundaries, Redis Streams backend, API contract, sandbox configuration, pull-delivery subscriptions, security invariants, and the OpenClaw plus Hermes acceptance demo."
-keywords: ["shared agent memory", "agent memory fabric", "redis streams", "openclaw hermes memory"]
-topics: ["generative_ai", "ai_agents"]
-tags: ["openclaw", "openshell", "hermes", "redis", "memory", "architecture"]
-content:
-  type: reference
-  difficulty: technical_advanced
-  audience: ["developer", "engineer"]
-status: published
----
-
 <!--
   SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   SPDX-License-Identifier: Apache-2.0
