@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-ci-flake-triage"
+  ],
+  "query": "The failing log shows 'cannot connect to docker daemon'. What's the verdict?",
+  "files": [],
+  "expected_behavior": [
+    "Runs the infrastructure-signature grep: matches 'cannot connect to docker daemon' as a known INFRASTRUCTURE pattern (along with 502/503 Bad Gateway, ENETUNREACH/ETIMEDOUT, runc create failed, stale dist errors).",
+    "Verdict: INFRASTRUCTURE with confidence=high regardless of diff-overlap or main-history.",
+    "Recommended action: rerun the check; if it recurs, surface to platform owners.",
+    "Does NOT recommend a code fix on the PR side."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-ci-flake-triage"
+  ],
+  "query": "PR #3501's test-e2e-port-overrides is red \u2014 is this my fault?",
+  "files": [],
+  "expected_behavior": [
+    "Fetches the failing-step log tail; parses the failing test name + file:line.",
+    "Runs diff-overlap check: git diff --name-only origin/main..PR_HEAD vs the test's source files.",
+    "Runs main-history check: gh run list --workflow=<workflow> --branch=main --limit=5 to see if the same check has been failing recently.",
+    "If diff-overlap=false AND main-history shows failures: verdict=PRE_EXISTING_FLAKE with confidence=high; recommends commenting the flake on the PR but NOT blocking on it."
+  ]
+}

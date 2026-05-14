@@ -1,0 +1,15 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-ci-flake-triage"
+  ],
+  "query": "test-cli has flaked 8 times in the last 2 weeks. Should it be elevated?",
+  "files": [
+    "/tmp/flake-history.jsonl"
+  ],
+  "expected_behavior": [
+    "Queries /tmp/flake-history.jsonl for prior PRE_EXISTING_FLAKE entries with check_name == 'test-cli' in last 14 days.",
+    "When count >= 7 -> auto-elevates current verdict from PRE_EXISTING_FLAKE to INFRASTRUCTURE.",
+    "Drafts a recommended action: file a fix-up issue tagged 'ci-infra' for this check, with the latest run URL and the multi_rerun_pattern observation.",
+    "Appends the current verdict to /tmp/flake-history.jsonl for future calibration."
+  ]
+}
