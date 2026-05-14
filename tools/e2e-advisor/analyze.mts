@@ -346,11 +346,15 @@ async function runAdvisor(options: {
     session.dispose();
   }
 
+  const truncationNotes: string[] = [];
   if (text.droppedBytes > 0) {
-    raw.prepend(`<assistant text truncated; dropped ${text.droppedBytes} byte(s)>\n`);
+    truncationNotes.push(`<assistant text truncated; dropped ${text.droppedBytes} byte(s)>`);
   }
   if (raw.droppedBytes > 0) {
-    raw.prepend(`<raw output truncated; dropped ${raw.droppedBytes} byte(s)>\n`);
+    truncationNotes.push(`<raw output truncated; dropped ${raw.droppedBytes} byte(s)>`);
+  }
+  if (truncationNotes.length > 0) {
+    raw.appendFooter(`\n${truncationNotes.join("\n")}\n`);
   }
 
   return {
@@ -375,9 +379,14 @@ class CappedBuffer {
     this.trimToMaxBytes();
   }
 
-  prepend(prefix: string): void {
-    this.value = prefix + this.value;
-    this.trimToMaxBytes();
+  appendFooter(footer: string): void {
+    const footerBytes = Buffer.byteLength(footer, "utf8");
+    if (footerBytes >= this.maxBytes) {
+      this.value = trimHeadToBytes(footer, this.maxBytes);
+      return;
+    }
+    this.trimToMaxBytes(this.maxBytes - footerBytes);
+    this.value += footer;
   }
 
   toString(): string {
@@ -388,16 +397,21 @@ class CappedBuffer {
     return this.value.endsWith("\n") ? this.value : `${this.value}\n`;
   }
 
-  private trimToMaxBytes(): void {
-    if (Buffer.byteLength(this.value, "utf8") <= this.maxBytes) return;
+  private trimToMaxBytes(maxBytes = this.maxBytes): void {
+    if (Buffer.byteLength(this.value, "utf8") <= maxBytes) return;
 
-    let removeChars = Math.min(this.value.length, Math.max(1, Buffer.byteLength(this.value, "utf8") - this.maxBytes));
-    while (removeChars < this.value.length && Buffer.byteLength(this.value.slice(removeChars), "utf8") > this.maxBytes) {
-      removeChars += 1;
-    }
-    this.droppedBytes += Buffer.byteLength(this.value.slice(0, removeChars), "utf8");
-    this.value = this.value.slice(removeChars);
+    const trimmed = trimHeadToBytes(this.value, maxBytes);
+    this.droppedBytes += Buffer.byteLength(this.value.slice(0, this.value.length - trimmed.length), "utf8");
+    this.value = trimmed;
   }
+}
+
+function trimHeadToBytes(value: string, maxBytes: number): string {
+  let removeChars = Math.min(value.length, Math.max(1, Buffer.byteLength(value, "utf8") - maxBytes));
+  while (removeChars < value.length && Buffer.byteLength(value.slice(removeChars), "utf8") > maxBytes) {
+    removeChars += 1;
+  }
+  return value.slice(removeChars);
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
