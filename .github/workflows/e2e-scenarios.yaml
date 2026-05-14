@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Scenario-based E2E. Runs a single setup scenario by id against the
-# matching runner; can also validate resolution / coverage via --plan-only.
+# matching runner and uploads runtime artifacts for debugging.
 #
 # Manual-only (workflow_dispatch) while scenario-based coverage migrates.
 # Existing nightly-e2e / macos-e2e / wsl-e2e workflows remain unchanged.
@@ -16,14 +16,6 @@ on:
         description: "Scenario id (e.g. ubuntu-repo-cloud-openclaw)"
         required: true
         type: string
-      plan_only:
-        description: "Resolve and print plan only (no install/onboard/suites)"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "true"
-          - "false"
       suite_filter:
         description: "Comma-separated suite ids to run (optional; defaults to the scenario's full suite list)"
         required: false
@@ -88,12 +80,7 @@ jobs:
           echo '## E2E scenario coverage' >> "$GITHUB_STEP_SUMMARY"
           cat .e2e/coverage.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Show resolved plan
-        run: |
-          bash test/e2e/runtime/run-scenario.sh "${{ github.event.inputs.scenario }}" --plan-only
-
       - name: Run scenario
-        if: github.event.inputs.plan_only != 'true'
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           E2E_SUITE_FILTER: ${{ github.event.inputs.suite_filter }}
@@ -110,3 +97,4 @@ jobs:
             test/e2e/logs/
           if-no-files-found: warn
           retention-days: 14
+          include-hidden-files: true

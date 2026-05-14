@@ -187,10 +187,10 @@ e2e_sandbox_assert_running
 
 # Expected state validation. The validator reads E2E_PROBE_OVERRIDE_* env
 # variables to simulate real probe outputs in dry-run/test contexts.
-# In non-dry-run mode the validator currently also relies on those
-# overrides; wiring real probes through the validator happens as
-# scenarios migrate.
-if [[ "${E2E_VALIDATE_EXPECTED_STATE:-0}" == "1" || "${DRY_RUN}" -ne 1 ]]; then
+# Live probe wiring lands scenario-by-scenario; by default, live runs move
+# straight from setup checks to suites so migrated suite assertions can be
+# debugged against the real environment.
+if [[ "${E2E_VALIDATE_EXPECTED_STATE:-0}" == "1" || "${DRY_RUN}" -eq 1 ]]; then
   validate_args=("${SCENARIO_ID}" --context-dir "${E2E_CONTEXT_DIR}")
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     # CodeRabbit review item #9: explicitly opt in to seeding probes from
@@ -209,10 +209,16 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   exit 0
 fi
 
-# CodeRabbit review item #11: do not exit 0 when no suites were executed.
-# Full suite execution against a live environment lands in subsequent
-# scenarios; calling run-scenario.sh in non-dry-run mode must not masquerade
-# as success until that wiring exists for the requested scenario.
-echo "run-scenario: full suite execution is not implemented yet for this scenario." >&2
-echo "run-scenario: pass --dry-run to exercise the plan+context path, or run the suite runner directly with a live environment." >&2
-exit 4
+mapfile -t SUITE_IDS < <(node -e "
+  const p = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+  const filter = process.env.E2E_SUITE_FILTER || '';
+  const selected = filter ? filter.split(',').map((s) => s.trim()).filter(Boolean) : p.suites.map((s) => s.id);
+  for (const id of selected) console.log(id);
+" "${E2E_CONTEXT_DIR}/plan.json")
+
+if [[ "${#SUITE_IDS[@]}" -eq 0 ]]; then
+  echo "run-scenario: no suites selected for ${SCENARIO_ID}" >&2
+  exit 4
+fi
+
+bash "${SCRIPT_DIR}/run-suites.sh" "${SUITE_IDS[@]}"

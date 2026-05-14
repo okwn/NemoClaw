@@ -24,8 +24,9 @@ e2e_install_repo() {
   repo_root="$(cd "${_E2E_INST_REPO_DIR}/../../../.." && pwd)"
   (
     cd "${repo_root}" || exit
-    npm install
-    npm link
+    npm ci --ignore-scripts
+    npm run build:cli
+    bash scripts/npm-link-or-shim.sh
   )
   nemoclaw_refresh_install_env
 }
