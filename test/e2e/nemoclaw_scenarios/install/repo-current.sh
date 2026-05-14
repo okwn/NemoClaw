@@ -26,15 +26,21 @@ e2e_install_repo() {
     cd "${repo_root}" || exit
     npm ci --ignore-scripts
     mkdir -p .e2e
-    if ! npx tsc -p tsconfig.src.json >.e2e/build-cli.log 2>&1; then
-      build_status=$?
+    set +e
+    ./node_modules/.bin/tsc -p tsconfig.src.json >.e2e/build-cli.log 2>&1
+    build_status=$?
+    set -e
+    if [ "${build_status}" -ne 0 ]; then
       cat .e2e/build-cli.log >&2
       echo "CLI TypeScript build failed with status ${build_status}" >&2
       exit "${build_status}"
     fi
     if find nemoclaw-blueprint/scripts -name '*.ts' -print -quit | grep -q .; then
-      if ! npx tsc -p nemoclaw-blueprint/tsconfig.json >.e2e/build-blueprint.log 2>&1; then
-        build_status=$?
+      set +e
+      ./node_modules/.bin/tsc -p nemoclaw-blueprint/tsconfig.json >.e2e/build-blueprint.log 2>&1
+      build_status=$?
+      set -e
+      if [ "${build_status}" -ne 0 ]; then
         cat .e2e/build-blueprint.log >&2
         echo "Blueprint TypeScript build failed with status ${build_status}" >&2
         exit "${build_status}"
