@@ -1,0 +1,15 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-close-superseded-issues"
+  ],
+  "query": "Post revival comments on STALE_NO_REPRO rows from scope-issues output, scheduling close for 14 days later.",
+  "files": [
+    "/tmp/nemoclaw-skill-output-scope-issues-<run_id>.json"
+  ],
+  "expected_behavior": [
+    "Reads scope-issues sidecar; identifies rows where top_category == STALE_NO_REPRO.",
+    "With --revival-only flag, posts the revival comment but skips the close step.",
+    "Records scheduled_close_at = revival_ts + 14 days in this skill's own sidecar so a future invocation can close non-responders.",
+    "Audit log records action=revival_only and scheduled_close_at fields."
+  ]
+}

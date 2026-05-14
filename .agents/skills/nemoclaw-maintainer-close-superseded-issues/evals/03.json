@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-close-superseded-issues"
+  ],
+  "query": "Close 5 superseded issues but one of them gets closed by another maintainer mid-run.",
+  "files": [],
+  "expected_behavior": [
+    "Per issue: gh issue view to confirm state; if state has flipped to CLOSED between detection and execution, treats the race as success.",
+    "Still posts the evidence comment for audit trail (the comment is the durable artifact; close-state is not).",
+    "Records action=raced_close_with_comment_only in the sidecar.",
+    "Continues processing remaining issues; final summary table shows 4 closed, 1 raced (with comment posted), no errors."
+  ]
+}

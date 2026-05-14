@@ -1,0 +1,15 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-close-superseded-issues"
+  ],
+  "query": "Close the candidates from /tmp/nemoclaw-skill-output-find-already-fixed-<run_id>.json with evidence comments.",
+  "files": [
+    "/tmp/nemoclaw-skill-output-find-already-fixed-<run_id>.json"
+  ],
+  "expected_behavior": [
+    "Reads the sidecar's results[].issue, results[].draft_close_comment, and results[].suggested_close_reason fields.",
+    "For each candidate: adds the running maintainer as assignee, posts the evidence comment, then closes with the appropriate reason.",
+    "Runs per-rule preflights: priority:high+NV-QA requires per-issue confirm; recent-external-comment (<24h) skip; race-with-other-maintainer treated as success with comment-only posted.",
+    "Appends a JSON line per action to ~/.nemoclaw/close-audit.jsonl with ts, issue, action, category, close_reason, evidence_pointer, runner for postmortem recoverability."
+  ]
+}

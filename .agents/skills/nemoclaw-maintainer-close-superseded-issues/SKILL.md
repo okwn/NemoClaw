@@ -116,7 +116,7 @@ The audit log is local-only; never committed. The path is fixed (no `--audit-log
 **Preflight:**
 
 ```bash
-# Skill input must supply a non-empty comment per issue. Reject the run if missing.
+# Caller must supply a non-empty comment per issue. Reject the run if missing.
 [ -s "/tmp/c${ISSUE}.md" ] || { echo "BLOCKED: no comment draft for #${ISSUE}"; exit 1; }
 ```
 
