@@ -145,11 +145,6 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  if (!hasLikelyAdvisorCredential()) {
-    writeUnavailable("No provider credential was available in this workflow environment");
-    process.exit(0);
-  }
-
   logProgress(`Launching advisor SDK: provider=${ADVISOR_PROVIDER} model=${ADVISOR_MODEL}`);
   logProgress("Advisor tools enabled: read,grep,find,ls; repository commands remain disabled by prompt policy");
 
@@ -240,7 +235,7 @@ async function runAdvisor(options: {
   const { authStorage, modelRegistry } = prepareAdvisorConfig();
   const model = modelRegistry.find(ADVISOR_PROVIDER, ADVISOR_MODEL);
   if (!model || !modelRegistry.hasConfiguredAuth(model)) {
-    throw new Error(`Could not configure advisor model ${ADVISOR_PROVIDER}/${ADVISOR_MODEL}`);
+    throw new Error(`Could not configure advisor model ${ADVISOR_MODEL}`);
   }
 
   const settingsManager = SettingsManager.inMemory({
@@ -697,10 +692,6 @@ function truncate(text: string, maxChars: number): string {
     return text;
   }
   return `${text.slice(0, maxChars)}\n\n<diff truncated at ${maxChars} characters>`;
-}
-
-function hasLikelyAdvisorCredential(): boolean {
-  return Boolean(process.env.E2E_ADVISOR_API_KEY || process.env.OPENAI_API_KEY);
 }
 
 function prepareAdvisorConfig(): { authStorage: AuthStorage; modelRegistry: ModelRegistry } {
