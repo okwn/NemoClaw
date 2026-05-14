@@ -85,13 +85,13 @@ export function scanForSecrets(content: string): SecretMatch[] {
   const seen = new Set<string>();
 
   for (const { name, regex } of SECRET_PATTERNS) {
-    const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
+    const flags = `${regex.flags.replace("g", "")}g`;
     for (const match of content.matchAll(new RegExp(regex.source, flags))) {
       const value = match[0];
       const key = `${name}:${value}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      const redacted = value.length > 8 ? `${value.slice(0, 4)}..${value.slice(-4)}` : "****";
+      const redacted = `${value.slice(0, 4)}..${value.slice(-4)}`;
       matches.push({ pattern: name, redacted });
     }
   }
