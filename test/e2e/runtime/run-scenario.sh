@@ -182,6 +182,11 @@ ONBOARDING_ID="$(read_plan_string dimensions.onboarding.id)"
 e2e_env_trace "install:${INSTALL_ID}"
 
 e2e_install "${INSTALL_METHOD}"
+command -v nemoclaw >&2 || {
+  echo "run-scenario: nemoclaw not found on PATH after install" >&2
+  printf 'PATH=%s\n' "${PATH}" >&2
+  exit 127
+}
 
 # Negative preflight scenarios intentionally model a missing container daemon.
 # CI runners normally have Docker available, so force the Docker client at an
