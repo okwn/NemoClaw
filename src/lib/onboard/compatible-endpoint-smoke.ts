@@ -15,12 +15,20 @@ type CompatibleEndpointSandboxSmokeScriptOptions = {
   retryMaxTokens?: number;
 };
 
+/**
+ * Normalizes optional token-budget overrides while preserving safe defaults for
+ * the generated sandbox smoke script.
+ */
 function positiveInt(value: number | undefined, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
   const rounded = Math.floor(Number(value));
   return rounded > 0 ? rounded : fallback;
 }
 
+/**
+ * Returns whether onboarding should validate the compatible endpoint through
+ * the OpenClaw sandbox instead of only checking host-side configuration.
+ */
 export function shouldRunCompatibleEndpointSandboxSmoke(
   provider: string | null | undefined,
   messagingChannels: string[] | null | undefined,
@@ -35,6 +43,10 @@ export function shouldRunCompatibleEndpointSandboxSmoke(
   );
 }
 
+/**
+ * Converts child-process output into text for diagnostics without assuming
+ * whether Node returned strings, buffers, nulls, or primitive values.
+ */
 export function spawnOutputToString(value: unknown): string {
   if (typeof value === "string") return value;
   if (Buffer.isBuffer(value)) return value.toString("utf-8");
@@ -42,6 +54,11 @@ export function spawnOutputToString(value: unknown): string {
   return String(value);
 }
 
+/**
+ * Builds the shell script that runs inside the sandbox to confirm OpenClaw is
+ * routed through NemoClaw's managed inference provider and can receive assistant
+ * content from the compatible endpoint.
+ */
 export function buildCompatibleEndpointSandboxSmokeScript(
   model: string,
   options: CompatibleEndpointSandboxSmokeScriptOptions = {},
@@ -205,6 +222,10 @@ check_response retry "$RETRY_MAX_TOKENS" 0
   `.trim();
 }
 
+/**
+ * Wraps the sandbox smoke script as a one-line command suitable for execution
+ * through the existing OpenShell command path.
+ */
 export function buildCompatibleEndpointSandboxSmokeCommand(model: string): string {
   const script = buildCompatibleEndpointSandboxSmokeScript(model);
   const encoded = Buffer.from(script, "utf8").toString("base64");
