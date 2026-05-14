@@ -38,7 +38,6 @@ The MVP is implemented on the shared-memory feature branches.
 | OpenShell memory driver and Redis backend | `aknvda/OpenShell:aniket/feat-shared-agent-memory` | Implemented |
 | Hermes shared-memory adapter | `aknvda/hermes-agent:aniket/feat-shared-agent-memory` | Implemented |
 
-The recorded demo is available in the NemoClaw branch at `demo-recordings/shared-memory-demo-openclaw-hermes.mp4`.
 The local runnable demo is `examples/shared-memory/run-local-demo.sh`.
 
 ## Problem
@@ -162,7 +161,6 @@ src/lib/inventory/index.ts
 scripts/generate-openclaw-config.py
 nemoclaw-blueprint/openclaw-plugins/shared-memory/
 examples/shared-memory/
-demo-recordings/
 docs/reference/shared-memory-mvp.md
 ```
 
@@ -429,10 +427,6 @@ $ OPENSHELL_REPO=/path/to/OpenShell \
   HERMES_REPO=/path/to/hermes-agent \
   examples/shared-memory/run-local-demo.sh
 ```
-
-The narrated recording is generated from `demo-recordings/remotion-shared-memory`.
-The rendered video is `demo-recordings/shared-memory-demo-openclaw-hermes.mp4`.
-It is slowed to `1.18x` with matched narration playback so viewers can follow the terminal panes and voiceover.
 
 ## Verification
 
