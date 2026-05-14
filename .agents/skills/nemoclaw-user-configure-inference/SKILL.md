@@ -8,6 +8,10 @@ description: "Connects NemoClaw to a local inference server. Use when setting up
 
 # Use a Local Inference Server with NemoClaw
 
+## Gotchas
+
+- Ollama is convenient for local chat, but some model/template combinations can return tool calls as plain text under realistic agent load.
+
 ## Prerequisites
 
 - NemoClaw installed.
@@ -62,13 +66,11 @@ If the daemon does not become reachable, onboarding prints PowerShell commands y
 Use one Ollama instance on port `11434` at a time.
 If both WSL and Windows-host Ollama are running, pick the intended menu entry during onboarding so NemoClaw validates and pulls models against the right daemon.
 
-:::{caution}
-Ollama is convenient for local chat, but some model/template combinations can
-return tool calls as plain text under realistic agent load. If the TUI shows raw
-JSON such as `{"name":"memory_search","arguments":{...}}` instead of running a
-tool, switch to vLLM with `--enable-auto-tool-choice` and the correct
-`--tool-call-parser`. See Tool-Calling Reliability (use the `nemoclaw-user-configure-inference` skill).
-:::
+> **Warning:** Ollama is convenient for local chat, but some model/template combinations can
+> return tool calls as plain text under realistic agent load. If the TUI shows raw
+> JSON such as `{"name":"memory_search","arguments":{...}}` instead of running a
+> tool, switch to vLLM with `--enable-auto-tool-choice` and the correct
+> `--tool-call-parser`. See Tool-Calling Reliability (use the `nemoclaw-user-configure-inference` skill).
 
 ### Authenticated Reverse Proxy
 

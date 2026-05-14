@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Network Policies
+# NemoClaw Network Policies: Baseline Rules and Operator Approval
 
 NemoClaw runs with a deny-by-default network policy.
 The sandbox can only reach endpoints that are explicitly allowed.
@@ -26,41 +26,13 @@ Landlock LSM enforcement applies on a best-effort basis.
 
 The following endpoint groups are allowed by default:
 
-:::{list-table}
-:header-rows: 1
-:widths: 20 30 20 30
-
-* - Policy
-  - Endpoints
-  - Binaries
-  - Rules
-
-* - `nvidia`
-  - `integrate.api.nvidia.com:443`, `inference-api.nvidia.com:443`
-  - `/usr/local/bin/openclaw`
-  - POST to inference and embedding paths, GET to model listings
-
-* - `clawhub`
-  - `clawhub.ai:443`
-  - `/usr/local/bin/openclaw`, `/usr/local/bin/node`
-  - GET, POST
-
-* - `openclaw_api`
-  - `openclaw.ai:443`
-  - `/usr/local/bin/openclaw`, `/usr/local/bin/node`
-  - GET, POST
-
-* - `openclaw_docs`
-  - `docs.openclaw.ai:443`
-  - `/usr/local/bin/openclaw`
-  - GET only
-
-* - `npm_registry`
-  - `registry.npmjs.org:443`
-  - `/usr/local/bin/openclaw` only (openclaw plugins install)
-  - GET only
-
-:::
+| Policy | Endpoints | Binaries | Rules |
+| --- | --- | --- | --- |
+| `nvidia` | `integrate.api.nvidia.com:443`, `inference-api.nvidia.com:443` | `/usr/local/bin/openclaw` | POST to inference and embedding paths, GET to model listings |
+| `clawhub` | `clawhub.ai:443` | `/usr/local/bin/openclaw`, `/usr/local/bin/node` | GET, POST |
+| `openclaw_api` | `openclaw.ai:443` | `/usr/local/bin/openclaw`, `/usr/local/bin/node` | GET, POST |
+| `openclaw_docs` | `docs.openclaw.ai:443` | `/usr/local/bin/openclaw` | GET only |
+| `npm_registry` | `registry.npmjs.org:443` | `/usr/local/bin/openclaw` only (openclaw plugins install) | GET only |
 
 All endpoints use TLS termination and are enforced at port 443.
 
@@ -71,8 +43,7 @@ All endpoints use TLS termination and are enforced at port 443.
 > Messaging endpoints for Telegram, Discord, and Slack are not included in the baseline policy.
 > Enable the channel during onboarding or apply the matching messaging preset so the sandbox can reach that platform.
 
-(policy-tiers)=
-
+<a id="policy-tiers"></a>
 ## Policy Tiers
 
 During onboarding, the wizard prompts for a policy tier that determines the default set of presets applied on top of the baseline policy.

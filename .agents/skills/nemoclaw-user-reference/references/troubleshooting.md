@@ -1,5 +1,9 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+# NemoClaw Troubleshooting Guide
+
+{/* markdownlint-disable MD014 */}
+
 # Troubleshooting
 
 This page covers common issues you may encounter when installing, onboarding, or running NemoClaw, along with their resolution steps.
@@ -147,6 +151,7 @@ When the lookup returns an answer, retry onboarding.
 The NemoClaw dashboard uses port `18789` by default and the gateway uses port `8080`.
 If another sandbox already owns the dashboard port, onboarding scans ports `18789` through `18799` and uses the next free port.
 If all ports in that range are occupied, the error lists the owner for each port and suggests using `--control-ui-port` with a port outside the range.
+
 On macOS, the port check also tries a privileged `lsof` probe without prompting for a password so root-owned listeners are detected before the sandbox build starts.
 If a port becomes occupied after preflight but before `openshell forward start` runs, onboarding deletes the just-created sandbox and exits with a retry message instead of leaving a sandbox with an unreachable dashboard URL.
 
@@ -956,8 +961,7 @@ $ nemoclaw <name> logs
 
 Use `--follow` to stream logs in real time while debugging.
 
-(dgx-spark)=
-
+<a id="dgx-spark"></a>
 ## DGX Spark
 
 For an end-to-end Ollama walkthrough on DGX Spark, refer to the [NVIDIA Spark playbook](https://build.nvidia.com/spark/nemoclaw).
@@ -1030,8 +1034,7 @@ $ pip install ...
 NVIDIA AI Workbench's Traefik proxy binds ports 3000 and 10000.
 If you run other services on Spark that expect port 3000, bind them to a different port.
 
-(windows-wsl-2)=
-
+<a id="windows-wsl-2"></a>
 ## Windows Subsystem for Linux
 
 For environment setup steps, see Windows Prerequisites (use the `nemoclaw-user-get-started` skill).

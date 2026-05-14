@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# NemoClaw Architecture Overview
+# NemoClaw Architecture Overview: Plugin, Blueprint, and Sandbox Lifecycle
 
 This page explains how NemoClaw runs OpenClaw inside an OpenShell sandbox and how the gateway connects the agent to inference, integrations, and policy.
 
@@ -14,13 +14,9 @@ NemoClaw keeps the user workflow on the host while OpenShell enforces the sandbo
 The gateway sits between NemoClaw control, the sandbox, inference providers, and external integrations.
 That placement lets NemoClaw configure the environment without giving the agent direct access to host credentials or uncontrolled network egress.
 
-```{figure} images/nemoclaw-highlevel-component-diagram.png
-:alt: NemoClaw High-Level Component Diagram
-:width: 100%
-:align: center
+![NemoClaw High-Level Component Diagram](https://docs.nvidia.com/nemoclaw/latest/about/images/nemoclaw-highlevel-component-diagram.html)
 
-NemoClaw High-Level Component Diagram
-```
+_NemoClaw High-Level Component Diagram_
 
 The diagram has the following components:
 

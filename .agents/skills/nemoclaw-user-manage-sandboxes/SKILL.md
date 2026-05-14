@@ -231,14 +231,13 @@ When a backup command reports partial archive output, NemoClaw keeps the usable 
 
 See Backup and Restore (use the `nemoclaw-user-manage-sandboxes` skill) for the full list of state-preservation guarantees, snapshot retention, and instructions for manual backups when the auto-flow is not enough.
 
-:::{note} If the rebuild aborts with `Missing credential: <KEY>`
-The rebuild preflight reads the provider credential recorded by your last `nemoclaw onboard` session.
-If you have switched providers since onboarding, for example from a remote API to a local Ollama setup, the preflight may still reference the old key and fail before any destroy step runs.
-
-To recover, re-run `nemoclaw onboard` and select your current provider.
-This refreshes the session metadata.
-Your existing container keeps serving traffic until the new image is ready.
-:::
+> **Note:** `">
+> The rebuild preflight reads the provider credential recorded by your last `nemoclaw onboard` session.
+> If you have switched providers since onboarding, for example from a remote API to a local Ollama setup, the preflight may still reference the old key and fail before any destroy step runs.
+>
+> To recover, re-run `nemoclaw onboard` and select your current provider.
+> This refreshes the session metadata.
+> Your existing container keeps serving traffic until the new image is ready.
 
 ## Step 9: Uninstall
 

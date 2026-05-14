@@ -2,6 +2,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # Common NemoClaw Integration Policy Examples
 
+{/* SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */}
+{/* SPDX-License-Identifier: Apache-2.0 */}
+
+# Common NemoClaw Integration Policy Examples
+
 Use these examples when a sandbox is already installed and an integration needs network access.
 This page covers only integrations that NemoClaw currently ships as maintained policy preset YAML under `nemoclaw-blueprint/policies/presets/`.
 Integration setup usually has two separate parts:

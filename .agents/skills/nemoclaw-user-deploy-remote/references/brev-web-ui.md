@@ -90,10 +90,10 @@ Provider: NVIDIA Cloud
 
 Click **Chat With Agent** to open the OpenClaw dashboard.
 
-:> **Note:** The dashboard might initially show a **Pairing required** warning.
+> **Note:** The dashboard might initially show a **Pairing required** warning.
 > This means the gateway is still completing pairing in the background.
 > Wait for about a few minutes for pairing to finish automatically. Refresh the dashboard to see if the warning is resolved and the connection is established.
-> If pairing does not finish, go to the **Overview** page in the OpenClaw UI, find the **Gateway Access** panel, and click **Connect**.:
+> If pairing does not finish, go to the **Overview** page in the OpenClaw UI, find the **Gateway Access** panel, and click **Connect**.
 
 ## Start a Chat
 
