@@ -25,7 +25,10 @@ e2e_install_repo() {
   (
     cd "${repo_root}" || exit
     npm ci --ignore-scripts
-    npm run build:cli
+    npx tsc -p tsconfig.src.json
+    if find nemoclaw-blueprint/scripts -name '*.ts' -print -quit | grep -q .; then
+      npx tsc -p nemoclaw-blueprint/tsconfig.json
+    fi
     bash scripts/npm-link-or-shim.sh
   )
   nemoclaw_refresh_install_env
