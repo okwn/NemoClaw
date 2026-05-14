@@ -140,6 +140,17 @@ UNCLEAR (1):
 | ... |
 ```
 
+## Reference cases (NemoClaw open-PR queue, 2026-05)
+
+A live sweep produced this bucket distribution. PR numbers preserved.
+
+- **READY_TO_MERGE:** #3499 (dashboard bind 0.0.0.0, CI green + APPROVED, 1d old). Action: ping admin merge.
+- **NEEDS_REBASE:** PR with 90-day-old base — `mergeStateStatus = BEHIND` and conflicts on `package-lock.json`. Action: invoke `pr-rebase-assist`; `--auto-stage-clean` handles the lockfile.
+- **WAITING_REVIEW:** #3284, #3241, #3351, #3433 — all `reviewDecision = REVIEW_REQUIRED`, CI green, 1-2d old. Action: ping the assigned reviewer; if reviewer-OOO check fires, redistribute to CODEOWNERS fallback.
+- **ABANDONED:** #2105 (`feat(onboard): add Tavily`, author last activity >60d). Action: post a 14-day revival comment via `close-superseded-issues --revival-only`.
+- **WAITING_CI:** PR with a workflow stuck in QUEUED state for 4+ hours. Action: re-trigger; if it still queues, surface to platform owners.
+- **UNCLEAR:** PR with a single failed required check, no review-decision, mixed state. Action: surface for manual triage.
+
 ## Halt conditions (the non-obvious ones)
 
 - **>3 batch actions queued (rebase pushes, revival comments, rerun triggers)** — pause and ask. Batch destructive actions are easy to mis-target.

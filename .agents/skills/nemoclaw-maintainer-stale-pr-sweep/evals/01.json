@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-stale-pr-sweep"
+  ],
+  "query": "Classify open PRs that haven't moved in 14+ days into per-bucket actions.",
+  "files": [],
+  "expected_behavior": [
+    "Fetches open PRs with lightweight bulk query (number, title, author, updatedAt, isDraft, labels).",
+    "Filters to >=14 days since updatedAt; per-finalist fetches heavy fields (mergeStateStatus, reviewDecision, statusCheckRollup, last commit timestamp) \u2014 split from bulk to avoid GraphQL 502s.",
+    "Applies classification rules in first-match-wins order: READY_TO_MERGE -> NEEDS_REBASE -> WAITING_CI -> WAITING_REVIEW -> ABANDONED -> UNCLEAR.",
+    "Output grouped by bucket with per-row recommended action; never auto-merges, never auto-closes."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-stale-pr-sweep"
+  ],
+  "query": "An ABANDONED PR (author last activity >60 days, unanswered review comments) \u2014 what's the right action?",
+  "files": [],
+  "expected_behavior": [
+    "Classifies as ABANDONED based on author-last-commented >30 days AND unanswered review comments AND no recent commits.",
+    "Recommended action: post a 14-day revival comment, then chain to close-superseded-issues --revival-only if no response.",
+    "Never auto-closes the PR; never force-pushes; never modifies the PR description.",
+    "If revival comment is OK'd, drafts it in a respectful tone naming the specific unanswered comment for context."
+  ]
+}

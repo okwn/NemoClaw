@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-stale-pr-sweep"
+  ],
+  "query": "A WAITING_REVIEW PR has had no reviewer activity for 10 days \u2014 what should it surface?",
+  "files": [],
+  "expected_behavior": [
+    "For each WAITING_REVIEW PR, queries gh api users/<reviewer>/events?per_page=10 to find the reviewer's most recent public activity.",
+    "If last_activity_days > 7: surfaces 'reviewer @X last active N days ago \u2014 likely OOO' in a separate WAITING_REVIEW_OOO bucket.",
+    "Recommends redistributing to the next-best CODEOWNERS team (fallback path) rather than just pinging.",
+    "Caveat acknowledged: only public activity is visible, so the OOO signal is a heuristic; surface as suggestion, never auto-action."
+  ]
+}
