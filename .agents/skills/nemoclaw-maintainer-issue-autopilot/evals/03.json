@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-issue-autopilot"
+  ],
+  "query": "I've finished Stage 8 (CodeRabbit fix loop) on PR #3499. Verify acceptance match before reporting READY.",
+  "files": [],
+  "expected_behavior": [
+    "Invokes the acceptance-audit logic (or calls the standalone acceptance-audit skill) on issue #3259 vs PR #3499.",
+    "Extracts every literal acceptance clause from the issue body and comments; maps each to evidence in the PR diff using tiered match (substring -> all-tokens-within-K=4 -> fail).",
+    "If any MISSING clause OR unjustified surplus file -> halts Stage 9; does NOT report READY FOR REVIEW.",
+    "On PERFECT_MATCH: posts READY FOR HUMAN REVIEW with the perfect-match table inline + a one-line RFR draft. Never merges, never requests review."
+  ]
+}

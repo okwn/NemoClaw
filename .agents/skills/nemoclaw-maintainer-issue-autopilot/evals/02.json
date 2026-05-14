@@ -1,0 +1,15 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-issue-autopilot"
+  ],
+  "query": "Resume the issue-autopilot run on #3259 \u2014 the prior session was interrupted mid-Stage-6.",
+  "files": [
+    "/tmp/issue-autopilot-3259.state.json"
+  ],
+  "expected_behavior": [
+    "Reads /tmp/issue-autopilot-3259.state.json; prints a summary table of completed stages vs pending stages.",
+    "Asks the user to confirm resumption from the last completed stage + 1.",
+    "Validates the world hasn't moved (branch exists, PR still open, issue still open) before continuing.",
+    "Resumes execution from the relevant stage; never re-runs already-completed stages."
+  ]
+}

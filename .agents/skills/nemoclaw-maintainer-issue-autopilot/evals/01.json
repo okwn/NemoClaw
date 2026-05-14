@@ -1,0 +1,13 @@
+{
+  "skills": [
+    "nemoclaw-maintainer-issue-autopilot"
+  ],
+  "query": "Pick the simplest in-scope issue I can ship and walk it end-to-end.",
+  "files": [],
+  "expected_behavior": [
+    "Runs Stage 0 local-branch precheck (git branch --list and git stash list for issue-number matches) to surface forgotten in-flight work before starting fresh.",
+    "Scores candidates by ease * impact * scope-fit * pr-state with assigned-to-me as a +5 bonus; presents top 8 with rationale columns.",
+    "Waits for user confirmation of which issue to take; never picks autonomously.",
+    "Writes resumable state to /tmp/issue-autopilot-<issue#>.state.json after every stage transition (atomic rename only)."
+  ]
+}
