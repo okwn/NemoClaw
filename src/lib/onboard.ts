@@ -9317,8 +9317,25 @@ function syncPresetSelection(
     );
   }
 
+  if (!accessByName) {
+    const builtInPresetNames = new Set(policies.listPresets().map((preset) => preset.name));
+    const builtInNewlySelected = newlySelected.filter((name) => builtInPresetNames.has(name));
+    const remainingNewlySelected = newlySelected.filter((name) => !builtInPresetNames.has(name));
+
+    if (builtInNewlySelected.length > 0) {
+      waitForPolicyMutation(`applyPresets(${builtInNewlySelected.join(",")})`, () =>
+        policies.applyPresets(sandboxName, builtInNewlySelected),
+      );
+    }
+
+    for (const name of remainingNewlySelected) {
+      waitForPolicyMutation(`applyPreset(${name})`, () => policies.applyPreset(sandboxName, name));
+    }
+    return;
+  }
+
   for (const name of newlySelected) {
-    const options = accessByName ? { access: accessByName[name] } : undefined;
+    const options = { access: accessByName[name] };
     waitForPolicyMutation(`applyPreset(${name})`, () =>
       policies.applyPreset(sandboxName, name, options),
     );
