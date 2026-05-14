@@ -9,7 +9,7 @@ const repoRoot = path.resolve(new URL("..", import.meta.url).pathname);
 const docsRoot = path.join(repoRoot, "docs");
 
 const skipFiles = new Set(["CONTRIBUTING.md", "index.md"]);
-const skipDirs = new Set(["about"]);
+const skipDirs = new Set([]);
 
 const esc = (value) => JSON.stringify(String(value ?? ""));
 
