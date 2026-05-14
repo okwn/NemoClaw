@@ -437,7 +437,11 @@ export function buildDockerGpuCloneRunArgs(
     // the proc write while still honoring sandboxes that explicitly drop SYS_ADMIN.
     args.push("--cap-add", "SYS_ADMIN");
   }
-  for (const opt of stringArray(host.SecurityOpt)) args.push("--security-opt", opt);
+  const securityOpts = stringArray(host.SecurityOpt);
+  for (const opt of securityOpts) args.push("--security-opt", opt);
+  if (!securityOpts.some((opt) => opt.toLowerCase().startsWith("seccomp="))) {
+    args.push("--security-opt", "seccomp=unconfined");
+  }
   if (networkMode !== "host") {
     for (const hostEntry of stringArray(host.ExtraHosts)) args.push("--add-host", hostEntry);
   }

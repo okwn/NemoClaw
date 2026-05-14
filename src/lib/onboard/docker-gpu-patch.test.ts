@@ -347,6 +347,8 @@ describe("docker-gpu-patch", () => {
         "all",
         "--cap-add",
         "SYS_ADMIN",
+        "--security-opt",
+        "seccomp=unconfined",
         "--network",
         "host",
         "--env",
