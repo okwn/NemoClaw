@@ -185,7 +185,7 @@ e2e_install "${INSTALL_METHOD}"
 # Negative preflight scenarios intentionally model a missing container daemon.
 # CI runners normally have Docker available, so force the Docker client at an
 # unreachable socket and assert onboarding fails before any sandbox is created.
-if [[ "${PLATFORM_OS:-}" == "macos" ]] && ! docker info >/dev/null 2>&1; then
+if [[ "$(read_plan_string dimensions.platform.profile.os)" == "macos" ]] && ! docker info >/dev/null 2>&1; then
   echo "run-scenario: unsupported live scenario gate: macos-repo-cloud-openclaw requires a macOS runner with Docker Desktop/Colima running; this runner has no reachable Docker daemon"
   exit 0
 fi
