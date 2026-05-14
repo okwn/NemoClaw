@@ -181,7 +181,13 @@ ONBOARDING_ID="$(read_plan_string dimensions.onboarding.id)"
 # the resolved method.
 e2e_env_trace "install:${INSTALL_ID}"
 
-e2e_install "${INSTALL_METHOD}"
+install_log="${E2E_CONTEXT_DIR}/install.log"
+if ! e2e_install "${INSTALL_METHOD}" >"${install_log}" 2>&1; then
+  install_status=$?
+  cat "${install_log}" >&2
+  echo "run-scenario: install ${INSTALL_METHOD} failed with status ${install_status}" >&2
+  exit "${install_status}"
+fi
 command -v nemoclaw >&2 || {
   echo "run-scenario: nemoclaw not found on PATH after install" >&2
   printf 'PATH=%s\n' "${PATH}" >&2
