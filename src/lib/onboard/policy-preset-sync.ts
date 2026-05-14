@@ -56,13 +56,14 @@ function syncPresetSelection(
     const builtInNewlySelected = newlySelected.filter((name) => builtInPresetNames.has(name));
     const remainingNewlySelected = newlySelected.filter((name) => !builtInPresetNames.has(name));
 
-    if (builtInNewlySelected.length > 0) {
+    if (builtInNewlySelected.length > 0 && remainingNewlySelected.length === 0) {
       waitForPolicyMutation(`applyPresets(${builtInNewlySelected.join(",")})`, () =>
         policies.applyPresets(sandboxName, builtInNewlySelected),
       );
+      return;
     }
 
-    for (const name of remainingNewlySelected) {
+    for (const name of newlySelected) {
       waitForPolicyMutation(`applyPreset(${name})`, () => policies.applyPreset(sandboxName, name));
     }
     return;
