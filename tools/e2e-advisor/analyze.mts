@@ -18,7 +18,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 const root = process.cwd();
-const DEFAULT_PROVIDER = "openai";
+const ADVISOR_PROVIDER = "openai";
 const READ_ONLY_TOOLS = ["read", "grep", "find", "ls"];
 
 type ParsedArgs = Record<string, string | undefined>;
@@ -150,9 +150,9 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const provider = process.env.E2E_ADVISOR_PROVIDER || (process.env.E2E_ADVISOR_API_KEY ? DEFAULT_PROVIDER : "");
+  const provider = process.env.E2E_ADVISOR_PROVIDER || ADVISOR_PROVIDER;
   const modelPattern = process.env.E2E_ADVISOR_MODEL || defaultModelForProvider(provider);
-  logProgress(`Launching advisor SDK: provider=${provider || "<default>"} model=${modelPattern || "<default>"}`);
+  logProgress(`Launching advisor SDK: provider=${provider} model=${modelPattern || "<default>"}`);
   logProgress("Advisor tools enabled: read,grep,find,ls; repository commands remain disabled by prompt policy");
 
   let sdkResult: RunAdvisorResult | undefined;
@@ -248,13 +248,13 @@ async function runAdvisor(options: {
   if (!model) {
     const available = modelRegistry
       .getAvailable()
-      .filter((candidate) => !options.provider || candidate.provider === options.provider)
+      .filter((candidate) => candidate.provider === options.provider)
       .map((candidate) => `${candidate.provider}/${candidate.id}`)
       .slice(0, 8)
       .join(", ");
     throw new Error(
       `Could not find configured advisor model '${options.modelPattern || "<default>"}' for provider '${
-        options.provider || "<default>"
+        options.provider
       }'${available ? `; available: ${available}` : ""}`,
     );
   }
@@ -741,16 +741,15 @@ function prepareAdvisorConfig(provider: string): { authStorage: AuthStorage; mod
     return { authStorage, modelRegistry };
   }
 
-  const effectiveProvider = provider || DEFAULT_PROVIDER;
-  authStorage.setRuntimeApiKey(effectiveProvider, genericApiKey);
-  if (effectiveProvider === DEFAULT_PROVIDER) {
-    modelRegistry.registerProvider(effectiveProvider, ADVISOR_PROVIDER_CONFIG);
+  authStorage.setRuntimeApiKey(provider, genericApiKey);
+  if (provider === ADVISOR_PROVIDER) {
+    modelRegistry.registerProvider(provider, ADVISOR_PROVIDER_CONFIG);
   }
   return { authStorage, modelRegistry };
 }
 
 function selectModel(modelRegistry: ModelRegistry, provider: string, modelPattern: string): AdvisorModel | undefined {
-  const candidates = modelRegistry.getAvailable().filter((model) => !provider || model.provider === provider);
+  const candidates = modelRegistry.getAvailable().filter((model) => model.provider === provider);
   if (modelPattern) {
     const exact = candidates.find(
       (model) => model.id === modelPattern || `${model.provider}/${model.id}` === modelPattern || model.name === modelPattern,
@@ -776,7 +775,7 @@ function selectModel(modelRegistry: ModelRegistry, provider: string, modelPatter
 }
 
 function defaultModelForProvider(provider: string): string {
-  return (provider || "").toLowerCase().includes(DEFAULT_PROVIDER) ? "openai/openai/gpt-5.5" : "";
+  return provider.toLowerCase().includes(ADVISOR_PROVIDER) ? "openai/openai/gpt-5.5" : "";
 }
 
 function unavailableResult(metadata: AdvisorMetadata, reason: string, failed: boolean): AdvisorResult {
