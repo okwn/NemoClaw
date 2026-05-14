@@ -295,6 +295,9 @@ const { reportDockerDriverGatewayStartFailure } =
 const dockerDriverGatewayEnv: typeof import("./onboard/docker-driver-gateway-env") =
   require("./onboard/docker-driver-gateway-env");
 const { getDockerDriverGatewayEndpoint } = dockerDriverGatewayEnv;
+const dockerDriverGatewayRuntimeMarker: typeof import("./onboard/docker-driver-gateway-runtime-marker") =
+  require("./onboard/docker-driver-gateway-runtime-marker");
+const vmDriverProcess: typeof import("./onboard/vm-driver-process") = require("./onboard/vm-driver-process");
 const preflightUtils: typeof import("./onboard/preflight") = require("./onboard/preflight");
 const clusterImagePatch: typeof import("./cluster-image-patch") = require("./cluster-image-patch");
 const {
@@ -351,6 +354,7 @@ import type {
 } from "./onboard/types";
 import { listChannels } from "./sandbox/channels";
 import { streamGatewayStart } from "./onboard/gateway";
+import { reportGpuPassthroughRecovery } from "./onboard/gpu-recovery";
 import type { StreamSandboxCreateResult } from "./sandbox/create-stream";
 import type { SandboxEntry } from "./state/registry";
 import type { BackupResult } from "./state/sandbox";
@@ -1355,7 +1359,7 @@ function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
     process.exit(1);
   }
   if (!config.sandboxGpuEnabled) return;
-  if (!isLinuxDockerDriverGatewayPlatform()) return;
+  if (process.platform !== "linux") return;
 
   const cdiSpecDirs = getDockerCdiSpecDirs();
   const cdiSpecFiles = findReadableNvidiaCdiSpecFiles(cdiSpecDirs);
@@ -2759,7 +2763,6 @@ function getOpenShellInstallDeps(): OpenShellInstallDeps {
     isLinuxDockerDriverGatewayEnabled,
     resolveOpenShellGatewayBinary,
     resolveOpenShellSandboxBinary,
-    resolveOpenShellVmDriverBinary,
     isOpenshellInstalled,
     installOpenshell,
     getInstalledOpenshellVersion,
@@ -2821,16 +2824,16 @@ function terminateDockerDriverGatewayProcess(pid: number): boolean {
 function stopDockerDriverGatewayProcess(): boolean {
   const pid = getDockerDriverGatewayPid();
   if (pid === null || !isPidAlive(pid)) {
-    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    clearDockerDriverGatewayRuntimeFiles();
     return false;
   }
   if (!isDockerDriverGatewayProcess(pid, resolveOpenShellGatewayBinary())) {
-    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    clearDockerDriverGatewayRuntimeFiles();
     return false;
   }
 
   const stopped = terminateDockerDriverGatewayProcess(pid);
-  fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+  clearDockerDriverGatewayRuntimeFiles();
   return stopped;
 }
 
@@ -2871,7 +2874,7 @@ function retireLegacyGatewayForDockerDriverUpgrade(): void {
 function restartDockerDriverGatewayProcessForDrift(pid: number, reason: string): void {
   console.log(`  Existing OpenShell Docker-driver gateway is stale (${reason}); restarting...`);
   terminateDockerDriverGatewayProcess(pid);
-  fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+  clearDockerDriverGatewayRuntimeFiles();
 }
 
 async function refreshDockerDriverGatewayReuseState(
@@ -3125,18 +3128,11 @@ const {
   run,
   runCapture,
 });
-
 function isLinuxDockerDriverGatewayEnabled(
   platform: NodeJS.Platform = process.platform,
   arch: NodeJS.Architecture = process.arch,
 ): boolean {
   return platform === "linux" || (platform === "darwin" && arch === "arm64");
-}
-
-function isLinuxDockerDriverGatewayPlatform(
-  platform: NodeJS.Platform = process.platform,
-): boolean {
-  return platform === "linux";
 }
 
 function getDockerDriverGatewayStateDir(): string {
@@ -3187,27 +3183,6 @@ function resolveOpenShellSandboxBinary(): string | null {
   return null;
 }
 
-function resolveOpenShellVmDriverBinary(): string | null {
-  const configuredDir = process.env.OPENSHELL_DRIVER_DIR;
-  if (configuredDir && configuredDir.trim()) {
-    const configured = path.join(path.resolve(configuredDir.trim()), "openshell-driver-vm");
-    if (fs.existsSync(configured)) return configured;
-  }
-  const sibling = resolveSiblingBinary("openshell-driver-vm");
-  if (sibling) return sibling;
-  for (const candidate of [
-    path.join(os.homedir(), ".local", "bin", "openshell-driver-vm"),
-    path.join(os.homedir(), ".local", "libexec", "openshell", "openshell-driver-vm"),
-    "/usr/local/bin/openshell-driver-vm",
-    "/usr/local/libexec/openshell/openshell-driver-vm",
-    "/usr/local/libexec/openshell-driver-vm",
-    "/usr/bin/openshell-driver-vm",
-  ]) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
 function getOpenShellDockerSupervisorImage(versionOutput: string | null = null): string {
   if (process.env.OPENSHELL_DOCKER_SUPERVISOR_IMAGE) {
     return process.env.OPENSHELL_DOCKER_SUPERVISOR_IMAGE;
@@ -3229,7 +3204,6 @@ function getDockerDriverGatewayEnv(
     stateDir: getDockerDriverGatewayStateDir(),
     dockerNetworkName: process.env.OPENSHELL_DOCKER_NETWORK_NAME || "openshell-docker",
     getDockerSupervisorImage: () => getOpenShellDockerSupervisorImage(versionOutput),
-    resolveVmDriverBin: resolveOpenShellVmDriverBinary,
     resolveSandboxBin: resolveOpenShellSandboxBinary,
   });
 }
@@ -3350,6 +3324,32 @@ function getDockerDriverGatewayRuntimeDrift(
   gatewayBin?: string | null,
   platform: NodeJS.Platform = process.platform,
 ): DockerDriverGatewayRuntimeDrift | null {
+  if (
+    platform === "darwin" &&
+    desiredEnv.OPENSHELL_DRIVERS === "docker"
+  ) {
+    const markerDrift =
+      dockerDriverGatewayRuntimeMarker.getDockerDriverGatewayRuntimeMarkerDriftForStateDir(
+        getDockerDriverGatewayStateDir(),
+        {
+          pid,
+          desiredEnv,
+          endpoint: getDockerDriverGatewayEndpoint(),
+          gatewayBin,
+          dockerHost: process.env.DOCKER_HOST || null,
+          platform,
+          arch: process.arch,
+        },
+      );
+    if (markerDrift) return markerDrift;
+    if (
+      vmDriverProcess.hasOpenShellVmDriverChildProcess(pid, (args) =>
+        runCapture([...args], { ignoreError: true }),
+      )
+    ) {
+      return { reason: "VM driver child process is still attached to the gateway" };
+    }
+  }
   if (!shouldRequireDockerDriverEnv(platform)) return null;
   return getDockerDriverGatewayRuntimeDriftFromSnapshot({
     processEnv: readProcessEnv(pid),
@@ -3391,20 +3391,21 @@ function isDockerDriverGatewayProcessAlive(): boolean {
   if (!isDockerDriverGatewayProcess(pid, resolveOpenShellGatewayBinary(), {
     requireDockerDriverEnv: shouldRequireDockerDriverEnv(),
   })) {
-    fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+    clearDockerDriverGatewayRuntimeFiles();
     return false;
   }
   return true;
 }
 
+function clearDockerDriverGatewayRuntimeFiles(): void {
+  fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+  dockerDriverGatewayRuntimeMarker.clearDockerDriverGatewayRuntimeMarker(
+    getDockerDriverGatewayStateDir(),
+  );
+}
+
 function rememberDockerDriverGatewayPid(pid: number): void {
-  if (!Number.isInteger(pid) || pid <= 0) return;
-  const stateDir = getDockerDriverGatewayStateDir();
-  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(getDockerDriverGatewayPidFile(), `${pid}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  dockerDriverGatewayRuntimeMarker.writeDockerDriverGatewayPidFile(getDockerDriverGatewayPidFile(), pid);
 }
 
 function getDockerDriverGatewayPortListenerPid(
@@ -3802,8 +3803,8 @@ async function preflight(
   if (host.runtime !== "unknown") {
     console.log(`  ✓ Container runtime: ${host.runtime}`);
   }
-  if (isLinuxDockerDriverGatewayPlatform() && host.runtime === "podman") {
-    console.error("  ✗ NemoClaw Linux onboarding now uses OpenShell's Docker driver.");
+  if (isLinuxDockerDriverGatewayEnabled() && host.runtime === "podman") {
+    console.error("  ✗ NemoClaw onboarding now uses OpenShell's Docker driver.");
     console.error("    Podman is not supported for this NemoClaw integration path.");
     console.error("    Switch to Docker Engine and rerun onboarding.");
     process.exit(1);
@@ -4448,7 +4449,7 @@ async function startDockerDriverGateway({ exitOnFailure = true, skipSandboxBridg
   const existingPid = getDockerDriverGatewayPid() ?? portListenerPid;
   if (existingPid !== null && isPidAlive(existingPid)) {
     if (!isDockerDriverGatewayProcess(existingPid, identityGatewayBin)) {
-      fs.rmSync(getDockerDriverGatewayPidFile(), { force: true });
+      clearDockerDriverGatewayRuntimeFiles();
     } else {
       console.log(`  Restarting unhealthy Docker-driver gateway process (PID ${existingPid})...`);
       try {
@@ -4486,6 +4487,7 @@ async function startDockerDriverGateway({ exitOnFailure = true, skipSandboxBridg
     throw new Error("OpenShell gateway process did not return a pid");
   }
   rememberDockerDriverGatewayPid(childPid);
+  dockerDriverGatewayRuntimeMarker.writeDockerDriverGatewayRuntimeMarkerForStateDir(getDockerDriverGatewayStateDir(), { pid: childPid, desiredEnv: driftGatewayEnv, endpoint: getDockerDriverGatewayEndpoint(), gatewayBin: driftGatewayBin, openshellVersion: getInstalledOpenshellVersion(openshellVersionOutput), dockerHost: process.env.DOCKER_HOST || null });
 
   const pollCount = envInt("NEMOCLAW_HEALTH_POLL_COUNT", 30);
   const pollInterval = envInt("NEMOCLAW_HEALTH_POLL_INTERVAL", 2);
@@ -4831,11 +4833,7 @@ function getSandboxRuntimeRegistryFields(
     sandboxGpuEnabled: config.sandboxGpuEnabled,
     sandboxGpuMode: config.mode,
     sandboxGpuDevice: config.sandboxGpuDevice,
-    openshellDriver: isLinuxDockerDriverGatewayEnabled()
-      ? process.platform === "darwin"
-        ? "vm"
-        : "docker"
-      : "kubernetes",
+    openshellDriver: isLinuxDockerDriverGatewayEnabled() ? "docker" : "kubernetes",
     openshellVersion: getInstalledOpenshellVersion(
       runCaptureOpenshell(["--version"], { ignoreError: true }),
     ),
@@ -5803,7 +5801,9 @@ async function createSandbox(
     discordGuilds,
     resolved ? resolved.ref : null,
     telegramConfig,
-    process.platform === "darwin",
+    // Docker-on-Colima uses normal container ownership; keep the old VM chmod
+    // compatibility path disabled unless a future VM-specific flow opts in.
+    false,
     sandboxInferenceBaseUrlOverride,
   );
   // Only pass non-sensitive env vars to the sandbox. Credentials flow through
@@ -6128,7 +6128,7 @@ async function createSandbox(
 
   // DNS proxy — run a forwarder in the sandbox pod so the isolated
   // sandbox namespace can resolve hostnames (fixes #626).
-  if (!isLinuxDockerDriverGatewayPlatform()) {
+  if (!isLinuxDockerDriverGatewayEnabled()) {
     console.log("  Setting up sandbox DNS proxy...");
     runFile("bash", [path.join(SCRIPTS, "setup-dns-proxy.sh"), GATEWAY_NAME, sandboxName], {
       ignoreError: true,
@@ -10316,9 +10316,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       const gpuOutput = String(gpuCheck.stdout || "").trim();
       const gatewayHasGpu = gpuCheck.status === 0 && gpuOutput !== "null" && gpuOutput !== "[]";
       if (!gatewayHasGpu) {
-        console.error("  Existing gateway was started without GPU passthrough.");
-        console.error("  To enable GPU, destroy the existing sandbox and gateway, then re-onboard:");
-        console.error(`    nemoclaw <name> destroy --yes && nemoclaw onboard --gpu`);
+        reportGpuPassthroughRecovery(console.error);
         process.exit(1);
       }
     }

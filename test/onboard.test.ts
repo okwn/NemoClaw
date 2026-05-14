@@ -14,6 +14,7 @@ import type { AgentDefinition } from "../dist/lib/agent/defs.js";
 import { loadAgent } from "../dist/lib/agent/defs.js";
 import { buildChain, buildControlUiUrls } from "../dist/lib/dashboard/contract.js";
 import { NAME_ALLOWED_FORMAT } from "../dist/lib/name-validation.js";
+import { hasOpenShellVmDriverChildProcessFromPsOutput } from "../dist/lib/onboard/vm-driver-process.js";
 import { stageOptimizedSandboxBuildContext } from "../dist/lib/sandbox/build-context.js";
 import { testTimeoutOptions } from "./helpers/timeouts";
 
@@ -488,12 +489,13 @@ network_policies:
     expect(linuxEnv.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toContain(":0.0.37");
 
     const darwinEnv = getDockerDriverGatewayEnv("openshell 0.0.37", "darwin");
-    expect(darwinEnv.OPENSHELL_DRIVERS).toBe("vm");
+    expect(darwinEnv.OPENSHELL_DRIVERS).toBe("docker");
     expect(darwinEnv.OPENSHELL_BIND_ADDRESS).toBe("127.0.0.1");
-    expect(darwinEnv.OPENSHELL_GRPC_ENDPOINT).toBe("http://host.containers.internal:8080");
+    expect(darwinEnv.OPENSHELL_GRPC_ENDPOINT).toBe("http://127.0.0.1:8080");
     expect(darwinEnv.OPENSHELL_SSH_GATEWAY_HOST).toBe("127.0.0.1");
-    expect(darwinEnv.OPENSHELL_VM_DRIVER_STATE_DIR).toContain("vm-driver");
-    expect(darwinEnv.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toBeUndefined();
+    expect(darwinEnv.OPENSHELL_DOCKER_SUPERVISOR_IMAGE).toContain(":0.0.37");
+    expect(darwinEnv.OPENSHELL_DOCKER_SUPERVISOR_BIN).toBeUndefined();
+    expect(darwinEnv.OPENSHELL_VM_DRIVER_STATE_DIR).toBeUndefined();
 
     const originalOverlayFix = process.env.NEMOCLAW_DISABLE_OVERLAY_FIX;
     process.env.NEMOCLAW_DISABLE_OVERLAY_FIX = "1";
@@ -549,7 +551,7 @@ network_policies:
         },
         "arm64",
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       areRequiredDockerDriverBinariesPresent(
         "darwin",
@@ -577,6 +579,18 @@ network_policies:
     expect(shouldRequireDockerDriverEnv("linux")).toBe(true);
     expect(shouldRequireDockerDriverEnv("darwin")).toBe(false);
     expect(shouldRequireDockerDriverEnv("win32")).toBe(false);
+  });
+
+  it("detects VM-driver children attached to a macOS standalone gateway", () => {
+    const psOutput = [
+      " 1000     1 /Users/me/.local/bin/openshell-gateway",
+      " 1001  1000 /Users/me/.local/bin/openshell-driver-vm --bind-socket /tmp/compute.sock",
+      " 1002  1001 /Users/me/.local/bin/openshell-driver-vm --internal-run-vm",
+      " 1003  1000 /usr/bin/other-process",
+    ].join("\n");
+    expect(hasOpenShellVmDriverChildProcessFromPsOutput(1000, psOutput)).toBe(true);
+    expect(hasOpenShellVmDriverChildProcessFromPsOutput(1001, psOutput)).toBe(true);
+    expect(hasOpenShellVmDriverChildProcessFromPsOutput(1003, psOutput)).toBe(false);
   });
 
   it("detects stale Docker-driver gateway runtime state before reuse", () => {
@@ -893,7 +907,8 @@ network_policies:
     assert.match(script, /https:\/\/inference\.local\/v1/);
     assert.match(script, /apiKey.*unused/);
     assert.match(script, /agents\.defaults\.model\.primary/);
-    assert.match(script, /curl[\s\S]*\/chat\/completions/);
+    assert.match(script, /INFERENCE_URL=.*\/chat\/completions/);
+    assert.match(script, /curl[\s\S]*"\$INFERENCE_URL"/);
     assert.doesNotMatch(script, /COMPATIBLE_API_KEY/);
     assert.doesNotMatch(script, /api\.deepinfra\.com/);
   });
