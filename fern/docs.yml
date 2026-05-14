@@ -23,7 +23,7 @@ layout:
 colors:
   accentPrimary:
     dark: "#76B900"
-    light: "#5E9400"
+    light: "#76B900"
   background:
     light: "#FFFFFF"
     dark: "#000000"
