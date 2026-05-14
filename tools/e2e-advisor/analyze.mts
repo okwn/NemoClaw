@@ -320,10 +320,7 @@ async function runAdvisor(options: {
   });
 
   try {
-    await Promise.race([
-      session.prompt(`Analyze the NemoClaw PR from the prompt below. Use read-only tools as needed. Return JSON only.\n\n${options.prompt}`),
-      timeoutPromise,
-    ]);
+    await Promise.race([session.prompt(options.prompt), timeoutPromise]);
   } finally {
     unsubscribe();
     clearInterval(heartbeat);
