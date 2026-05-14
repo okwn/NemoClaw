@@ -214,8 +214,9 @@ show_cloudflared_log() {
 # Mirrors src/lib/verify-deployment.ts:128.
 probe_local_dashboard() {
   local code
-  code=$(curl -sS -o /dev/null -w '%{http_code}' \
-    --max-time 5 "http://localhost:${LOCAL_DASHBOARD_PORT}/" 2>/dev/null || echo "000")
+  code="$(curl -sS -o /dev/null -w '%{http_code}' \
+    --max-time 5 "http://localhost:${LOCAL_DASHBOARD_PORT}/" 2>/dev/null || true)"
+  [[ -z "$code" ]] && code="000"
   [[ "$code" != "000" ]]
 }
 

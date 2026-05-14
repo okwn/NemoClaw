@@ -213,7 +213,7 @@ test_backup_restore_lifecycle() {
   log "  Step 2b: Verifying backup captured all 5 .md files on host..."
   local backup_files_ok=0
   for f in SOUL.md USER.md IDENTITY.md AGENTS.md MEMORY.md; do
-    if [[ -f "${backup_dir}/${f}" ]] && grep -q "${marker_content}_${f}" "${backup_dir}/${f}" 2>/dev/null; then
+    if [[ -f "${backup_dir}/${f}" ]] && grep -Fq -- "${marker_content}_${f}" "${backup_dir}/${f}" 2>/dev/null; then
       backup_files_ok=$((backup_files_ok + 1))
     else
       log "  WARNING: ${backup_dir}/${f} missing or content mismatch"
@@ -230,7 +230,7 @@ test_backup_restore_lifecycle() {
     fail "TC-STATE-01: BackupCaptureDir" "backup-workspace.sh reported success but '${backup_dir}/memory/2026-04-20.md' does NOT exist on host — backup did NOT capture memory directory (likely 'openshell sandbox download' directory bug)"
     return
   fi
-  if ! grep -q "${marker_content}_daily" "${backup_dir}/memory/2026-04-20.md" 2>/dev/null; then
+  if ! grep -Fq -- "${marker_content}_daily" "${backup_dir}/memory/2026-04-20.md" 2>/dev/null; then
     fail "TC-STATE-01: BackupCaptureDir" "'${backup_dir}/memory/2026-04-20.md' exists on host but content does NOT contain expected marker — backup captured wrong content"
     return
   fi
@@ -286,7 +286,7 @@ test_backup_restore_lifecycle() {
   for f in SOUL.md USER.md IDENTITY.md AGENTS.md MEMORY.md; do
     local restored_content
     restored_content=$(sandbox_exec "cat ${workspace_path}/${f} 2>/dev/null") || true
-    if echo "$restored_content" | grep -q "${marker_content}_${f}"; then
+    if echo "$restored_content" | grep -Fq -- "${marker_content}_${f}"; then
       files_restored=$((files_restored + 1))
     else
       log "  WARNING: ${f} content mismatch: ${restored_content:0:100}"
@@ -304,7 +304,7 @@ test_backup_restore_lifecycle() {
   local memory_probe memory_probe_rc=0
   memory_probe=$(sandbox_exec "if [ -f '${workspace_path}/memory/2026-04-20.md' ]; then printf 'STATE=EXISTS\\n'; cat '${workspace_path}/memory/2026-04-20.md'; else printf 'STATE=MISSING\\n'; fi") || memory_probe_rc=$?
 
-  if grep -q "${marker_content}_daily" <<<"$memory_probe"; then
+  if grep -Fq -- "${marker_content}_daily" <<<"$memory_probe"; then
     pass "TC-STATE-01: MemoryDirRestore — memory directory contents restored correctly"
   elif grep -q "^STATE=MISSING" <<<"$memory_probe"; then
     print_restore_output_for_diag "$restore_output"
