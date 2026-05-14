@@ -10,7 +10,7 @@ instances:
 title: NVIDIA NemoClaw
 
 announcement:
-  message: "NVIDIA NemoClaw is <strong>alpha software</strong>. APIs and behavior may change without notice. Do not use in production."
+  message: "🔔 NVIDIA NemoClaw is <strong>alpha software</strong>. APIs and behavior may change without notice. Do not use in production."
 
 layout:
   searchbar-placement: header
@@ -61,6 +61,11 @@ versions:
     slug: latest
 
 redirects:
+  # Paths are relative to the site root; subpath prefix matches instances + custom-domain.
+  # Legacy HTML URLs used .../path/to/page/index.html; Fern canonical URLs omit index.html.
+  # List explicit /index.html routes before :path*/index.html so empty path segments do not
+  # mis-resolve (see NeMo-Curator fern/docs.yml). :path*.html must follow :path*/index.html rules.
+  # https://www.buildwithfern.com/learn/docs/configuration/site-level-settings#redirects-configuration
   - source: "/nemoclaw/index.html"
     destination: "/nemoclaw/latest"
   - source: "/nemoclaw/index"

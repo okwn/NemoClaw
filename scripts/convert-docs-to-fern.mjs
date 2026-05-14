@@ -45,7 +45,8 @@ function frontmatterFor(sourcePath, metadata, body) {
     metadata.title?.page ?? metadata.title ?? titleFromBody(body, path.basename(sourcePath, ".md"));
   const sidebarTitle = metadata.title?.nav ?? metadata["sidebar-title"];
   const description = metadata.description?.main ?? metadata.description ?? "";
-  const descriptionAgent = metadata.description?.agent ?? metadata.description_agent ?? "";
+  const descriptionAgent =
+    metadata.description?.agent ?? metadata["description-agent"] ?? metadata.description_agent ?? "";
   const keywords = metadata.keywords;
   const contentType = metadata.content?.type ?? "";
   const skillPriority = metadata.skill?.priority ?? metadata.skill_priority ?? "";
@@ -63,7 +64,7 @@ function frontmatterFor(sourcePath, metadata, body) {
     lines.push(`description: ${esc(description)}`);
   }
   if (descriptionAgent) {
-    lines.push(`description_agent: ${esc(descriptionAgent)}`);
+    lines.push(`description-agent: ${esc(descriptionAgent)}`);
   }
   if (keywords) {
     lines.push(`keywords: ${Array.isArray(keywords) ? inlineList(keywords) : esc(keywords)}`);

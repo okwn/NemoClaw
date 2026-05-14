@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..");
 const docsRoot = path.join(repoRoot, "docs");
 const skipFiles = new Set(["CONTRIBUTING.md", "index.md"]);
-const requiredScalarFrontmatterKeys = ["title", "description", "description_agent"];
+const requiredScalarFrontmatterKeys = ["title", "description", "description-agent"];
 
 function listMarkdownFiles(root: string): string[] {
   const files: string[] = [];
