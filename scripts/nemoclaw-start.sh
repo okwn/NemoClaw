@@ -1072,6 +1072,50 @@ install_telegram_diagnostics() {
   printf '[channels] Telegram diagnostics installed (NODE_OPTIONS updated)\n' >&2
 }
 
+# ── OpenClaw replaceConfigFile EACCES shim ────────────────────────
+# Installs a Node.js preload that wraps OpenClaw's `replaceConfigFile`
+# with a try/catch swallowing EACCES inside the sandbox. The shim is
+# the runtime equivalent of the now-deleted build-time Patch 4 monkey
+# patch and lives in nemoclaw-blueprint/scripts/openclaw-rcf-shim.js,
+# baked into the image at /usr/local/lib/nemoclaw/preloads/.
+#
+# Activation conditions:
+#   1. OPENSHELL_SANDBOX=1 (set by the OpenShell sandbox runtime).
+#   2. OPENCLAW_VERSION <= NEMOCLAW_LAST_OPENCLAW_NEEDING_RCF_SHIM
+#      (the sentinel pulled from blueprint.yaml).
+# Anything above the sentinel is presumed to carry the upstream fix
+# (openclaw/openclaw#72950) and is left untouched.
+_OPENCLAW_RCF_SHIM_SCRIPT="/tmp/nemoclaw-openclaw-rcf-shim.js"
+_OPENCLAW_RCF_SHIM_SOURCE="/usr/local/lib/nemoclaw/preloads/openclaw-rcf-shim.js"
+
+install_openclaw_rcf_shim() {
+  if [ ! -f "$_OPENCLAW_RCF_SHIM_SOURCE" ]; then
+    return 0
+  fi
+
+  local blueprint_file="/opt/nemoclaw-blueprint/blueprint.yaml"
+  local sentinel
+  sentinel="$(grep -m 1 'last_openclaw_needing_rcf_shim' "$blueprint_file" 2>/dev/null | awk '{print $2}' | tr -d '"')"
+  if [ -z "$sentinel" ]; then
+    printf '[nemoclaw] openclaw-rcf-shim: blueprint missing last_openclaw_needing_rcf_shim; skipping\n' >&2
+    return 0
+  fi
+
+  local current
+  current="$(openclaw --version 2>/dev/null | awk '{print $2}')"
+  if [ -z "$current" ]; then
+    printf '[nemoclaw] openclaw-rcf-shim: could not determine OpenClaw version; skipping\n' >&2
+    return 0
+  fi
+
+  emit_sandbox_sourced_file "$_OPENCLAW_RCF_SHIM_SCRIPT" <"$_OPENCLAW_RCF_SHIM_SOURCE"
+
+  export OPENCLAW_VERSION="$current"
+  export NEMOCLAW_LAST_OPENCLAW_NEEDING_RCF_SHIM="$sentinel"
+  export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require $_OPENCLAW_RCF_SHIM_SCRIPT"
+  printf '[nemoclaw] openclaw-rcf-shim installed (OpenClaw %s <= sentinel %s)\n' "$current" "$sentinel" >&2
+}
+
 _read_gateway_token() {
   python3 - <<'PYTOKEN'
 import json
@@ -2112,6 +2156,7 @@ if [ "$(id -u)" -ne 0 ]; then
   configure_messaging_channels
   install_telegram_diagnostics
   install_slack_channel_guard
+  install_openclaw_rcf_shim
   verify_no_slack_secrets_on_disk
 
   # Ensure writable state directories exist and are owned by the current user.
@@ -2216,6 +2261,7 @@ lock_rc_files "$_SANDBOX_HOME"
 configure_messaging_channels
 install_telegram_diagnostics
 install_slack_channel_guard
+install_openclaw_rcf_shim
 verify_no_slack_secrets_on_disk
 
 # Write auth profile as sandbox user and recursively re-tighten any

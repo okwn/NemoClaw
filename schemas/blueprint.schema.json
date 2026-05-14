@@ -27,6 +27,11 @@
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
       "description": "Minimum compatible OpenClaw version."
     },
+    "last_openclaw_needing_rcf_shim": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Highest OpenClaw version that still ships the upstream EACCES defect in replaceConfigFile (openclaw/openclaw#72950). NemoClaw's runtime shim wraps the function for any version at or below this sentinel."
+    },
     "digest": {
       "type": "string",
       "description": "Computed at release time."

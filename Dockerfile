@@ -91,6 +91,16 @@ RUN set -eu; \
         rm -rf /usr/local/lib/node_modules/openclaw /usr/local/bin/openclaw; \
         npm install -g --no-audit --no-fund --no-progress "openclaw@${MIN_VER}"; \
     fi; \
+    # Subtle maintenance nudge for the rcf-shim sentinel. When the shim's
+    # sentinel still sits above the minimum pin, the shim is active across
+    # the entire supported range -- which is fine, but worth re-checking
+    # against openclaw/openclaw#72950 periodically so we lower the sentinel
+    # the moment the upstream fix lands. Once min_openclaw_version exceeds
+    # the sentinel, the shim can be deleted entirely.
+    SHIM_CEIL=$(grep -m 1 'last_openclaw_needing_rcf_shim' /opt/nemoclaw-blueprint/blueprint.yaml | awk '{print $2}' | tr -d '"' || true); \
+    if [ -n "$SHIM_CEIL" ] && [ "$(printf '%s\n%s' "$SHIM_CEIL" "$MIN_VER" | sort -V | head -n1)" = "$MIN_VER" ] && [ "$SHIM_CEIL" != "$MIN_VER" ]; then \
+        echo "INFO: rcf-shim sentinel $SHIM_CEIL is above min_openclaw_version $MIN_VER; shim still active for all supported versions (track openclaw/openclaw#72950)"; \
+    fi; \
     # Pre-install the codex-acp package so the embedded ACPx runtime can
     # call the local binary instead of `npx @zed-industries/codex-acp`.
     # The sandbox's L7 proxy denies @zed-industries/* package URLs
@@ -159,7 +169,6 @@ RUN set -eu; \
 #
 # Both patches fail-close: if grep finds no targets, the build aborts so
 # the next maintainer reviewing an OPENCLAW_VERSION bump knows to revisit.
-COPY scripts/rcf_patch.py /usr/local/lib/nemoclaw/rcf_patch.py
 # hadolint ignore=SC2016,DL3059,DL4006
 RUN set -eu; \
     OC_DIST=/usr/local/lib/node_modules/openclaw/dist; \
@@ -191,25 +200,13 @@ RUN set -eu; \
     sed -i 's/const baseLstat = await fs\.lstat(params\.installBaseDir)/const baseLstat = await fs.stat(params.installBaseDir)/' "$ipd_file"; \
     sed -i 's/baseLstat\.isSymbolicLink()/false \/* nemoclaw: symlink check disabled, realpath guards containment *\//' "$ipd_file"; \
     if grep -q 'fs\.lstat(params\.installBaseDir)' "$ipd_file"; then echo "ERROR: Patch 3b (install-package-dir) left lstat in assertInstallBaseStable" >&2; exit 1; fi; \
-    # --- Patch 4: graceful EACCES in replaceConfigFile for sandbox (#2254) --- \
-    # Plugin install persists metadata via replaceConfigFile. In the sandbox, \
-    # openclaw.json is immutable (444 root:root) by design.  OpenClaw 2026.4.24 \
-    # restructured config writes: replaceConfigFile now first attempts a \
-    # single-key include-file mutation (tryWriteSingleTopLevelIncludeMutation), \
-    # falling back to writeConfigFile for the full config.  Both paths can hit \
-    # EACCES in the read-only sandbox tree.  This patch wraps the entire \
-    # write block in a try/catch that catches EACCES when OPENSHELL_SANDBOX=1 \
-    # and emits a warning instead of crashing.  Plugins still load via \
-    # auto-discovery from the extensions directory. \
-    rcf_file="$(grep -RIlE --include='*.js' 'async function replaceConfigFile\(params\)' "$OC_DIST" | head -n 1)"; \
-    if [ -n "$rcf_file" ]; then \
-        OPENCLAW_VERSION="$(openclaw --version 2>/dev/null | awk '{print $2}' || true)" \
-            python3 /usr/local/lib/nemoclaw/rcf_patch.py "$rcf_file"; \
-        grep -REq --include='*.js' 'OPENSHELL_SANDBOX.*EACCES' "$rcf_file" \
-            || echo "[nemoclaw] WARN: Patch 4 (replaceConfigFile EACCES) not applied; plugin metadata persistence will surface raw EACCES at runtime" >&2; \
-    else \
-        echo "[nemoclaw] WARN: replaceConfigFile function not found in OpenClaw dist; skipping Patch 4 (see openclaw/openclaw#72950)" >&2; \
-    fi; \
+    # --- Patch 4 (moved out): replaceConfigFile EACCES handling --- \
+    # Previously a build-time monkey-patch against OpenClaw's source. The \
+    # source shape kept drifting between releases (#2686, #3497), so the \
+    # patch is now a runtime --require shim baked at \
+    # /usr/local/lib/nemoclaw/preloads/openclaw-rcf-shim.js and wired into \
+    # NODE_OPTIONS by scripts/nemoclaw-start.sh::install_openclaw_rcf_shim. \
+    # Upstream fix tracked in openclaw/openclaw#72950. \
     # --- Patch 5: bump default WS handshake timeout 10s -> 60s (#2484) --- \
     # OpenClaw's WS connect handshake has a hard-coded 10s timeout on both \
     # client and server. Server-side connect-handler processing can exceed \

@@ -5,6 +5,15 @@ version: "0.1.0"
 min_openshell_version: "0.0.39"
 max_openshell_version: "0.0.39"
 min_openclaw_version: "2026.4.24"
+# Highest OpenClaw version that still ships the upstream EACCES defect in
+# replaceConfigFile (openclaw/openclaw#72950). NemoClaw's runtime shim at
+# nemoclaw-blueprint/scripts/openclaw-rcf-shim.js wraps the function for
+# any version at or below this sentinel; anything above is assumed to
+# carry the upstream fix and is left untouched. Bump this DOWN to the
+# last known-broken version once the upstream fix lands; once
+# min_openclaw_version exceeds the sentinel, the shim can be deleted
+# entirely.
+last_openclaw_needing_rcf_shim: "9999.99.99"
 # Mirrors the components.sandbox.image manifest digest below. Lets a
 # downstream consumer (or release tooling) verify the blueprint declares
 # a specific sandbox image without parsing the components tree, and
