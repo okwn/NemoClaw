@@ -12,6 +12,9 @@ const skipFiles = new Set(["CONTRIBUTING.md", "index.md"]);
 const skipDirs = new Set([]);
 
 const esc = (value) => JSON.stringify(String(value ?? ""));
+const scalar = (value) =>
+  typeof value === "number" || typeof value === "boolean" ? String(value) : esc(value);
+const inlineList = (values) => `[${values.map((value) => esc(value)).join(", ")}]`;
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -42,9 +45,10 @@ function frontmatterFor(sourcePath, metadata, body) {
     metadata.title?.page ?? metadata.title ?? titleFromBody(body, path.basename(sourcePath, ".md"));
   const sidebarTitle = metadata.title?.nav ?? metadata["sidebar-title"];
   const description = metadata.description?.main ?? metadata.description ?? "";
-  const keywords = Array.isArray(metadata.keywords)
-    ? metadata.keywords.join(", ")
-    : metadata.keywords;
+  const descriptionAgent = metadata.description?.agent ?? metadata.description_agent ?? "";
+  const keywords = metadata.keywords;
+  const contentType = metadata.content?.type ?? "";
+  const skillPriority = metadata.skill?.priority ?? metadata.skill_priority ?? "";
 
   const lines = [
     "---",
@@ -58,8 +62,17 @@ function frontmatterFor(sourcePath, metadata, body) {
   if (description) {
     lines.push(`description: ${esc(description)}`);
   }
+  if (descriptionAgent) {
+    lines.push(`description_agent: ${esc(descriptionAgent)}`);
+  }
   if (keywords) {
-    lines.push(`keywords: ${esc(keywords)}`);
+    lines.push(`keywords: ${Array.isArray(keywords) ? inlineList(keywords) : esc(keywords)}`);
+  }
+  if (contentType) {
+    lines.push("content:", `  type: ${esc(contentType)}`);
+  }
+  if (skillPriority !== "") {
+    lines.push("skill:", `  priority: ${scalar(skillPriority)}`);
   }
   lines.push("---", "");
   return lines.join("\n");
