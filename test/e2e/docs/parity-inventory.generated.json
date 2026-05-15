@@ -9328,6 +9328,43 @@
       ]
     },
     {
+      "script": "test/e2e/test-onboard-inference-smoke.sh",
+      "assertions": [
+        {
+          "script": "test/e2e/test-onboard-inference-smoke.sh",
+          "line": 156,
+          "text": "setupInference() accepted a configured route without proving the chat/completions path; onboard would later print Installation complete while the first real request returns HTTP 503 (#3253)",
+          "polarity": "fail",
+          "normalized_id": "setupinference.accepted.a.configured.route.without.proving.the.chat.completions.path.onboard.would.later.print.installation.complete.while.the.first.real.request.returns.http.503.3253",
+          "mapping_status": "deferred"
+        },
+        {
+          "script": "test/e2e/test-onboard-inference-smoke.sh",
+          "line": 158,
+          "text": "setupInference() did not accept a runtime-broken inference route",
+          "polarity": "pass",
+          "normalized_id": "setupinference.did.not.accept.a.runtime.broken.inference.route",
+          "mapping_status": "deferred"
+        },
+        {
+          "script": "test/e2e/test-onboard-inference-smoke.sh",
+          "line": 161,
+          "text": "onboard did not surface actionable inference smoke diagnostics (expected provider/model/api_base/credential env/upstream 503)",
+          "polarity": "fail",
+          "normalized_id": "onboard.did.not.surface.actionable.inference.smoke.diagnostics.expected.provider.model.api.base.credential.env.upstream.503",
+          "mapping_status": "deferred"
+        },
+        {
+          "script": "test/e2e/test-onboard-inference-smoke.sh",
+          "line": 163,
+          "text": "onboard surfaced actionable inference smoke diagnostics for the broken route",
+          "polarity": "pass",
+          "normalized_id": "onboard.surfaced.actionable.inference.smoke.diagnostics.for.the.broken.route",
+          "mapping_status": "deferred"
+        }
+      ]
+    },
+    {
       "script": "test/e2e/test-onboard-repair.sh",
       "assertions": [
         {
@@ -15794,8 +15831,8 @@
     }
   ],
   "totals": {
-    "scripts": 49,
-    "assertions": 1943,
+    "scripts": 50,
+    "assertions": 1947,
     "zero_assertion_scripts": 1
   }
 }

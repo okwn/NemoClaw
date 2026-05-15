@@ -1,11 +1,11 @@
-## Definition of Done — E2E Regression Guard
+# Definition of Done — E2E Regression Guard
 
 Coverage guard #3595 adds `onboard-inference-smoke-e2e` in `.github/workflows/regression-e2e.yaml`.
 
 The fix PR for #3253 is not complete until this job flips:
 
-- 🔴 RED on main-equivalent unfixed code: https://github.com/NVIDIA/NemoClaw/actions/runs/25923084961
-- 🟢 GREEN on the fix branch: pending
+- RED on main-equivalent unfixed code: https://github.com/NVIDIA/NemoClaw/actions/runs/25923084961
+- GREEN on the fix branch: pending
 
 Dispatch command:
 

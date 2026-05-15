@@ -5,6 +5,31 @@ scripts:
     bucket: final-security-policy-platform-misc
     retirement_evidence: no PASS/FAIL legacy assertions extracted; reviewed 2026-05-13
     assertions: []
+  test-onboard-inference-smoke.sh:
+    scenario: ''
+    status: deferred
+    bucket: inference-onboard-smoke
+    assertions:
+    - legacy: setupInference() accepted a configured route without proving the chat/completions path; onboard would later print Installation complete while the first real request returns HTTP 503 (#3253)
+      status: deferred
+      reason: regression guard validates fix PR #3594 before migration to scenario framework
+      owner: e2e-maintainers
+      runner_requirement: local CLI build with mocked OpenShell runner
+    - legacy: setupInference() did not accept a runtime-broken inference route
+      status: deferred
+      reason: regression guard validates fix PR #3594 before migration to scenario framework
+      owner: e2e-maintainers
+      runner_requirement: local CLI build with mocked OpenShell runner
+    - legacy: onboard did not surface actionable inference smoke diagnostics (expected provider/model/api_base/credential env/upstream 503)
+      status: deferred
+      reason: regression guard validates fix PR #3594 before migration to scenario framework
+      owner: e2e-maintainers
+      runner_requirement: local CLI build with mocked OpenShell runner
+    - legacy: onboard surfaced actionable inference smoke diagnostics for the broken route
+      status: deferred
+      reason: regression guard validates fix PR #3594 before migration to scenario framework
+      owner: e2e-maintainers
+      runner_requirement: local CLI build with mocked OpenShell runner
   test-brave-search-e2e.sh:
     scenario: ubuntu-repo-cloud-openclaw
     status: migrated
