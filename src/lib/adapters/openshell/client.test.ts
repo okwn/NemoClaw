@@ -14,7 +14,7 @@ import {
   runOpenshellCommand,
   stripAnsi,
   versionGte,
-} from "./client";
+} from "../../../../dist/lib/adapters/openshell/client";
 
 interface SpawnResultSpec {
   status: number | null;

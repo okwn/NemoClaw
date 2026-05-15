@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // Import from compiled dist/ so coverage is attributed correctly.
-import { createTarball, getDebugCompletionMessages, redact } from "../../../dist/lib/diagnostics/debug";
+import { createTarball, getDebugCompletionMessages, redact, runDebug } from "../../../dist/lib/diagnostics/debug";
 
 describe("redact", () => {
   it("redacts NVIDIA_API_KEY=value patterns", () => {
@@ -87,6 +87,70 @@ describe("createTarball", () => {
     expect(ok).toBe(true);
     expect(process.exitCode).toBeUndefined();
     expect(existsSync(output)).toBe(true);
+  });
+});
+
+describe("runDebug", () => {
+  const originalPath = process.env.PATH;
+  let fakeBin: string | undefined;
+
+  afterEach(() => {
+    process.env.PATH = originalPath;
+    vi.restoreAllMocks();
+    if (fakeBin) rmSync(fakeBin, { recursive: true, force: true });
+    fakeBin = undefined;
+  });
+
+  function installFakeCommand(name: string, body: string): void {
+    fakeBin ??= mkdtempSync(join(tmpdir(), "debug-bin-"));
+    const file = join(fakeBin, name);
+    writeFileSync(file, `#!/bin/sh\n${body}`);
+    chmodSync(file, 0o755);
+    process.env.PATH = `${fakeBin}:${originalPath ?? ""}`;
+  }
+
+  it("collects diagnostics and redacts command output", () => {
+    for (const name of [
+      "date",
+      "uname",
+      "uptime",
+      "free",
+      "df",
+      "nvidia-smi",
+      "top",
+      "ss",
+      "ip",
+      "nslookup",
+      "lsof",
+      "vmstat",
+      "iostat",
+      "dmesg",
+      "ssh",
+    ]) {
+      installFakeCommand(name, `echo ${name}-ok`);
+    }
+    installFakeCommand("curl", "echo 200");
+    installFakeCommand(
+      "docker",
+      'case "$*" in *"--format {{.Names}}"*) echo container-one; exit 0;; esac\necho "docker $* API_KEY=secret"\n',
+    );
+    installFakeCommand(
+      "openshell",
+      'if [ "$1 $2" = "sandbox list" ]; then echo "Name"; echo "alpha Ready"; exit 0; fi\nif [ "$1 $2" = "sandbox ssh-config" ]; then echo "Host openshell-alpha"; echo "  HostName 127.0.0.1"; exit 0; fi\necho "openshell $*"\n',
+    );
+
+    const output: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((message = "") => output.push(String(message)));
+    const err = vi.spyOn(console, "error").mockImplementation((message = "") => output.push(String(message)));
+
+    runDebug({ sandboxName: "alpha", quick: false });
+
+    expect(log).toHaveBeenCalled();
+    expect(err).not.toHaveBeenCalled();
+    expect(output.join("\n")).toContain("Collecting diagnostics for sandbox 'alpha'");
+    expect(output.join("\n")).toContain("docker ps -a API_KEY=<REDACTED>");
+    expect(output.join("\n")).toContain("ssh-ok");
+    expect(output.join("\n")).toContain("Done. If filing a bug");
   });
 });
 
