@@ -14,7 +14,6 @@ export default class InternalDevNpmLinkOrShimCommand extends NemoClawCommand {
   static usage = ["internal dev npm-link-or-shim [--repo-root <path>]"];
   static examples = ["<%= config.bin %> internal dev npm-link-or-shim"];
   static flags = {
-    help: Flags.help({ char: "h" }),
     "repo-root": Flags.string({ description: "Repository root to expose", hidden: true }),
   };
 

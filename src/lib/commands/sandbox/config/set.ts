@@ -27,7 +27,6 @@ export default class SandboxConfigSetCommand extends NemoClawCommand {
     sandboxName: sandboxNameArg,
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     key: Flags.string({ description: "Dotpath to update in the config" }),
     value: Flags.string({ description: "Value to write; JSON values are parsed when possible" }),
     restart: Flags.boolean({ description: "Signal the sandbox agent process to reload after writing" }),

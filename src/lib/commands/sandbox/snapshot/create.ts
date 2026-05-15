@@ -20,7 +20,6 @@ export default class SnapshotCreateCommand extends NemoClawCommand {
     sandboxName: sandboxNameArg,
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     name: Flags.string({ description: "Optional snapshot label" }),
   };
 

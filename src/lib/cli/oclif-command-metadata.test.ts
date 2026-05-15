@@ -4,6 +4,10 @@
 import { Config as OclifConfig } from "@oclif/core";
 import { describe, expect, it } from "vitest";
 
+type OclifCommandClass = {
+  flags?: Record<string, unknown>;
+};
+
 function extendsNemoClawCommand(commandClass: unknown): boolean {
   if (typeof commandClass !== "function") return false;
   let current = Object.getPrototypeOf(commandClass) as { name?: string } | null;
@@ -12,6 +16,14 @@ function extendsNemoClawCommand(commandClass: unknown): boolean {
     current = Object.getPrototypeOf(current) as { name?: string } | null;
   }
   return false;
+}
+
+function commandOwnsHelpFlag(commandClass: unknown): boolean {
+  return (
+    typeof commandClass === "function" &&
+    Object.hasOwn(commandClass as OclifCommandClass, "flags") &&
+    Object.hasOwn((commandClass as OclifCommandClass).flags ?? {}, "help")
+  );
 }
 
 describe("oclif command metadata", () => {
@@ -25,6 +37,18 @@ describe("oclif command metadata", () => {
     }
 
     expect(nonConforming).toEqual([]);
+  });
+
+  it("keeps the help flag centralized on the shared base command", async () => {
+    const config = await OclifConfig.load(process.cwd());
+    const duplicatedHelpFlags: string[] = [];
+
+    for (const command of config.commands) {
+      const commandClass = await command.load();
+      if (commandOwnsHelpFlag(commandClass)) duplicatedHelpFlags.push(command.id);
+    }
+
+    expect(duplicatedHelpFlags).toEqual([]);
   });
 
   it("keeps public discovered commands documented in oclif statics", async () => {

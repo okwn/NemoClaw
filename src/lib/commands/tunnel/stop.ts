@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flags } from "@oclif/core";
 import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 import { stopAll } from "../../tunnel/services";
@@ -16,7 +15,6 @@ export default class TunnelStopCommand extends NemoClawCommand {
   static usage = ["tunnel stop"];
   static examples = ["<%= config.bin %> tunnel stop"];
   static flags = {
-    help: Flags.help({ char: "h" }),
   };
 
   public async run(): Promise<void> {

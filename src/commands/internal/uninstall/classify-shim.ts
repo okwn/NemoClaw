@@ -17,14 +17,13 @@ export default class InternalUninstallClassifyShimCommand extends NemoClawComman
     path: Args.string({ description: "Shim path to classify", required: true }),
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     json: Flags.boolean({ description: "Print classification as JSON" }),
   };
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(InternalUninstallClassifyShimCommand);
     const classification = classifyShimPath(args.path);
-    if (flags.json) console.log(JSON.stringify(classification, null, 2));
+    if (flags.json) this.logJson(classification);
     else console.log(`${classification.kind}: ${classification.reason}`);
   }
 }

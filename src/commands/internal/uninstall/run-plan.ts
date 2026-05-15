@@ -15,7 +15,6 @@ export default class InternalUninstallRunPlanCommand extends NemoClawCommand {
   static usage = ["internal uninstall run-plan [--yes] [--keep-openshell] [--delete-models]"];
   static examples = [`${CLI_NAME} internal uninstall run-plan --yes`];
   static flags = {
-    help: Flags.help({ char: "h" }),
     yes: Flags.boolean({ description: "Skip the confirmation prompt" }),
     "keep-openshell": Flags.boolean({ description: "Leave the openshell binary installed" }),
     "delete-models": Flags.boolean({ description: `Remove ${CLI_DISPLAY_NAME}-pulled Ollama models` }),

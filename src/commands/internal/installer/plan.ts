@@ -14,7 +14,6 @@ export default class InternalInstallerPlanCommand extends NemoClawCommand {
   static usage = ["internal installer plan [--json]"];
   static examples = ["<%= config.bin %> internal installer plan --json --provider nim --install-ref v0.1.0"];
   static flags = {
-    help: Flags.help({ char: "h" }),
     json: Flags.boolean({ description: "Print the installer plan as JSON" }),
     "install-ref": Flags.string({ description: "Install ref override" }),
     "install-tag": Flags.string({ description: "Install tag fallback" }),
@@ -44,7 +43,7 @@ export default class InternalInstallerPlanCommand extends NemoClawCommand {
       stampedVersion: flags["stamped-version"],
     });
 
-    if (flags.json) console.log(JSON.stringify(plan, null, 2));
+    if (flags.json) this.logJson(plan);
     else console.log(`Installer plan: ref '${plan.installRef}', version '${plan.installerVersion}'`);
   }
 }

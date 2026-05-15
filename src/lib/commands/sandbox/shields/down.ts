@@ -17,7 +17,6 @@ export default class ShieldsDownCommand extends NemoClawCommand {
   static usage = ["<name> [--timeout 5m] [--reason <text>] [--policy permissive]"];
   static args = { sandboxName: sandboxNameArg };
   static flags = {
-    help: Flags.help({ char: "h" }),
     timeout: shieldsTimeoutDurationFlag({ description: "Duration before shields are restored" }),
     reason: Flags.string({ description: "Reason for lowering shields" }),
     policy: Flags.string({ description: "Policy to apply while shields are down" }),

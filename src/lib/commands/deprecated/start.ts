@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flags } from "@oclif/core";
 import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 import { CLI_NAME } from "../../cli/branding";
@@ -17,7 +16,6 @@ export default class DeprecatedStartCommand extends NemoClawCommand {
   static usage = ["start"];
   static examples = ["<%= config.bin %> start"];
   static flags = {
-    help: Flags.help({ char: "h" }),
   };
 
   public async run(): Promise<void> {

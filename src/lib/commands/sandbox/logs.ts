@@ -52,7 +52,6 @@ export default class SandboxLogsCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     follow: Flags.boolean({ description: "Follow logs until interrupted" }),
     tail: Flags.integer({
       char: "n",

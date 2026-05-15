@@ -21,7 +21,6 @@ export default class SandboxDoctorCliCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     json: Flags.boolean({ description: "Emit machine-readable JSON diagnostics" }),
   };
 

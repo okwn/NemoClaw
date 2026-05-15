@@ -28,7 +28,6 @@ export default class CredentialsResetCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
   };
 

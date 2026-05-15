@@ -26,7 +26,6 @@ export default class SnapshotRestoreCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     to: Flags.string({ description: "Restore into another sandbox" }),
   };
 

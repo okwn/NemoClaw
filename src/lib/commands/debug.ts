@@ -80,7 +80,6 @@ export default class DebugCliCommand extends NemoClawCommand {
     "<%= config.bin %> debug --output /tmp/nemoclaw-debug.tar.gz",
   ];
   static flags = {
-    help: Flags.help({ char: "h" }),
     quick: Flags.boolean({ char: "q", description: "Only collect minimal diagnostics" }),
     output: Flags.string({ char: "o", description: "Write a tarball to FILE" }),
     sandbox: Flags.string({ description: "Target sandbox name" }),

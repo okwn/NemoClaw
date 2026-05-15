@@ -22,7 +22,6 @@ export default class SandboxConfigGetCommand extends NemoClawCommand {
     sandboxName: sandboxNameArg,
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     key: Flags.string({ description: "Dotpath to read from the sanitized config" }),
     format: Flags.string({
       description: "Output format",

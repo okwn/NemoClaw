@@ -59,7 +59,6 @@ export default class GatewayTokenCliCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    help: Flags.help({ char: "h" }),
     quiet: Flags.boolean({ char: "q", description: "Suppress the stderr security warning" }),
   };
 
