@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Command, Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
+import { NemoClawCommand } from "../../../cli/nemoclaw-oclif-command";
 
 import { getSnapshotRuntimeBridge, sandboxNameArg } from "./common";
 
-export default class SnapshotRestoreCommand extends Command {
+export default class SnapshotRestoreCommand extends NemoClawCommand {
   static id = "sandbox:snapshot:restore";
   static strict = true;
   static summary = "Restore state from a snapshot";

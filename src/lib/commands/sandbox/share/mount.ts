@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Command, Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
+import { NemoClawCommand } from "../../../cli/nemoclaw-oclif-command";
 
 import { runShareMount } from "../../../share-command";
 import { sandboxNameArg } from "../common";
 
-export default class ShareMountCommand extends Command {
+export default class ShareMountCommand extends NemoClawCommand {
   static id = "sandbox:share:mount";
   static strict = true;
   static summary = "Mount sandbox filesystem on the host";
