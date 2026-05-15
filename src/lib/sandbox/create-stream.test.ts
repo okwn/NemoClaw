@@ -9,7 +9,7 @@ import {
   type StreamableChildProcess,
   type StreamableReadable,
   streamSandboxCreate,
-} from "./create-stream";
+} from "../../../dist/lib/sandbox/create-stream";
 
 class FakeReadable extends EventEmitter implements StreamableReadable {
   destroy(): void {}
