@@ -147,6 +147,7 @@ When the lookup returns an answer, retry onboarding.
 The NemoClaw dashboard uses port `18789` by default and the gateway uses port `8080`.
 If another sandbox already owns the dashboard port, onboarding scans ports `18789` through `18799` and uses the next free port.
 If all ports in that range are occupied, the error lists the owner for each port and suggests using `--control-ui-port` with a port outside the range.
+
 On macOS, the port check also tries a privileged `lsof` probe without prompting for a password so root-owned listeners are detected before the sandbox build starts.
 If a port becomes occupied after preflight but before `openshell forward start` runs, onboarding deletes the just-created sandbox and exits with a retry message instead of leaving a sandbox with an unreachable dashboard URL.
 
@@ -987,14 +988,24 @@ Verify the toolkit is configured by running `docker run --rm --runtime=nvidia --
 
 Recent NVIDIA Container Toolkit installs configure the Docker daemon for Container Device Interface (CDI) device injection, which OpenShell's `gateway start --gpu` then auto-selects.
 If no `nvidia.com/gpu` CDI spec has been generated on the host yet, gateway start fails with `Docker responded with status code 500: CDI device injection failed: unresolvable CDI devices nvidia.com/gpu=all`.
-`nemoclaw onboard` now detects this gap during preflight and prints the remediation up front, but the underlying fix is the same on any Docker host whose `docker info` advertises a non-empty `CDISpecDirs`.
+The standard NemoClaw installer detects this gap before onboarding, first tries to enable the NVIDIA CDI refresh systemd units, and falls back to generating the spec directly with `nvidia-ctk`.
+If you run `nemoclaw onboard` directly, preflight prints the manual remediation instead.
+The underlying fix is the same on any Docker host whose `docker info` advertises a non-empty `CDISpecDirs`.
 
-Generate the spec, verify it lists `nvidia.com/gpu` entries, then rerun onboarding:
+Enable the refresh units, verify they list `nvidia.com/gpu` entries, then rerun onboarding:
 
 ```console
-$ sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+$ sudo systemctl enable --now nvidia-cdi-refresh.path nvidia-cdi-refresh.service
 $ nvidia-ctk cdi list
 $ nemoclaw onboard
+```
+
+If the refresh units are unavailable or do not generate CDI devices, generate the spec directly:
+
+```console
+$ sudo mkdir -p /etc/cdi
+$ sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+$ nvidia-ctk cdi list
 ```
 
 If GPU passthrough is not required on this host, rerun onboarding with `--no-gpu` instead.
@@ -1003,6 +1014,10 @@ If GPU passthrough is not required on this host, rerun onboarding with `--no-gpu
 
 On Linux Docker-driver gateways, NemoClaw may create the sandbox first and then recreate the OpenShell-managed Docker container with NVIDIA GPU flags.
 If that compatibility patch fails, onboarding leaves the failed sandbox and diagnostic bundle in place so you can inspect the OpenShell and Docker state.
+
+> **Note:** Starting with NemoClaw v0.0.43, the standard installer handles the `/proc/<pid>/task/<tid>/comm` permission case during this patch path.
+> If an older release fails direct GPU proof with that path and `Permission denied`, upgrade NemoClaw and rerun onboarding.
+
 The output includes a cleanup command such as:
 
 ```console

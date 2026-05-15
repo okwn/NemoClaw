@@ -36,6 +36,7 @@ If `nemoclaw` is not found after install, run `source ~/.bashrc` (or `source ~/.
 On Linux, the installer checks Docker before it installs NemoClaw.
 If Docker is missing, the installer downloads the official Docker convenience script, asks for `sudo`, installs Docker, and starts the Docker service when systemd is available.
 If Docker is installed but your current shell cannot use the Docker socket yet, the installer adds your user to the `docker` group when needed and exits with a recovery command.
+
 On macOS, the installer uses the Docker-driver OpenShell gateway path with Docker Desktop or Colima.
 
 ```console
