@@ -1498,8 +1498,6 @@ function hydrateCredentialEnv(envName: string | null | undefined): string | null
   return resolveProviderCredential(envName);
 }
 
-globalThis.__nemoclawHydrateCredentialEnv = hydrateCredentialEnv;
-
 const {
   getCurlTimingArgs,
   summarizeCurlFailure,
@@ -2370,6 +2368,7 @@ const {
   hasChatCompletionsToolCall,
   hasChatCompletionsToolCallLeak,
   shouldRequireResponsesToolCalling,
+  verifyOnboardInferenceSmoke,
   getProbeAuthMode,
   getValidationProbeCurlArgs,
   probeOpenAiLikeEndpoint,
@@ -10863,7 +10862,6 @@ module.exports = {
   hasResponsesToolCall,
   hasChatCompletionsToolCall,
   hasChatCompletionsToolCallLeak,
-  verifyOnboardInferenceSmoke,
   upsertProvider,
   normalizeHermesAuthMethod,
   hashCredential,
