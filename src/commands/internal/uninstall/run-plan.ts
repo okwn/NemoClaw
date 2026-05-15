@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Command, Flags } from "@oclif/core";
+import { Flags } from "@oclif/core";
+import { NemoClawCommand } from "../../../lib/cli/nemoclaw-oclif-command";
 
 import { runUninstallPlan } from "../../../lib/actions/uninstall/run-plan";
 import { CLI_DISPLAY_NAME, CLI_NAME } from "../../../lib/cli/branding";
 
-export default class InternalUninstallRunPlanCommand extends Command {
+export default class InternalUninstallRunPlanCommand extends NemoClawCommand {
   static hidden = true;
   static strict = true;
   static summary = `${CLI_DISPLAY_NAME} Uninstaller`;

@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Command, Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
+import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 import { CLI_NAME } from "../../cli/branding";
 import { prompt as askPrompt } from "../../credentials/store";
@@ -9,7 +10,7 @@ import { runOpenshellProviderCommand } from "../../actions/global";
 import { OPENSHELL_OPERATION_TIMEOUT_MS } from "../../adapters/openshell/timeouts";
 import { isBridgeProviderName, recoverGatewayOrExit } from "./common";
 
-export default class CredentialsResetCommand extends Command {
+export default class CredentialsResetCommand extends NemoClawCommand {
   static id = "credentials:reset";
   static strict = true;
   static summary = "Remove a provider credential";

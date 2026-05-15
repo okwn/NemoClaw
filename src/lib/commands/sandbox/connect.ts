@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Command, Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
+import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 import { CLI_NAME } from "../../cli/branding";
 import { connectSandbox } from "../../actions/sandbox/connect";
 
-export default class ConnectCliCommand extends Command {
+export default class ConnectCliCommand extends NemoClawCommand {
   static id = "sandbox:connect";
   static strict = true;
   static summary = "Shell into a running sandbox";

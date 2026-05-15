@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Command, Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
+import { NemoClawCommand } from "../cli/nemoclaw-oclif-command";
 
 import { runGatewayTokenCommand } from "../gateway-token-command";
 
@@ -40,7 +41,7 @@ function getRuntimeBridge(): GatewayTokenRuntimeBridge {
   return runtimeBridgeFactory();
 }
 
-export default class GatewayTokenCliCommand extends Command {
+export default class GatewayTokenCliCommand extends NemoClawCommand {
   static id = "sandbox:gateway:token";
   static strict = true;
   static summary = "Print the OpenClaw gateway auth token to stdout";
