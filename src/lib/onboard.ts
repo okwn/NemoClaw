@@ -1912,11 +1912,6 @@ function verifyDirectSandboxGpu(sandboxName: string): void {
     }
     if (proof.optional === true) return;
     const diagnostic = compactText(redact(`${result.stderr || ""} ${result.stdout || ""}`));
-    if (proof.optional === true) {
-      console.warn(`  ⚠ GPU proof skipped: ${proof.label}`);
-      if (diagnostic) console.warn(`    ${diagnostic.slice(0, 300)}`);
-      continue;
-    }
     console.error(`  ✗ GPU proof failed: ${proof.label}`);
     if (diagnostic) console.error(`    ${diagnostic.slice(0, 300)}`);
     for (const line of sandboxGpuRemediationLines()) {
