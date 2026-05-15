@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-name: sandbox-images-and-e2e
+name: Images / Sandbox Images and E2E
 
 on:
   workflow_call:
@@ -74,13 +74,13 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --user sandbox nemoclaw-hermes-production \
-            test -r /opt/nemoclaw-generate-config.ts
+            test -r /opt/nemoclaw-hermes-config/generate-config.ts
           docker run --rm --user sandbox nemoclaw-hermes-production \
             test -r /opt/nemoclaw-hermes-plugin/plugin.yaml
           docker run --rm --user sandbox nemoclaw-hermes-production \
             test -r /opt/nemoclaw-blueprint/blueprint.yaml
           docker run --rm --user sandbox nemoclaw-hermes-production \
-            test -x /usr/local/bin/nemoclaw-decode-proxy
+            test ! -e /usr/local/bin/nemoclaw-decode-proxy
           docker run --rm --user sandbox nemoclaw-hermes-production \
             test -x /usr/local/bin/nemoclaw-start
 

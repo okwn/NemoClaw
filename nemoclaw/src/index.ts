@@ -12,12 +12,14 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { renderBox } from "./banner.js";
 import { handleSlashCommand } from "./commands/slash.js";
 import {
   describeOnboardEndpoint,
   describeOnboardProvider,
   loadOnboardConfig,
 } from "./onboard/config.js";
+import { registerRuntimeContext } from "./runtime-context.js";
 import { scanForSecrets, isMemoryPath } from "./security/secret-scanner.js";
 
 type PluginScalar = string | number | boolean | null | undefined;
@@ -182,6 +184,18 @@ export interface BeforeToolCallResult {
   blockReason?: string;
 }
 
+/** Return value from a before_prompt_build hook. */
+export interface BeforePromptBuildResult {
+  systemPrompt?: string;
+  prependContext?: string;
+  appendContext?: string;
+  prependSystemContext?: string;
+  appendSystemContext?: string;
+}
+
+/** Union of all hook result types. */
+export type HookResult = BeforeToolCallResult | BeforePromptBuildResult | undefined;
+
 /**
  * The API object injected into the plugin's register function by the OpenClaw
  * host. Only the methods we actually call are listed here.
@@ -199,7 +213,7 @@ export interface OpenClawPluginApi {
   resolvePath: (input: string) => string;
   on: (
     hookName: string,
-    handler: (...args: readonly PluginValue[]) => BeforeToolCallResult | undefined,
+    handler: (...args: readonly PluginValue[]) => HookResult | Promise<HookResult>,
   ) => void;
 }
 
@@ -337,6 +351,16 @@ export default function register(api: OpenClawPluginApi): void {
   const onboardCfg = loadOnboardConfig();
   const probed = probeOpenShellInference();
 
+  // 4. Register runtime context injection (sandbox-awareness hook)
+  const pluginConfig = getPluginConfig(api);
+  try {
+    registerRuntimeContext(api, pluginConfig);
+  } catch (err) {
+    api.logger.warn(
+      `Could not register runtime context hook: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   let bannerEndpoint = onboardCfg ? describeOnboardEndpoint(onboardCfg) : "";
   let bannerProvider = onboardCfg ? describeOnboardProvider(onboardCfg) : "";
   // Prefer the live gateway model over the stale onboard config model.
@@ -374,7 +398,7 @@ export default function register(api: OpenClawPluginApi): void {
         const rawPath = event.params["file_path"] ?? event.params["path"];
         if (typeof rawPath !== "string" || rawPath.length === 0) return undefined;
         // Resolve symlinks and traversal before checking — prevents bypasses like
-        // /sandbox/project/../../.openclaw-data/memory/secrets.md
+        // /sandbox/project/../../.openclaw/memory/secrets.md
         const filePath = api.resolvePath(rawPath);
         if (!isMemoryPath(filePath)) return undefined;
 
@@ -403,14 +427,18 @@ export default function register(api: OpenClawPluginApi): void {
     );
   }
 
+  const bannerLines = [
+    "  NemoClaw registered",
+    null,
+    `  Endpoint:  ${bannerEndpoint}`,
+    `  Provider:  ${bannerProvider}`,
+    `  Model:     ${bannerModel}`,
+    "  Slash:     /nemoclaw",
+  ];
+
   api.logger.info("");
-  api.logger.info("  ┌─────────────────────────────────────────────────────┐");
-  api.logger.info("  │  NemoClaw registered                                │");
-  api.logger.info("  │                                                     │");
-  api.logger.info(`  │  Endpoint:  ${bannerEndpoint.padEnd(40)}│`);
-  api.logger.info(`  │  Provider:  ${bannerProvider.padEnd(40)}│`);
-  api.logger.info(`  │  Model:     ${bannerModel.padEnd(40)}│`);
-  api.logger.info("  │  Slash:     /nemoclaw                               │");
-  api.logger.info("  └─────────────────────────────────────────────────────┘");
+  for (const line of renderBox(bannerLines)) {
+    api.logger.info(line);
+  }
   api.logger.info("");
 }

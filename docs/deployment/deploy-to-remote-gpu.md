@@ -12,6 +12,8 @@ content:
   type: how_to
   difficulty: intermediate
   audience: ["developer", "engineer"]
+skill:
+  priority: 10
 status: published
 ---
 
@@ -43,6 +45,7 @@ If you are connecting from your local machine and still need to provision the re
 
 - The [Brev CLI](https://brev.nvidia.com) installed and authenticated.
 - A provider credential for the inference backend you want to use during onboarding.
+- `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` exported when your remote vLLM or Hugging Face workflow needs access to gated models.
 - NemoClaw installed locally if you plan to use the deprecated `nemoclaw deploy` wrapper. Otherwise, install NemoClaw directly on the remote host after provisioning it.
 
 ## Deploy the Instance
@@ -59,6 +62,9 @@ $ nemoclaw deploy <instance-name>
 ```
 
 Replace `<instance-name>` with a name for your remote instance, for example `my-gpu-box`.
+The sandbox created on the remote VM uses `NEMOCLAW_SANDBOX_NAME`, or `my-assistant` when the variable is unset.
+Sandbox names must be lowercase, start with a letter, contain only letters, numbers, and internal hyphens, and end with a letter or number.
+The deploy wrapper validates the sandbox name before it provisions the Brev instance, opens SSH, or starts the remote installer.
 
 The legacy compatibility flow performs the following steps on the VM:
 
@@ -68,6 +74,7 @@ The legacy compatibility flow performs the following steps on the VM:
 4. Starts optional host auxiliary services (for example the cloudflared tunnel) when `cloudflared` is available. Channel messaging is configured during onboarding and runs through OpenShell-managed processes, not through `nemoclaw tunnel start`.
 
 By default, the compatibility wrapper asks Brev to provision on `gcp`. Override this with `NEMOCLAW_BREV_PROVIDER` if you need a different Brev cloud provider.
+If you export `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN`, the wrapper forwards those values to the VM so remote setup can pull gated Hugging Face model repositories.
 
 ## Connect to the Remote Sandbox
 
@@ -120,6 +127,25 @@ When `CHAT_UI_URL` points at a non-loopback origin, NemoClaw disables OpenClaw d
 Any device that can reach the configured dashboard origin can connect without pairing, so avoid exposing that origin on internet-reachable or shared-network deployments.
 :::
 
+## First-Run Readiness Budget
+
+On a remote GPU host, the first `nemoclaw onboard` typically does the slowest work of the lifecycle: the sandbox image is built locally and uploaded into the OpenShell gateway, which can stream hundreds of MiB over the VM's link before the readiness wait even starts.
+The post-create readiness wait defaults to 180 seconds (`NEMOCLAW_SANDBOX_READY_TIMEOUT`), which is sized for warm-cache, workstation-class onboarding and can be exceeded on:
+
+- DGX Station first runs with large quantised models (70B+ parameter footprints, NVFP4 weights).
+- Cloud VMs where the local image-build cache is cold and the upload runs over the public network.
+- Hosts onboarding the Brave Web Search preset on the first run (the egress policy stack adds boot work).
+
+Raise the budget before re-running onboard:
+
+```console
+$ export NEMOCLAW_SANDBOX_READY_TIMEOUT=600
+$ nemoclaw onboard
+```
+
+If onboard ends with `Sandbox '<name>' was created but did not become ready within 180s`, onboard deletes the partially-created sandbox first, so the next attempt with the raised budget starts from a clean state.
+For the inference-probe budget that runs earlier in onboarding, see [`NEMOCLAW_LOCAL_INFERENCE_TIMEOUT`](../inference/use-local-inference.md#timeout-configuration).
+
 ## Proxy Configuration
 
 NemoClaw routes sandbox traffic through a gateway proxy that defaults to `10.200.0.1:3128`.
@@ -150,6 +176,6 @@ $ nemoclaw deploy <instance-name>
 
 ## Related Topics
 
-- [Set Up Telegram](set-up-telegram-bridge.md) to connect Telegram through OpenShell-managed channel messaging.
+- [Set Up Messaging Channels](../manage-sandboxes/messaging-channels.md) to connect Telegram, Discord, or Slack through OpenShell-managed channel messaging.
 - [Monitor Sandbox Activity](../monitoring/monitor-sandbox-activity.md) for sandbox monitoring tools.
 - [Commands](../reference/commands.md) for the full `deploy` command reference.
