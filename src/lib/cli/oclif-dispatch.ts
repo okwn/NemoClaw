@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { sandboxCommands } from "./command-registry";
+import { globalCommands, sandboxCommands } from "./command-registry";
 
 export type OclifDispatch = {
   kind: "oclif";
@@ -44,15 +44,35 @@ type LegacyRoute = {
   publicUsage: string;
 };
 
+type GlobalRoute = {
+  commandId: string;
+  tokens: string[];
+};
+
 function hasHelpFlag(args: readonly string[]): boolean {
   return args.includes("--help") || args.includes("-h");
 }
 
+function literalTokensFromUsage(usage: string, prefixPattern: RegExp): string[] {
+  const rest = usage.replace(prefixPattern, "");
+  const tokens: string[] = [];
+  for (const token of rest.split(/\s+/)) {
+    if (!token || token.startsWith("[") || token.startsWith("<") || token.startsWith("(")) break;
+    if (token.startsWith("-")) {
+      if (tokens.length === 0) tokens.push(token);
+      break;
+    }
+    tokens.push(token);
+  }
+  return tokens;
+}
+
 function legacyTokensFromUsage(usage: string): string[] {
-  const rest = usage.replace(/^nemoclaw\s+<name>\s*/, "");
-  return rest
-    .split(/\s+/)
-    .filter((token) => token && !token.startsWith("[") && !token.startsWith("<"));
+  return literalTokensFromUsage(usage, /^nemoclaw\s+<name>\s*/);
+}
+
+function globalTokensFromUsage(usage: string): string[] {
+  return literalTokensFromUsage(usage, /^nemoclaw\s+/);
 }
 
 function publicUsageFromCommand(command: ReturnType<typeof sandboxCommands>[number]): string {
@@ -69,6 +89,16 @@ function legacyRoutes(): LegacyRoute[] {
     }))
     .filter((route) => route.legacyTokens.length > 0)
     .sort((a, b) => b.legacyTokens.length - a.legacyTokens.length);
+}
+
+function globalRoutes(): GlobalRoute[] {
+  return globalCommands()
+    .map((command) => ({
+      commandId: command.commandId,
+      tokens: globalTokensFromUsage(command.usage),
+    }))
+    .filter((route) => route.tokens.length > 0)
+    .sort((a, b) => b.tokens.length - a.tokens.length);
 }
 
 function startsWithTokens(tokens: readonly string[], prefix: readonly string[]): boolean {
@@ -90,37 +120,18 @@ function oclif(commandId: string, args: string[]): OclifDispatch {
   return { kind: "oclif", commandId, args };
 }
 
-const GLOBAL_ROUTES: Readonly<Record<string, string>> = {
-  onboard: "onboard",
-  setup: "setup",
-  "setup-spark": "setup-spark",
-  deploy: "deploy",
-  start: "start",
-  stop: "stop",
-  status: "status",
-  debug: "debug",
-  uninstall: "uninstall",
-  update: "update",
-  list: "list",
-  "backup-all": "backup-all",
-  "upgrade-sandboxes": "upgrade-sandboxes",
-  gc: "gc",
-};
-
 export function resolveGlobalOclifDispatch(cmd: string, args: string[]): DispatchResult {
-  const globalCommandId = GLOBAL_ROUTES[cmd];
-  if (globalCommandId) return oclif(globalCommandId, args);
+  const inputTokens = [cmd, ...args];
+  for (const route of globalRoutes()) {
+    if (!startsWithTokens(inputTokens, route.tokens)) continue;
+    return oclif(route.commandId, inputTokens.slice(route.tokens.length));
+  }
 
   if (cmd === "tunnel") {
-    const sub = args[0];
-    if (sub === "start" || sub === "stop") return oclif(`tunnel:${sub}`, args.slice(1));
     return { kind: "usageError", lines: ["tunnel <start|stop>"] };
   }
 
   if (cmd === "inference") {
-    const sub = args[0];
-    if (sub === "get") return oclif("inference:get", args.slice(1));
-    if (sub === "set") return oclif("inference:set", args.slice(1));
     return {
       kind: "usageError",
       lines: [
@@ -133,11 +144,10 @@ export function resolveGlobalOclifDispatch(cmd: string, args: string[]): Dispatc
   if (cmd === "credentials") {
     const sub = args[0];
     if (!sub || sub === "help" || sub === "--help" || sub === "-h") return oclif("credentials", []);
-    if (sub === "list" || sub === "reset") return oclif(`credentials:${sub}`, args.slice(1));
     return { kind: "unknownSubcommand", command: "credentials", subcommand: sub };
   }
 
-  if (cmd === "version" || cmd === "--version" || cmd === "-v") {
+  if (cmd === "version") {
     return oclif("root:version", []);
   }
 

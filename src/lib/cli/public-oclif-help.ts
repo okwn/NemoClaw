@@ -36,14 +36,54 @@ class PublicUsageCommandHelp extends CommandHelp {
   }
 }
 
+function publicRouteTokens(publicUsage: string): string[] {
+  const tokens = publicUsage.split(/\s+/).filter(Boolean);
+  const route = tokens[0] === "<name>" ? tokens.slice(1) : tokens;
+  const literals: string[] = [];
+  for (const token of route) {
+    if (token.startsWith("[") || token.startsWith("<") || token.startsWith("-")) break;
+    literals.push(token);
+  }
+  return literals;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function publicExamples(
+  commandId: string,
+  metadata: OclifCommandMetadata,
+  publicUsage: string,
+): string[] | undefined {
+  const examples = metadata.examples;
+  if (!examples || !commandId.startsWith("sandbox:")) return examples;
+
+  const nativeRoute = commandId.split(":").slice(1);
+  const publicRoute = publicRouteTokens(publicUsage);
+  if (nativeRoute.length === 0 || publicRoute.length === 0) return examples;
+
+  const nativePattern = nativeRoute.map(escapeRegExp).join("\\s+");
+  const nativeExamplePattern = new RegExp(`^(.*?\\s)sandbox\\s+${nativePattern}\\s+(\\S+)(.*)$`);
+  return examples.map((example) =>
+    example.replace(
+      nativeExamplePattern,
+      (_match, prefix: string, sandboxName: string, rest: string) =>
+        `${prefix}${sandboxName} ${publicRoute.join(" ")}${rest}`,
+    ),
+  );
+}
+
 function toPublicHelpCommand(
   commandId: string,
   metadata: OclifCommandMetadata,
+  publicUsage: string,
 ): PublicHelpCommand {
   return {
     ...metadata,
     aliases: [],
     args: metadata.args ?? {},
+    examples: publicExamples(commandId, metadata, publicUsage),
     flags: {
       ...(metadata.baseFlags ?? {}),
       ...(metadata.flags ?? {}),
@@ -61,5 +101,7 @@ export function renderPublicOclifHelp(commandId: string, publicUsage: string): v
     return;
   }
 
-  console.log(new PublicUsageCommandHelp(toPublicHelpCommand(commandId, metadata), publicUsage).generate());
+  console.log(
+    new PublicUsageCommandHelp(toPublicHelpCommand(commandId, metadata, publicUsage), publicUsage).generate(),
+  );
 }

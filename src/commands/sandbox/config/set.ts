@@ -8,6 +8,7 @@ export default withCommandDisplay(Command, [
   {
     usage: "nemoclaw <name> config set",
     description: "Set sandbox configuration with SSRF validation",
+    flags: "--key <dotpath> --value <value> [--restart] [--config-accept-new-path]",
     group: "Sandbox Management",
     hidden: true,
     scope: "sandbox",

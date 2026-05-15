@@ -18,7 +18,7 @@ export default class SandboxConfigSetCommand extends NemoClawCommand {
   static strict = true;
   static summary = "Set sandbox configuration";
   static description = "Set sandbox agent configuration with new-path and SSRF validation.";
-  static usage = ["<name> config set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]"];
+  static usage = ["<name> --key <dotpath> --value <value> [--restart] [--config-accept-new-path]"];
   static examples = [
     "<%= config.bin %> alpha config set --key model --value nvidia/nemotron",
     '<%= config.bin %> alpha config set --key web_search --value true --restart',
@@ -27,8 +27,11 @@ export default class SandboxConfigSetCommand extends NemoClawCommand {
     sandboxName: sandboxNameArg,
   };
   static flags = {
-    key: Flags.string({ description: "Dotpath to update in the config" }),
-    value: Flags.string({ description: "Value to write; JSON values are parsed when possible" }),
+    key: Flags.string({ description: "Dotpath to update in the config", required: true }),
+    value: Flags.string({
+      description: "Value to write; JSON values are parsed when possible",
+      required: true,
+    }),
     restart: Flags.boolean({ description: "Signal the sandbox agent process to reload after writing" }),
     "config-accept-new-path": Flags.boolean({
       description: "Allow creating a config key that does not already exist",
