@@ -283,10 +283,19 @@ SUITE_IDS=()
 while IFS= read -r suite_id; do
   SUITE_IDS+=("${suite_id}")
 done < <(node -e "
-  const p = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
-  const filter = process.env.E2E_SUITE_FILTER || '';
-  const selected = filter ? filter.split(',').map((s) => s.trim()).filter(Boolean) : p.suites.map((s) => s.id);
-  for (const id of selected) console.log(id);
+  try {
+    const planPath = process.argv[1];
+    const p = JSON.parse(require('fs').readFileSync(planPath, 'utf8'));
+    if (!Array.isArray(p.suites)) {
+      throw new Error('missing or invalid suites array');
+    }
+    const filter = process.env.E2E_SUITE_FILTER || '';
+    const selected = filter ? filter.split(',').map((s) => s.trim()).filter(Boolean) : p.suites.map((s) => s.id);
+    for (const id of selected) console.log(id);
+  } catch (err) {
+    console.error('run-scenario: failed to parse plan.json ' + process.argv[1] + ': ' + err.message);
+    process.exit(1);
+  }
 " "${E2E_CONTEXT_DIR}/plan.json")
 
 if [[ "${#SUITE_IDS[@]}" -eq 0 ]]; then

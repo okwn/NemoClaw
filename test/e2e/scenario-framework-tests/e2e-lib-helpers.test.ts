@@ -183,14 +183,23 @@ describe("Phase 1.A logging helpers", () => {
 
 describe("Phase 1.B sandbox-exec helper", () => {
   it("sandbox_exec_should_propagate_exit_code_when_command_fails", () => {
-    // Use a fake nemoclaw on PATH that exits 1.
+    // Use a fake openshell on PATH that executes the command after `--`.
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-sbex-fail-"));
     try {
       const bin = path.join(tmp, "bin");
       fs.mkdirSync(bin);
       fs.writeFileSync(
-        path.join(bin, "nemoclaw"),
-        "#!/usr/bin/env bash\nexit 1\n",
+        path.join(bin, "openshell"),
+        `#!/usr/bin/env bash
+set -euo pipefail
+while [[ "$#" -gt 0 && "$1" != "--" ]]; do
+  shift
+done
+if [[ "$#" -gt 0 ]]; then
+  shift
+fi
+exec "$@"
+`,
         { mode: 0o755 },
       );
       const r = runBash(
