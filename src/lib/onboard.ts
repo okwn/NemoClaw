@@ -2041,7 +2041,6 @@ function isInferenceRouteReady(provider: string, model: string): boolean {
   return Boolean(live && live.provider === provider && live.model === model);
 }
 
-
 function verifyCompatibleEndpointSandboxSmoke(options: {
   sandboxName: string;
   provider: string;
@@ -2374,10 +2373,6 @@ const {
   probeOpenAiLikeEndpoint,
   probeAnthropicEndpoint,
 } = require("./inference/onboard-probes");
-
-// shouldSkipResponsesProbe and isNvcfFunctionNotFoundForAccount /
-// nvcfFunctionNotFoundMessage — see validation import above. They live in
-// src/lib/validation.ts so they can be unit-tested independently.
 
 async function validateOpenAiLikeSelection(
   label: string,
