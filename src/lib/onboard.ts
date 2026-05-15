@@ -2367,15 +2367,12 @@ const {
   hasChatCompletionsToolCall,
   hasChatCompletionsToolCallLeak,
   shouldRequireResponsesToolCalling,
+  verifyOnboardInferenceSmoke,
   getProbeAuthMode,
   getValidationProbeCurlArgs,
   probeOpenAiLikeEndpoint,
   probeAnthropicEndpoint,
 } = require("./inference/onboard-probes");
-
-// shouldSkipResponsesProbe and isNvcfFunctionNotFoundForAccount /
-// nvcfFunctionNotFoundMessage — see validation import above. They live in
-// src/lib/validation.ts so they can be unit-tested independently.
 
 async function validateOpenAiLikeSelection(
   label: string,
@@ -7708,6 +7705,7 @@ async function setupInference(
     }
 
     verifyInferenceRoute(provider, model);
+    verifyOnboardInferenceSmoke({ provider, model, endpointUrl, credentialEnv });
     if (sandboxName) {
       registry.updateSandbox(sandboxName, { model, provider });
     }
@@ -7983,6 +7981,7 @@ async function setupInference(
   }
 
   verifyInferenceRoute(provider, model);
+  verifyOnboardInferenceSmoke({ provider, model, endpointUrl, credentialEnv });
   if (sandboxName) {
     registry.updateSandbox(sandboxName, { model, provider });
   }
