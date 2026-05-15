@@ -765,7 +765,7 @@ Add a first-class onboarding assertion stage between onboarding execution and ex
 - Assertion IDs are stable and appear in parity reports.
 - At least baseline install/gateway/sandbox/provider/credential assertions are mapped from legacy parity entries.
 
-## Phase 4: Onboarding Matrix Expansion
+## Phase 4: Onboarding Matrix Expansion [COMPLETED: af628e2e9]
 
 Move onboarding lifecycle and provider variants into explicit onboarding profiles/test plans.
 
