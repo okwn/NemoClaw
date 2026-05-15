@@ -1907,8 +1907,8 @@ function verifyDirectSandboxGpu(sandboxName: string): void {
       console.log(`  ✓ GPU proof passed: ${proof.label}`);
       continue;
     }
-    const diagnostic = compactText(redact(`${result.stderr || ""} ${result.stdout || ""}`));
     if (proof.optional === true) return;
+    const diagnostic = compactText(redact(`${result.stderr || ""} ${result.stdout || ""}`));
     console.error(`  ✗ GPU proof failed: ${proof.label}`);
     if (diagnostic) console.error(`    ${diagnostic.slice(0, 300)}`);
     for (const line of sandboxGpuRemediationLines()) {
