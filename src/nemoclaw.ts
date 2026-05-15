@@ -158,6 +158,10 @@ function suggestGlobalCommand(token: string): string | null {
   return suggestCommand(token, GLOBAL_COMMANDS);
 }
 
+function hasHelpFlag(args: readonly string[]): boolean {
+  return args.includes("--help") || args.includes("-h");
+}
+
 function findRegisteredSandboxName(tokens: string[]): string | null {
   const registered = new Set(
     registry.listSandboxes().sandboxes.map((s: { name: string }) => s.name),
@@ -271,10 +275,30 @@ async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
     return;
   }
 
+  // Derived from command registry — single source of truth.
+  const sandboxActions = sandboxActionTokens();
+
+  // Help is parser metadata, not sandbox runtime behavior. Render sandbox-scoped
+  // legacy help before registry recovery so `nemoclaw missing channels start --help`
+  // stays side-effect free and never starts or repairs services.
+  if (
+    !normalized.connectHelpRequested &&
+    sandboxActions.includes(requestedSandboxAction) &&
+    hasHelpFlag(requestedSandboxActionArgs)
+  ) {
+    validateName(cmd, "sandbox name");
+    await runDispatchResult(
+      resolveLegacySandboxDispatch(cmd, requestedSandboxAction, requestedSandboxActionArgs),
+      {
+        sandboxName: cmd,
+        actionArgs: requestedSandboxActionArgs,
+      },
+    );
+    return;
+  }
+
   // If the registry doesn't know this name but the action is a sandbox-scoped
   // command, attempt recovery — the sandbox may still be live with a stale registry.
-  // Derived from command registry — single source of truth
-  const sandboxActions = sandboxActionTokens();
   if (!registry.getSandbox(cmd) && sandboxActions.includes(requestedSandboxAction)) {
     validateName(cmd, "sandbox name");
     await recoverRegistryEntries({ requestedSandboxName: cmd });
