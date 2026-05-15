@@ -18,10 +18,10 @@ const CREATE_TIME_POLICY_PRESETS_BY_CHANNEL: Record<string, string[]> = {
 };
 
 const PROC_PATH = "/proc";
-const STALE_PROC_COMM_READ_WRITE_PATH = "/proc/self/task/*/comm";
+const PROC_COMM_READ_WRITE_PATHS = ["/proc/self/comm", "/proc/self/task/*/comm"];
 
 function isProcEntryOwnedByOpenShell(entry: string): boolean {
-  return entry === PROC_PATH || entry === STALE_PROC_COMM_READ_WRITE_PATH;
+  return entry === PROC_PATH || PROC_COMM_READ_WRITE_PATHS.includes(entry);
 }
 
 export function buildDirectGpuPolicyYaml(basePolicy: string): string {
@@ -46,7 +46,7 @@ export function buildDirectGpuPolicyYaml(basePolicy: string): string {
 
 const PROC_COMM_WRITE_PROBE = [
   "set -eu;",
-  'comm="/proc/self/task/$$/comm";',
+  'comm="/proc/self/comm";',
   'old="$(cat "$comm" 2>/dev/null || true)";',
   'printf nemoclaw-gpu >"$comm";',
   'if [ -n "$old" ]; then',

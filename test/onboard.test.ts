@@ -728,7 +728,7 @@ network_policies:
       "-lc",
       expect.stringContaining("command -v nvidia-smi"),
     ]);
-    expect(commands[1].args.join(" ")).toContain("/proc/self/task/$$/comm");
+    expect(commands[1].args.join(" ")).toContain("/proc/self/comm");
     expect(commands[1].args.join(" ")).not.toContain("ls /proc/self/task");
     expect(commands[2].args.join(" ")).toContain("cuInit(0)");
     for (const command of commands) {
