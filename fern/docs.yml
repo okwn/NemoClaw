@@ -4,7 +4,7 @@
 # Fern site config. Mirrors the OpenShell Fern layout while the NemoClaw docs
 # are migrated from the legacy Sphinx/MyST source.
 instances:
-  - url: nemoclaw.docs.buildwithfern.com/nemoclaw
+  - url: nvidia-nemoclaw.docs.buildwithfern.com/nemoclaw
     custom-domain: docs.nvidia.com/nemoclaw
 
 title: NVIDIA NemoClaw
