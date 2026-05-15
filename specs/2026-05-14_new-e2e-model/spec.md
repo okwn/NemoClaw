@@ -843,7 +843,7 @@ Reorganize feature validation into clearer suite families and migrate high-value
 - At least three high-deferred domains have concrete suite IDs and stable assertion IDs.
 - Parity report shows lower deferred counts in selected domains.
 
-## Phase 6: Workflow and Report Visibility
+## Phase 6: Workflow and Report Visibility [COMPLETED: 25fb912c3]
 
 Make layered E2E output visible to maintainers without downloading artifacts.
 
