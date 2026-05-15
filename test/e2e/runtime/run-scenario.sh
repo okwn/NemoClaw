@@ -175,6 +175,8 @@ read_plan_string() {
 INSTALL_ID="$(read_plan_string dimensions.install.id)"
 INSTALL_METHOD="$(read_plan_string dimensions.install.profile.method)"
 ONBOARDING_ID="$(read_plan_string dimensions.onboarding.id)"
+RUNTIME_ID="$(read_plan_string dimensions.runtime.id)"
+RUNTIME_CONTAINER_DAEMON="$(read_plan_string dimensions.runtime.profile.container_daemon)"
 
 # Trace the dimension id so scenario-level assertions can identify the
 # configured install (e.g. repo-current); e2e_install internally traces
@@ -228,18 +230,22 @@ if [[ "$(read_plan_string expected_state.id)" == "preflight-failure-no-sandbox" 
   exit 0
 fi
 
-onboard_log="${E2E_CONTEXT_DIR}/onboard.log"
-set +e
-e2e_onboard "${ONBOARDING_ID}" >"${onboard_log}" 2>&1
-onboard_status=$?
-set -e
-if [[ "${onboard_status}" -ne 0 ]]; then
-  cat "${onboard_log}" >&2
-  echo "run-scenario: onboarding ${ONBOARDING_ID} failed with status ${onboard_status}" >&2
-  exit "${onboard_status}"
+if [[ "${RUNTIME_CONTAINER_DAEMON}" == "optional" ]] && ! docker info >/dev/null 2>&1; then
+  echo "run-scenario: Docker unavailable for optional runtime ${RUNTIME_ID}; scaling back to platform-only suites"
+else
+  onboard_log="${E2E_CONTEXT_DIR}/onboard.log"
+  set +e
+  e2e_onboard "${ONBOARDING_ID}" >"${onboard_log}" 2>&1
+  onboard_status=$?
+  set -e
+  if [[ "${onboard_status}" -ne 0 ]]; then
+    cat "${onboard_log}" >&2
+    echo "run-scenario: onboarding ${ONBOARDING_ID} failed with status ${onboard_status}" >&2
+    exit "${onboard_status}"
+  fi
+  e2e_gateway_assert_healthy
+  e2e_sandbox_assert_running
 fi
-e2e_gateway_assert_healthy
-e2e_sandbox_assert_running
 
 # Expected state validation. The validator reads E2E_PROBE_OVERRIDE_* env
 # variables to simulate real probe outputs in dry-run/test contexts.
