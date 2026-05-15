@@ -9079,22 +9079,6 @@
       "assertions": [
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 14,
-          "text": "%s\\033[0m\\n",
-          "polarity": "pass",
-          "normalized_id": "s.033.0m.n",
-          "mapping_status": "unmapped"
-        },
-        {
-          "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 15,
-          "text": "%s\\033[0m\\n",
-          "polarity": "fail",
-          "normalized_id": "s.033.0m.n",
-          "mapping_status": "unmapped"
-        },
-        {
-          "script": "test/e2e/test-model-router-provider-routed-inference.sh",
           "line": 82,
           "text": "Docker is running",
           "polarity": "pass",
@@ -16474,7 +16458,7 @@
   ],
   "totals": {
     "scripts": 52,
-    "assertions": 2026,
+    "assertions": 2024,
     "zero_assertion_scripts": 1
   }
 }
