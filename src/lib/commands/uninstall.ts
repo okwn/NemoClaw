@@ -3,12 +3,13 @@
 
 import { spawnSync } from "node:child_process";
 
-import { Command, Flags } from "@oclif/core";
+import { Flags } from "@oclif/core";
+import { NemoClawCommand } from "../cli/nemoclaw-oclif-command";
 
 import { getVersion } from "../core/version";
 import { buildVersionedUninstallUrl, runUninstallCommand } from "../uninstall-command";
 
-export default class UninstallCliCommand extends Command {
+export default class UninstallCliCommand extends NemoClawCommand {
   static id = "uninstall";
   static strict = false;
   static summary = "Run uninstall.sh";

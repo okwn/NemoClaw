@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Command, Flags } from "@oclif/core";
+import { Flags } from "@oclif/core";
+import { NemoClawCommand } from "../cli/nemoclaw-oclif-command";
 
 import { CLI_NAME } from "../cli/branding";
 import { runDebug } from "../diagnostics/debug";
@@ -67,7 +68,7 @@ function buildDebugCommandDeps(rootDir: string): RunDebugCommandDeps {
   };
 }
 
-export default class DebugCliCommand extends Command {
+export default class DebugCliCommand extends NemoClawCommand {
   static id = "debug";
   static strict = true;
   static summary = "Collect diagnostics for bug reports";
