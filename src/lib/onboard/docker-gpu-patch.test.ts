@@ -214,10 +214,7 @@ describe("docker-gpu-patch", () => {
     expect(args).toEqual(
       expect.arrayContaining(["--env", "OPENSHELL_ENDPOINT=http://127.0.0.1:8080/"]),
     );
-    // --add-host writes to the container's /etc/hosts (mount namespace) not
-    // the network stack, so OpenShell's host.openshell.internal mapping must
-    // survive the GPU recreate even with --network=host (#3562, #3568).
-    expect(args).toEqual(
+    expect(args).not.toEqual(
       expect.arrayContaining(["--add-host", "host.openshell.internal:172.17.0.1"]),
     );
     expect(args).not.toEqual(expect.arrayContaining(["--network-alias", "openshell-alpha"]));
@@ -229,7 +226,7 @@ describe("docker-gpu-patch", () => {
   });
 
   it("reports the Docker GPU patch network mode", () => {
-    expect(getDockerGpuPatchNetworkMode({})).toBe("host");
+    expect(getDockerGpuPatchNetworkMode({})).toBe("preserve");
     expect(getDockerGpuPatchNetworkMode({ NEMOCLAW_DOCKER_GPU_PATCH_NETWORK: "host" })).toBe(
       "host",
     );
@@ -397,9 +394,11 @@ describe("docker-gpu-patch", () => {
         "--security-opt",
         "apparmor=unconfined",
         "--network",
-        "host",
+        "openshell-docker",
+        "--add-host",
+        "host.openshell.internal:172.17.0.1",
         "--env",
-        "OPENSHELL_ENDPOINT=http://127.0.0.1:8080/",
+        "OPENSHELL_ENDPOINT=http://host.openshell.internal:8080/",
       ]),
       expect.objectContaining({ ignoreError: true }),
     );

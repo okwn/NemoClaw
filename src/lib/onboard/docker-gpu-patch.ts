@@ -358,9 +358,9 @@ export function getDockerGpuPatchNetworkMode(
   env: Record<string, string | undefined> = process.env,
 ): "host" | "preserve" {
   const networkOverride = String(env[DOCKER_GPU_PATCH_NETWORK_ENV] || "").trim().toLowerCase();
+  if (networkOverride === "host") return "host";
   if (networkOverride === "preserve" || networkOverride === "bridge") return "preserve";
-  if (networkOverride && networkOverride !== "host") return "preserve";
-  return "host";
+  return "preserve";
 }
 
 function dockerNetworkAliases(
@@ -449,12 +449,9 @@ export function buildDockerGpuCloneRunArgs(
     securityOpt.add("apparmor=unconfined");
   }
   for (const opt of securityOpt) args.push("--security-opt", opt);
-  // --add-host writes to the container's /etc/hosts (mount namespace), not
-  // the network stack, so it is safe to preserve even when networkMode is
-  // "host".  Dropping it here breaks `host.openshell.internal` resolution on
-  // GPU sandbox recreates and the sandbox cannot reach the host Ollama auth
-  // proxy (#3562, #3568).
-  for (const hostEntry of stringArray(host.ExtraHosts)) args.push("--add-host", hostEntry);
+  if (networkMode !== "host") {
+    for (const hostEntry of stringArray(host.ExtraHosts)) args.push("--add-host", hostEntry);
+  }
   for (const group of stringArray(host.GroupAdd)) args.push("--group-add", group);
   if (networkMode !== "host") {
     for (const dns of stringArray(host.Dns)) args.push("--dns", dns);

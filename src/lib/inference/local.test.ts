@@ -615,7 +615,7 @@ describe("local inference helpers", () => {
   it("fails ollama model validation when the probe times out or returns nothing", () => {
     const result = validateOllamaModel("nemotron-3-nano:30b", () => "");
     expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/failed the local probe/);
+    expect(result.message).toMatch(/did not answer the local probe in time/);
   });
 
   it("fails ollama model validation when Ollama returns an error payload", () => {
