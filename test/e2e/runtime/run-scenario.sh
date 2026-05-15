@@ -271,7 +271,10 @@ if [[ "${DRY_RUN}" -eq 1 ]]; then
   exit 0
 fi
 
-mapfile -t SUITE_IDS < <(node -e "
+SUITE_IDS=()
+while IFS= read -r suite_id; do
+  SUITE_IDS+=("${suite_id}")
+done < <(node -e "
   const p = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
   const filter = process.env.E2E_SUITE_FILTER || '';
   const selected = filter ? filter.split(',').map((s) => s.trim()).filter(Boolean) : p.suites.map((s) => s.id);
