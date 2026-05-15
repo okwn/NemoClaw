@@ -9937,6 +9937,76 @@ scripts:
       reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
       owner: e2e-maintainers
       runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs
+  test-model-router-provider-routed-inference.sh:
+    scenario: ubuntu-repo-cloud-openclaw
+    status: migrated
+    bucket: providers-messaging
+    assertions:
+    - legacy: Docker is running
+      status: deferred
+      reason: live regression guard requires Docker and external Model Router credentials; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs and NVIDIA_API_KEY
+    - legacy: Docker is not running
+      status: retired
+      reason: prerequisite failure path; not product behavior coverage
+      reviewer: e2e-maintainers
+      approved_at: '2026-05-15'
+    - legacy: NVIDIA_API_KEY is set
+      status: deferred
+      reason: live regression guard requires external Model Router credentials; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NVIDIA_API_KEY
+    - legacy: NVIDIA_API_KEY is required and must start with nvapi-
+      status: retired
+      reason: prerequisite failure path; not product behavior coverage
+      reviewer: e2e-maintainers
+      approved_at: '2026-05-15'
+    - legacy: 'nemoclaw is available: $(nemoclaw --version 2>/dev/null || echo unknown)'
+      status: deferred
+      reason: live install behavior requires non-deterministic infrastructure; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs
+    - legacy: nemoclaw not found after install
+      status: retired
+      reason: prerequisite failure path; not product behavior coverage
+      reviewer: e2e-maintainers
+      approved_at: '2026-05-15'
+    - legacy: Model Router onboard completed
+      status: deferred
+      reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs and NVIDIA_API_KEY
+    - legacy: Model Router onboard failed (exit ${onboard_rc}); see ${ONBOARD_LOG}
+      status: deferred
+      reason: live regression guard failure evidence for #3255 path; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs and NVIDIA_API_KEY
+    - legacy: model-router reports at least one healthy endpoint
+      status: deferred
+      reason: live regression guard requires external Model Router health; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NVIDIA_API_KEY
+    - legacy: "model-router has no healthy endpoints; expected #3255 main-equivalent failure"
+      status: deferred
+      reason: live regression guard failure evidence for #3255; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NVIDIA_API_KEY
+    - legacy: inference.local returned a routed Model Router completion
+      status: deferred
+      reason: live regression guard assertion for #3255 routed inference; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs and NVIDIA_API_KEY
+    - legacy: "Model Router inference.local did not return a routed completion; expected #3255 main-equivalent failure"
+      status: deferred
+      reason: live regression guard failure evidence for #3255; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs and NVIDIA_API_KEY
+    - legacy: Model Router provider-routed inference guard passed
+      status: deferred
+      reason: live regression guard success assertion for #3255; retained for bucket parity tracking
+      owner: e2e-maintainers
+      runner_requirement: sandbox runner with NemoClaw/OpenShell CLIs and NVIDIA_API_KEY
   test-openshell-version-pin.sh:
     scenario: ubuntu-repo-cloud-openclaw
     status: migrated
