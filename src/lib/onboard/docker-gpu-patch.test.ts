@@ -56,6 +56,8 @@ function inspectFixture(): DockerContainerInspect {
       ExtraHosts: ["host.openshell.internal:172.17.0.1"],
       Memory: 8 * 1024 * 1024 * 1024,
       NanoCpus: 2_500_000_000,
+      ReadonlyPaths: ["/sys"],
+      MaskedPaths: ["/proc/kcore"],
     },
     NetworkSettings: {
       Networks: {
@@ -349,6 +351,10 @@ describe("docker-gpu-patch", () => {
         "SYS_ADMIN",
         "--security-opt",
         "seccomp=unconfined",
+        "--security-opt",
+        "readonly-paths=/sys",
+        "--security-opt",
+        "masked-paths=/proc/kcore",
         "--network",
         "host",
         "--env",
