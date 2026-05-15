@@ -69,12 +69,8 @@ const {
 const {
   getSelectionDrift,
 }: typeof import("./onboard/selection-drift") = require("./onboard/selection-drift");
-const {
-  isLinuxDockerDriverGatewayEnabled,
-}: typeof import("./onboard/docker-driver-platform") = require("./onboard/docker-driver-platform");
-const {
-  shouldInspectLegacyGatewayGpuPassthrough,
-}: typeof import("./onboard/gateway-gpu-passthrough") = require("./onboard/gateway-gpu-passthrough");
+const { isLinuxDockerDriverGatewayEnabled }: typeof import("./onboard/docker-driver-platform") = require("./onboard/docker-driver-platform");
+const { shouldInspectLegacyGatewayGpuPassthrough }: typeof import("./onboard/gateway-gpu-passthrough") = require("./onboard/gateway-gpu-passthrough");
 const {
   syncPresetSelection,
 }: typeof import("./onboard/policy-preset-sync") = require("./onboard/policy-preset-sync");
@@ -10299,16 +10295,13 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
 
     const canReuseHealthyGateway = gatewayReuseState === "healthy";
 
-    // Verify legacy reusable gateways have GPU passthrough. Docker-driver/package-managed
-    // gateways use live CLI health, not openshell-cluster-* DeviceRequests.
-    if (
-      shouldInspectLegacyGatewayGpuPassthrough(
-        gatewayReuseState,
-        gpuPassthrough,
-        isLinuxDockerDriverGatewayEnabled(),
-        gatewayCliSupportsLifecycleCommands(runCaptureOpenshell),
-      )
-    ) {
+    // Verify legacy reusable gateway GPU passthrough; Docker-driver gateways use live CLI health.
+    if (shouldInspectLegacyGatewayGpuPassthrough(
+      gatewayReuseState,
+      gpuPassthrough,
+      isLinuxDockerDriverGatewayEnabled(),
+      gatewayCliSupportsLifecycleCommands(runCaptureOpenshell),
+    )) {
       const container = `openshell-cluster-${GATEWAY_NAME}`;
       const gpuCheck = docker.dockerInspect(
         ["--type", "container", "--format", "{{json .HostConfig.DeviceRequests}}", container],
