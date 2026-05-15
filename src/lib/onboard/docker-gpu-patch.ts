@@ -64,6 +64,7 @@ export type DockerGpuPatchDeps = {
   sleep?: (seconds: number) => void;
   homedir?: () => string;
   now?: () => Date;
+  detectSandboxFallbackDns?: () => string | null;
 };
 
 export type DockerGpuPatchModeKind = "gpus" | "nvidia-runtime" | "cdi";
@@ -178,6 +179,7 @@ function depsWithDefaults(deps: DockerGpuPatchDeps): Required<
     | "sleep"
     | "homedir"
     | "now"
+    | "detectSandboxFallbackDns"
   >
 > &
   DockerGpuPatchDeps {
@@ -194,6 +196,7 @@ function depsWithDefaults(deps: DockerGpuPatchDeps): Required<
     },
     homedir: os.homedir,
     now: () => new Date(),
+    detectSandboxFallbackDns: () => detectSandboxFallbackDns(),
     ...deps,
   };
 }
@@ -808,7 +811,7 @@ export function recreateOpenShellDockerSandboxWithGpu(
     }
 
     const cloneOptions = buildDockerGpuCloneRunOptions(inspect);
-    const sandboxFallbackDns = detectSandboxFallbackDns();
+    const sandboxFallbackDns = d.detectSandboxFallbackDns();
     if (sandboxFallbackDns) cloneOptions.sandboxFallbackDns = sandboxFallbackDns;
     const cloneArgs = buildDockerGpuCloneRunArgs(inspect, selection.mode, cloneOptions);
     const runResult = d.dockerRunDetached(cloneArgs, {

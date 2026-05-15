@@ -505,6 +505,75 @@ describe("docker-gpu-patch sandbox DNS fallback (#3579)", () => {
     expect(args).not.toEqual(expect.arrayContaining(["--dns", "8.8.8.8"]));
   });
 
+  it("plumbs detectSandboxFallbackDns through recreateOpenShellDockerSandboxWithGpu into clone args", () => {
+    // Wire-through test: the production callsite at docker-gpu-patch.ts
+    // calls d.detectSandboxFallbackDns() and merges the result into
+    // cloneOptions.sandboxFallbackDns before building the run args. Stub
+    // the deps hook and verify --dns lands in the final dockerRunDetached call.
+    const dockerCapture = vi.fn((args: readonly string[]) => {
+      if (args[0] === "ps") return "old-container-id\n";
+      if (args[0] === "inspect") return JSON.stringify([inspectFixture()]);
+      if (args[0] === "info") return "";
+      return "";
+    });
+    const dockerRunDetached = vi.fn(() => ({ status: 0, stdout: "new-container-id\n" }));
+    const detectSandboxFallbackDnsStub = vi.fn(() => "9.9.9.9");
+
+    recreateOpenShellDockerSandboxWithGpu(
+      { sandboxName: "alpha", timeoutSecs: 1 },
+      {
+        dockerCapture,
+        dockerRun: vi.fn(() => ({ status: 0, stdout: "probe-id\n" })),
+        dockerRunDetached,
+        dockerRename: vi.fn(() => ({ status: 0 })),
+        dockerStop: vi.fn(() => ({ status: 0 })),
+        dockerRm: vi.fn(() => ({ status: 0 })),
+        runOpenshell: vi.fn(() => ({ status: 0 })),
+        sleep: vi.fn(),
+        now: () => new Date("2026-05-15T00:00:00Z"),
+        detectSandboxFallbackDns: detectSandboxFallbackDnsStub,
+      },
+    );
+
+    expect(detectSandboxFallbackDnsStub).toHaveBeenCalled();
+    expect(dockerRunDetached).toHaveBeenCalledWith(
+      expect.arrayContaining(["--dns", "9.9.9.9"]),
+      expect.objectContaining({ ignoreError: true }),
+    );
+  });
+
+  it("does not inject --dns through recreate when fallback detection returns null", () => {
+    const dockerCapture = vi.fn((args: readonly string[]) => {
+      if (args[0] === "ps") return "old-container-id\n";
+      if (args[0] === "inspect") return JSON.stringify([inspectFixture()]);
+      if (args[0] === "info") return "";
+      return "";
+    });
+    const dockerRunDetached = vi.fn(() => ({ status: 0, stdout: "new-container-id\n" }));
+
+    recreateOpenShellDockerSandboxWithGpu(
+      { sandboxName: "alpha", timeoutSecs: 1 },
+      {
+        dockerCapture,
+        dockerRun: vi.fn(() => ({ status: 0, stdout: "probe-id\n" })),
+        dockerRunDetached,
+        dockerRename: vi.fn(() => ({ status: 0 })),
+        dockerStop: vi.fn(() => ({ status: 0 })),
+        dockerRm: vi.fn(() => ({ status: 0 })),
+        runOpenshell: vi.fn(() => ({ status: 0 })),
+        sleep: vi.fn(),
+        now: () => new Date("2026-05-15T00:00:00Z"),
+        detectSandboxFallbackDns: () => null,
+      },
+    );
+
+    // No --dns from the fallback path (and inspectFixture() does not preset host.Dns).
+    expect(dockerRunDetached).not.toHaveBeenCalledWith(
+      expect.arrayContaining(["--dns"]),
+      expect.anything(),
+    );
+  });
+
   it("regression manifest: host.openshell.internal + google.com + gateway.discord.gg + integrate.api.nvidia.com (#3579 manager spec)", () => {
     // The four hostnames called out in #3579's manager-provided spec:
     //   host.openshell.internal      → resolved via --add-host (mount namespace)
