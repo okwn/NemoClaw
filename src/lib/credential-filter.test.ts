@@ -13,6 +13,7 @@ import {
   stripCredentials,
   sanitizeConfigFile,
   isSensitiveFile,
+  shouldScanSnapshotFileForCredentials,
 } from "./credential-filter.js";
 
 describe("isCredentialField", () => {
@@ -142,5 +143,21 @@ describe("isSensitiveFile", () => {
     expect(isSensitiveFile("openclaw.json")).toBe(false);
     expect(isSensitiveFile("config.yaml")).toBe(false);
     expect(isSensitiveFile("SOUL.md")).toBe(false);
+  });
+});
+
+describe("shouldScanSnapshotFileForCredentials", () => {
+  it("scans runtime config and env files", () => {
+    expect(shouldScanSnapshotFileForCredentials("openclaw.json")).toBe(true);
+    expect(shouldScanSnapshotFileForCredentials("config.json")).toBe(true);
+    expect(shouldScanSnapshotFileForCredentials(".env")).toBe(true);
+    expect(shouldScanSnapshotFileForCredentials("service.env")).toBe(true);
+  });
+
+  it("skips dependency lockfiles that can contain non-secret package metadata matches", () => {
+    expect(shouldScanSnapshotFileForCredentials("package-lock.json")).toBe(false);
+    expect(shouldScanSnapshotFileForCredentials("npm-shrinkwrap.json")).toBe(false);
+    expect(shouldScanSnapshotFileForCredentials("yarn.lock")).toBe(false);
+    expect(shouldScanSnapshotFileForCredentials("pnpm-lock.yaml")).toBe(false);
   });
 });
