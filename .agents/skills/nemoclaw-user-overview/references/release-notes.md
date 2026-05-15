@@ -4,6 +4,14 @@
 
 NVIDIA NemoClaw is available in early preview starting March 16, 2026. Use this page to track changes.
 
+## v0.0.43
+
+NemoClaw v0.0.43 improves GPU onboarding and uninstall cleanup on Linux Docker-driver hosts:
+
+- The standard installer can repair missing NVIDIA CDI device specs before onboarding by enabling the NVIDIA CDI refresh service, then falling back to direct `nvidia-ctk` spec generation when needed.
+- Linux Docker-driver GPU onboarding handles the Docker flags and sandbox policy needed for NVIDIA GPU proof writes to `/proc/<pid>/task/<tid>/comm`, which fixes DGX Spark installs that previously failed with a permission error during direct GPU proof.
+- `nemoclaw uninstall` removes the Linux gateway state directory under `~/.local/state/nemoclaw`, including gateway PID, SQLite, audit log, and VM-driver state left by Docker-driver gateways.
+
 ## v0.0.42
 
 NemoClaw v0.0.42 improves onboarding, status diagnostics, local inference checks, and messaging setup:

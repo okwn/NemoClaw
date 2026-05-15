@@ -336,9 +336,12 @@ The command probes every inference provider and reports one of three states on t
 Local providers (Ollama, vLLM) probe the host-side health endpoint.
 Remote providers (NVIDIA Endpoints, OpenAI, Anthropic, Gemini) use a lightweight reachability check; any HTTP response, including `401` or `403`, counts as reachable.
 No API keys are sent.
+
 For Local Ollama, the command also probes the authenticated proxy and prints an `Inference (auth proxy)` line when a proxy token is available.
 Use that line to distinguish a healthy backend from a broken proxy path that the sandbox uses for inference.
+
 For cloud-only providers, the output omits the NIM status line unless a NIM container is registered or an unexpected NIM container is running.
+
 If the sandbox or gateway cannot be verified, the command exits non-zero instead of reporting healthy inference from stale registry state.
 Gateway and dashboard health checks treat HTTP `401` from device auth as a live service, not as an offline gateway.
 
@@ -1014,7 +1017,10 @@ It prints the versioned URL of the matching `uninstall.sh` so you can download, 
 
 Uninstall also stops any orphaned `openshell` host processes left behind by previous onboard or destroy cycles, including `openshell sandbox create`, `openshell ssh-proxy`, and SSH sessions spawned by OpenShell.
 Earlier releases only stopped `openshell forward` processes, so those orphans accumulated across runs.
+
 For Local Ollama setups, uninstall also stops matching Ollama auth proxy processes before deleting `~/.nemoclaw` state so stale proxy listeners do not block a later reinstall.
+
+On Linux, uninstall removes `~/.local/state/nemoclaw`, which contains Docker-driver gateway PID files, SQLite data, audit logs, and VM-driver state.
 
 | Flag | Effect |
 |---|---|
