@@ -211,6 +211,75 @@ onboarding_profiles:
   cloud-nvidia-hermes: *id002
   local-ollama-openclaw: *id003
   openai-compatible-openclaw: *id004
+  cloud-nvidia-openclaw-brave:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    features:
+      web_search: brave
+    required_secrets:
+    - BRAVE_API_KEY
+  cloud-nvidia-openclaw-telegram:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    messaging: telegram
+  cloud-nvidia-openclaw-discord:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    messaging: discord
+  cloud-nvidia-openclaw-slack:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    messaging: slack
+  cloud-nvidia-hermes-discord:
+    path: cloud
+    agent: hermes
+    provider: nvidia
+    inference_route: inference-local
+    messaging: discord
+  cloud-nvidia-hermes-slack:
+    path: cloud
+    agent: hermes
+    provider: nvidia
+    inference_route: inference-local
+    messaging: slack
+  cloud-nvidia-openclaw-resume-after-interrupt:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    lifecycle: resume-after-interrupt
+  cloud-nvidia-openclaw-repair-existing-config:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    lifecycle: repair-existing-config
+  cloud-nvidia-openclaw-double-same-provider:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    lifecycle: double-same-provider
+  cloud-nvidia-openclaw-double-provider-switch:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    lifecycle: double-provider-switch
+  cloud-nvidia-openclaw-token-rotation:
+    path: cloud
+    agent: openclaw
+    provider: nvidia
+    inference_route: inference-local
+    lifecycle: token-rotation
 test_plans:
   ubuntu-repo-docker__cloud-nvidia-openclaw:
     base: ubuntu-repo-docker
@@ -287,6 +356,114 @@ test_plans:
     - base-installed
     - preflight-expected-failed
     suites: []
+  ubuntu-repo-docker__openai-compatible-openclaw:
+    base: ubuntu-repo-docker
+    onboarding: openai-compatible-openclaw
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-brave:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-brave
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-telegram:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-telegram
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-discord:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-discord
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-slack:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-slack
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-hermes-discord:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-hermes-discord
+    expected_state: cloud-hermes-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-hermes-slack:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-hermes-slack
+    expected_state: cloud-hermes-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-resume-after-interrupt:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-resume-after-interrupt
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-repair-existing-config:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-repair-existing-config
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-double-same-provider:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-double-same-provider
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-double-provider-switch:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-double-provider-switch
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
+  ubuntu-repo-docker__cloud-nvidia-openclaw-token-rotation:
+    base: ubuntu-repo-docker
+    onboarding: cloud-nvidia-openclaw-token-rotation
+    expected_state: cloud-openclaw-ready
+    onboarding_assertions:
+    - base-installed
+    - preflight-passed
+    suites:
+    - smoke
 onboarding_assertions:
   base-installed:
     stage: base
