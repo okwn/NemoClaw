@@ -871,7 +871,7 @@ Make layered E2E output visible to maintainers without downloading artifacts.
 - Reports are still uploaded as artifacts.
 - A failed install/onboard/suite run clearly reports its failing layer.
 
-## Phase 7: Clean the House
+## Phase 7: Clean the House [COMPLETED: d8889c4fe]
 
 Remove transitional compatibility once layered plans are stable.
 
