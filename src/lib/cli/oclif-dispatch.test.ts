@@ -186,18 +186,21 @@ describe("resolveLegacySandboxDispatch", () => {
     });
   });
 
-  it("preserves legacy usage errors for config and shields groups", () => {
+  it("derives legacy usage errors for config and shields groups from command metadata", () => {
     expect(resolveLegacySandboxDispatch("alpha", "config", ["bogus"])).toEqual({
       kind: "usageError",
-      lines: ["config get [--key dotpath] [--format json|yaml]"],
+      lines: [
+        "config get [--key <dotpath>] [--format json|yaml]",
+        "config set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]",
+        "config rotate-token",
+      ],
     });
     expect(resolveLegacySandboxDispatch("alpha", "shields", ["bogus"])).toEqual({
       kind: "usageError",
       lines: [
-        "shields <down|up|status>",
-        "  down  [--timeout 5m] [--reason 'text'] [--policy permissive]",
-        "  up    Restore policy from snapshot",
-        "  status  Show current shields state",
+        "shields down [--timeout 5m] [--reason <text>] [--policy permissive]",
+        "shields up",
+        "shields status",
       ],
     });
   });
@@ -207,6 +210,13 @@ describe("resolveLegacySandboxDispatch", () => {
       kind: "unknownSubcommand",
       command: "channels",
       subcommand: "bogus",
+      usageLines: [
+        "channels list",
+        "channels add <channel> [--dry-run]",
+        "channels remove <channel> [--dry-run]",
+        "channels stop <channel> [--dry-run]",
+        "channels start <channel> [--dry-run]",
+      ],
     });
     expect(resolveLegacySandboxDispatch("alpha", "bogus", [])).toEqual({
       kind: "unknownAction",

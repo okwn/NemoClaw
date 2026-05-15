@@ -76,6 +76,14 @@ function printConnectOrderHint(candidate: string | null): void {
 const VALID_SANDBOX_ACTIONS =
   "connect, status, doctor, logs, policy-add, policy-remove, policy-list, hosts-add, hosts-list, hosts-remove, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
 
+function printUsageLines(lines: readonly string[], sandboxName?: string): void {
+  const [usage, ...details] = lines;
+  console.error(`  Usage: ${CLI_NAME} ${sandboxName ? `${sandboxName} ` : ""}${usage}`);
+  for (const line of details) {
+    console.error(`    ${line}`);
+  }
+}
+
 function printDispatchUsageError(
   result: Extract<DispatchResult, { kind: "usageError" }>,
   sandboxName?: string,
@@ -85,11 +93,7 @@ function printDispatchUsageError(
     process.exit(1);
   }
 
-  const [usage, ...details] = result.lines;
-  console.error(`  Usage: ${CLI_NAME} ${sandboxName ? `${sandboxName} ` : ""}${usage}`);
-  for (const line of details) {
-    console.error(`    ${line}`);
-  }
+  printUsageLines(result.lines, sandboxName);
   process.exit(1);
 }
 
@@ -107,19 +111,11 @@ async function runDispatchResult(
     case "usageError":
       printDispatchUsageError(result, opts.sandboxName);
     case "unknownSubcommand":
-      if (result.command === "credentials") {
-        console.error(`  Unknown credentials subcommand: ${result.subcommand}`);
-        console.error(`  Run '${CLI_NAME} credentials help' for usage.`);
+      console.error(`  Unknown ${result.command} subcommand: ${result.subcommand}`);
+      if (result.usageLines?.length) {
+        printUsageLines(result.usageLines, opts.sandboxName);
       } else {
-        console.error(`  Unknown channels subcommand: ${result.subcommand}`);
-        console.error(
-          `  Usage: ${CLI_NAME} <name> channels <list|add|remove|stop|start> [args]`,
-        );
-        console.error("    list                  List supported messaging channels");
-        console.error("    add <channel>         Store credentials and rebuild the sandbox");
-        console.error("    remove <channel>      Clear credentials and rebuild the sandbox");
-        console.error("    stop <channel>        Disable channel without wiping credentials");
-        console.error("    start <channel>       Re-enable a previously stopped channel");
+        console.error(`  Run '${CLI_NAME} ${result.command} help' for usage.`);
       }
       process.exit(1);
     case "unknownAction":

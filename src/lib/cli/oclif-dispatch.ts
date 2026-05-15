@@ -24,6 +24,7 @@ export type UnknownSubcommandDispatch = {
   kind: "unknownSubcommand";
   command: "credentials" | "channels";
   subcommand: string;
+  usageLines?: string[];
 };
 
 export type UnknownActionDispatch = {
@@ -89,6 +90,13 @@ function legacyRoutes(): LegacyRoute[] {
     }))
     .filter((route) => route.legacyTokens.length > 0)
     .sort((a, b) => b.legacyTokens.length - a.legacyTokens.length);
+}
+
+function parentUsageLines(action: string): string[] {
+  const lines = legacyRoutes()
+    .filter((route) => route.legacyTokens[0] === action)
+    .map((route) => route.publicUsage.replace(/^<name>\s+/, ""));
+  return [...new Set(lines)];
 }
 
 function globalRoutes(): GlobalRoute[] {
@@ -158,13 +166,6 @@ const CHANNEL_SUBCOMMANDS = new Set(["add", "list", "remove", "start", "stop"]);
 
 const PARENT_ACTIONS = new Set(["share", "skill", "snapshot"]);
 
-const CONFIG_USAGE = ["config get [--key dotpath] [--format json|yaml]"];
-const SHIELDS_USAGE = [
-  "shields <down|up|status>",
-  "  down  [--timeout 5m] [--reason 'text'] [--policy permissive]",
-  "  up    Restore policy from snapshot",
-  "  status  Show current shields state",
-];
 
 export function resolveLegacySandboxDispatch(
   sandboxName: string,
@@ -193,16 +194,17 @@ export function resolveLegacySandboxDispatch(
   if (action === "channels") {
     const subcommand = actionArgs[0] ?? "";
     if (!CHANNEL_SUBCOMMANDS.has(subcommand)) {
-      return { kind: "unknownSubcommand", command: "channels", subcommand };
+      return {
+        kind: "unknownSubcommand",
+        command: "channels",
+        subcommand,
+        usageLines: parentUsageLines("channels"),
+      };
     }
   }
 
-  if (action === "config") {
-    return { kind: "usageError", lines: CONFIG_USAGE };
-  }
-
-  if (action === "shields") {
-    return { kind: "usageError", lines: SHIELDS_USAGE };
+  if (action === "config" || action === "shields") {
+    return { kind: "usageError", lines: parentUsageLines(action) };
   }
 
   if (action === "share" && hasHelpFlag(actionArgs)) {

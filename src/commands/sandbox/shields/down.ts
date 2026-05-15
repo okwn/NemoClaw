@@ -8,6 +8,7 @@ export default withCommandDisplay(Command, [
   {
     usage: "nemoclaw <name> shields down",
     description: "Lower sandbox security shields",
+    flags: "[--timeout 5m] [--reason <text>] [--policy permissive]",
     group: "Sandbox Management",
     hidden: true,
     scope: "sandbox",
