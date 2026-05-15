@@ -14961,7 +14961,7 @@
       "assertions": [
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 186,
+          "line": 178,
           "text": "TC-STATE-01: Setup",
           "polarity": "fail",
           "normalized_id": "tc.state.01.setup",
@@ -14969,7 +14969,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 197,
+          "line": 189,
           "text": "TC-STATE-01: Backup completed successfully",
           "polarity": "pass",
           "normalized_id": "tc.state.01.backup.completed.successfully",
@@ -14977,7 +14977,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 199,
+          "line": 191,
           "text": "TC-STATE-01: Backup",
           "polarity": "fail",
           "normalized_id": "tc.state.01.backup",
@@ -14985,7 +14985,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 207,
+          "line": 199,
           "text": "TC-STATE-01: Backup dir",
           "polarity": "fail",
           "normalized_id": "tc.state.01.backup.dir",
@@ -14993,7 +14993,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 225,
+          "line": 217,
           "text": "TC-STATE-01: BackupCaptureFiles",
           "polarity": "fail",
           "normalized_id": "tc.state.01.backupcapturefiles",
@@ -15001,7 +15001,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 228,
+          "line": 220,
           "text": "TC-STATE-01: BackupCaptureFiles — 5/5 .md files captured in host backup",
           "polarity": "pass",
           "normalized_id": "tc.state.01.backupcapturefiles.5.5.md.files.captured.in.host.backup",
@@ -15009,7 +15009,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 232,
+          "line": 224,
           "text": "TC-STATE-01: BackupCaptureDir",
           "polarity": "fail",
           "normalized_id": "tc.state.01.backupcapturedir",
@@ -15017,7 +15017,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 236,
+          "line": 228,
           "text": "TC-STATE-01: BackupCaptureDir",
           "polarity": "fail",
           "normalized_id": "tc.state.01.backupcapturedir",
@@ -15025,7 +15025,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 239,
+          "line": 231,
           "text": "TC-STATE-01: BackupCaptureDir — memory directory captured in host backup",
           "polarity": "pass",
           "normalized_id": "tc.state.01.backupcapturedir.memory.directory.captured.in.host.backup",
@@ -15033,7 +15033,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 262,
+          "line": 254,
           "text": "TC-STATE-01: Destroy",
           "polarity": "fail",
           "normalized_id": "tc.state.01.destroy",
@@ -15041,7 +15041,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 265,
+          "line": 257,
           "text": "TC-STATE-01: Sandbox destroyed",
           "polarity": "pass",
           "normalized_id": "tc.state.01.sandbox.destroyed",
@@ -15049,7 +15049,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 269,
+          "line": 261,
           "text": "TC-STATE-01: Re-onboard",
           "polarity": "fail",
           "normalized_id": "tc.state.01.re.onboard",
@@ -15057,7 +15057,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 272,
+          "line": 264,
           "text": "TC-STATE-01: Sandbox re-onboarded",
           "polarity": "pass",
           "normalized_id": "tc.state.01.sandbox.re.onboarded",
@@ -15065,7 +15065,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 280,
+          "line": 272,
           "text": "TC-STATE-01: Restore completed successfully",
           "polarity": "pass",
           "normalized_id": "tc.state.01.restore.completed.successfully",
@@ -15073,7 +15073,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 282,
+          "line": 274,
           "text": "TC-STATE-01: Restore",
           "polarity": "fail",
           "normalized_id": "tc.state.01.restore",
@@ -15081,7 +15081,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 299,
+          "line": 291,
           "text": "TC-STATE-01: FilesRestore — ${files_restored}/5 workspace files restored correctly",
           "polarity": "pass",
           "normalized_id": "tc.state.01.filesrestore.files.restored.5.workspace.files.restored.correctly",
@@ -15089,7 +15089,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 301,
+          "line": 293,
           "text": "TC-STATE-01: FilesRestore",
           "polarity": "fail",
           "normalized_id": "tc.state.01.filesrestore",
@@ -15097,7 +15097,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 311,
+          "line": 303,
           "text": "TC-STATE-01: MemoryDirRestore — memory directory contents restored correctly",
           "polarity": "pass",
           "normalized_id": "tc.state.01.memorydirrestore.memory.directory.contents.restored.correctly",
@@ -15105,7 +15105,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 314,
+          "line": 306,
           "text": "TC-STATE-01: MemoryDirRestore",
           "polarity": "fail",
           "normalized_id": "tc.state.01.memorydirrestore",
@@ -15113,7 +15113,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 318,
+          "line": 310,
           "text": "TC-STATE-01: MemoryDirRestore",
           "polarity": "fail",
           "normalized_id": "tc.state.01.memorydirrestore",
@@ -15121,7 +15121,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 339,
+          "line": 331,
           "text": "$PASS${NC}",
           "polarity": "pass",
           "normalized_id": "pass.nc",
@@ -15129,7 +15129,7 @@
         },
         {
           "script": "test/e2e/test-state-backup-restore.sh",
-          "line": 340,
+          "line": 332,
           "text": "$FAIL${NC}",
           "polarity": "fail",
           "normalized_id": "fail.nc",
