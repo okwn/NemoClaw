@@ -28,6 +28,11 @@ export abstract class NemoClawCommand extends Command {
     process.exitCode = code;
   }
 
+  protected failWithLines(lines: readonly string[], code = 1): void {
+    for (const line of lines) console.error(line);
+    this.setExitCode(code);
+  }
+
   protected applyExitResult(result: CommandExitResult): void {
     const code =
       typeof result.exitCode === "number"
@@ -35,7 +40,7 @@ export abstract class NemoClawCommand extends Command {
         : typeof result.status === "number"
           ? result.status
           : 0;
-    if (code !== 0 && result.message) console.error(result.message);
-    this.setExitCode(code);
+    if (code !== 0 && result.message) this.failWithLines([result.message], code);
+    else this.setExitCode(code);
   }
 }

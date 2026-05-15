@@ -39,12 +39,6 @@ type RuntimeBridge = {
 };
 type OpenshellCall = { args: string[]; opts?: RuntimeBridgeRunOptions };
 
-class ProcessExitError extends Error {
-  constructor(readonly code: number) {
-    super(`process.exit(${code})`);
-  }
-}
-
 function loadCommands(): CredentialsCommandClasses {
   for (const modulePath of Object.values(COMMAND_PATHS)) {
     delete require.cache[modulePath];
@@ -117,23 +111,14 @@ async function captureOutput(
   return { stdout, stderr };
 }
 
-async function expectProcessExit(
-  action: () => Promise<unknown>,
-  expectedCode: number,
-): Promise<void> {
-  const originalExit = process.exit;
-  process.exit = ((code?: string | number | null | undefined) => {
-    throw new ProcessExitError(typeof code === "number" ? code : 1);
-  }) as typeof process.exit;
-
+async function expectExitCode(action: () => Promise<unknown>, expectedCode: number): Promise<void> {
+  const originalExitCode = process.exitCode;
+  process.exitCode = undefined;
   try {
     await action();
-    throw new Error("Expected process.exit to be called");
-  } catch (error) {
-    if (!(error instanceof ProcessExitError)) throw error;
-    expect(error.code).toBe(expectedCode);
+    expect(process.exitCode).toBe(expectedCode);
   } finally {
-    process.exit = originalExit;
+    process.exitCode = originalExitCode;
   }
 }
 
@@ -205,9 +190,7 @@ describe("credentials oclif commands", () => {
     });
     const { CredentialsListCommand } = loadCommands();
 
-    const output = await captureOutput(() =>
-      expectProcessExit(() => CredentialsListCommand.run([]), 1),
-    );
+    const output = await captureOutput(() => expectExitCode(() => CredentialsListCommand.run([]), 1));
 
     expect(output.stderr).toContain("Could not query OpenShell gateway");
     expect(output.stderr).toContain("openshell gateway start --name nemoclaw");
@@ -239,7 +222,7 @@ describe("credentials oclif commands", () => {
     const { CredentialsResetCommand } = loadCommands();
 
     const output = await captureOutput(() =>
-      expectProcessExit(() => CredentialsResetCommand.run(["alpha-telegram-bridge", "--yes"]), 1),
+      expectExitCode(() => CredentialsResetCommand.run(["alpha-telegram-bridge", "--yes"]), 1),
     );
 
     expect(output.stderr).toContain("per-sandbox messaging bridge");
@@ -253,7 +236,7 @@ describe("credentials oclif commands", () => {
     const { CredentialsResetCommand } = loadCommands();
 
     const output = await captureOutput(() =>
-      expectProcessExit(() => CredentialsResetCommand.run(["NVIDIA_API_KEY", "--yes"]), 1),
+      expectExitCode(() => CredentialsResetCommand.run(["NVIDIA_API_KEY", "--yes"]), 1),
     );
 
     expect(output.stderr).toContain("Could not remove provider 'NVIDIA_API_KEY'.");
