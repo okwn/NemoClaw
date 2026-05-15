@@ -9079,7 +9079,7 @@
       "assertions": [
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 82,
+          "line": 93,
           "text": "Docker is running",
           "polarity": "pass",
           "normalized_id": "docker.is.running",
@@ -9087,7 +9087,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 84,
+          "line": 95,
           "text": "Docker is not running",
           "polarity": "fail",
           "normalized_id": "docker.is.not.running",
@@ -9095,7 +9095,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 89,
+          "line": 100,
           "text": "NVIDIA_API_KEY is set",
           "polarity": "pass",
           "normalized_id": "nvidia.api.key.is.set",
@@ -9103,7 +9103,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 91,
+          "line": 102,
           "text": "NVIDIA_API_KEY is required and must start with nvapi-",
           "polarity": "fail",
           "normalized_id": "nvidia.api.key.is.required.and.must.start.with.nvapi",
@@ -9111,7 +9111,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 104,
+          "line": 115,
           "text": "nemoclaw is available: $(nemoclaw --version 2>/dev/null || echo unknown)",
           "polarity": "pass",
           "normalized_id": "nemoclaw.is.available.nemoclaw.version.2.dev.null.echo.unknown",
@@ -9119,7 +9119,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 106,
+          "line": 117,
           "text": "nemoclaw not found after install",
           "polarity": "fail",
           "normalized_id": "nemoclaw.not.found.after.install",
@@ -9127,7 +9127,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 127,
+          "line": 138,
           "text": "Model Router onboard completed",
           "polarity": "pass",
           "normalized_id": "model.router.onboard.completed",
@@ -9135,7 +9135,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 129,
+          "line": 140,
           "text": "Model Router onboard failed (exit ${onboard_rc}); see ${ONBOARD_LOG}",
           "polarity": "fail",
           "normalized_id": "model.router.onboard.failed.exit.onboard.rc.see.onboard.log",
@@ -9143,7 +9143,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 140,
+          "line": 151,
           "text": "model-router reports at least one healthy endpoint",
           "polarity": "pass",
           "normalized_id": "model.router.reports.at.least.one.healthy.endpoint",
@@ -9151,7 +9151,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 146,
+          "line": 157,
           "text": "model-router has no healthy endpoints; expected #3255 main-equivalent failure",
           "polarity": "fail",
           "normalized_id": "model.router.has.no.healthy.endpoints.expected.3255.main.equivalent.failure",
@@ -9159,7 +9159,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 162,
+          "line": 173,
           "text": "inference.local returned a routed Model Router completion",
           "polarity": "pass",
           "normalized_id": "inference.local.returned.a.routed.model.router.completion",
@@ -9167,7 +9167,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 174,
+          "line": 185,
           "text": "Model Router inference.local did not return a routed completion; expected #3255 main-equivalent failure",
           "polarity": "fail",
           "normalized_id": "model.router.inference.local.did.not.return.a.routed.completion.expected.3255.main.equivalent.failure",
@@ -9175,7 +9175,7 @@
         },
         {
           "script": "test/e2e/test-model-router-provider-routed-inference.sh",
-          "line": 181,
+          "line": 192,
           "text": "Model Router provider-routed inference guard passed",
           "polarity": "pass",
           "normalized_id": "model.router.provider.routed.inference.guard.passed",
