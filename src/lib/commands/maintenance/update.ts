@@ -5,6 +5,7 @@ import { Flags } from "@oclif/core";
 
 import { runUpdateAction } from "../../actions/update";
 import { CLI_DISPLAY_NAME } from "../../cli/branding";
+import { yesFlag } from "../../cli/common-flags";
 import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 import { getVersion } from "../../core/version";
 import { prompt } from "../../credentials/store";
@@ -22,7 +23,7 @@ export default class UpdateCommand extends NemoClawCommand {
   ];
   static flags = {
     check: Flags.boolean({ description: "Check update availability without running the installer" }),
-    yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
+    yes: yesFlag(),
   };
 
   public async run(): Promise<void> {

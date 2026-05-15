@@ -3,8 +3,9 @@
 
 import { Args, Flags } from "@oclif/core";
 
-import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 import { rebuildSandbox } from "../../actions/sandbox/rebuild";
+import { forceFlag, yesFlag } from "../../cli/common-flags";
+import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 export default class RebuildCliCommand extends NemoClawCommand {
   static id = "sandbox:rebuild";
@@ -20,8 +21,8 @@ export default class RebuildCliCommand extends NemoClawCommand {
     sandboxName: Args.string({ name: "sandbox", description: "Sandbox name", required: true }),
   };
   static flags = {
-    yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
-    force: Flags.boolean({ description: "Skip the confirmation prompt" }),
+    yes: yesFlag(),
+    force: forceFlag(),
     verbose: Flags.boolean({ char: "v", description: "Show verbose rebuild diagnostics" }),
   };
 

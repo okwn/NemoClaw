@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Flags } from "@oclif/core";
+import { Args } from "@oclif/core";
+
+import { dryRunFlag, forceFlag, yesFlag } from "../../../cli/common-flags";
 
 type PolicyRuntimeBridge = {
   sandboxPolicyAdd: (sandboxName: string, args?: string[]) => Promise<void>;
@@ -50,7 +52,7 @@ export function appendCommonPolicyFlags(
 export const policyMutationArgs = { sandboxName: sandboxNameArg, preset: presetArg };
 
 export const policyMutationFlags = {
-  yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
-  force: Flags.boolean({ description: "Skip the confirmation prompt" }),
-  "dry-run": Flags.boolean({ description: "Preview without applying" }),
+  yes: yesFlag(),
+  force: forceFlag(),
+  "dry-run": dryRunFlag(),
 };

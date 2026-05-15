@@ -4,6 +4,7 @@
 import { Flags } from "@oclif/core";
 
 import { runUpgradeSandboxesAction } from "../../actions/global";
+import { yesFlag } from "../../cli/common-flags";
 import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 export default class UpgradeSandboxesCommand extends NemoClawCommand {
@@ -19,7 +20,7 @@ export default class UpgradeSandboxesCommand extends NemoClawCommand {
   static flags = {
     check: Flags.boolean({ description: "Only check whether sandboxes need upgrading" }),
     auto: Flags.boolean({ description: "Automatically rebuild running stale sandboxes" }),
-    yes: Flags.boolean({ char: "y", description: "Skip confirmation prompts" }),
+    yes: yesFlag("Skip confirmation prompts"),
   };
 
   public async run(): Promise<void> {

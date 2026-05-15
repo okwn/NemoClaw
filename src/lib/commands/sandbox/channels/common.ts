@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Flags } from "@oclif/core";
+import { Args } from "@oclif/core";
+
+import { dryRunFlag } from "../../../cli/common-flags";
 
 type ChannelsRuntimeBridge = {
   sandboxChannelsAdd: (sandboxName: string, args?: string[]) => Promise<void>;
@@ -54,5 +56,5 @@ export const channelMutationArgs = {
 };
 
 export const channelMutationFlags = {
-  "dry-run": Flags.boolean({ description: "Preview the change without applying it" }),
+  "dry-run": dryRunFlag("Preview the change without applying it"),
 };

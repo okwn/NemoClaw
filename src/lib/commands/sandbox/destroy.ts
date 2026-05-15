@@ -3,8 +3,9 @@
 
 import { Args, Flags } from "@oclif/core";
 
-import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 import { destroySandbox } from "../../actions/sandbox/destroy";
+import { forceFlag, yesFlag } from "../../cli/common-flags";
+import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 export default class DestroyCliCommand extends NemoClawCommand {
   static id = "sandbox:destroy";
@@ -21,8 +22,8 @@ export default class DestroyCliCommand extends NemoClawCommand {
     sandboxName: Args.string({ name: "sandbox", description: "Sandbox name", required: true }),
   };
   static flags = {
-    yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
-    force: Flags.boolean({ description: "Skip the confirmation prompt" }),
+    yes: yesFlag(),
+    force: forceFlag(),
     "cleanup-gateway": Flags.boolean({
       description:
         "When destroying the last sandbox, also tear down the shared NemoClaw gateway. Default: preserve. NEMOCLAW_CLEANUP_GATEWAY=1 sets the same default.",

@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Flags } from "@oclif/core";
+import { Args } from "@oclif/core";
+import { CLI_NAME } from "../../cli/branding";
+import { yesFlag } from "../../cli/common-flags";
 import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
-import { CLI_NAME } from "../../cli/branding";
 import { prompt as askPrompt } from "../../credentials/store";
 import { runOpenshellProviderCommand } from "../../actions/global";
 import { OPENSHELL_OPERATION_TIMEOUT_MS } from "../../adapters/openshell/timeouts";
@@ -28,7 +29,7 @@ export default class CredentialsResetCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
+    yes: yesFlag(),
   };
 
   public async run(): Promise<void> {

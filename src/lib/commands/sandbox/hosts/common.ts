@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Flags } from "@oclif/core";
+import { Args } from "@oclif/core";
+
+import { dryRunFlag } from "../../../cli/common-flags";
 
 type HostsRuntimeBridge = {
   addSandboxHostAlias: (sandboxName: string, args?: string[]) => void;
@@ -50,5 +52,5 @@ export const hostAliasAddArgs = {
 };
 
 export const hostAliasMutationFlags = {
-  "dry-run": Flags.boolean({ description: "Preview the JSON patch without applying it" }),
+  "dry-run": dryRunFlag("Preview the JSON patch without applying it"),
 };

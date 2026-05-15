@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flags } from "@oclif/core";
-
 import { runGarbageCollectImagesAction } from "../../actions/global";
+import { dryRunFlag, forceFlag, yesFlag } from "../../cli/common-flags";
 import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 
 export default class GarbageCollectImagesCommand extends NemoClawCommand {
@@ -14,9 +13,9 @@ export default class GarbageCollectImagesCommand extends NemoClawCommand {
   static usage = ["gc [--dry-run] [--yes|-y|--force]"];
   static examples = ["<%= config.bin %> gc --dry-run", "<%= config.bin %> gc --yes"];
   static flags = {
-    "dry-run": Flags.boolean({ description: "Show images that would be removed without deleting" }),
-    yes: Flags.boolean({ char: "y", description: "Skip the confirmation prompt" }),
-    force: Flags.boolean({ description: "Skip the confirmation prompt" }),
+    "dry-run": dryRunFlag("Show images that would be removed without deleting"),
+    yes: yesFlag(),
+    force: forceFlag(),
   };
 
   public async run(): Promise<void> {
