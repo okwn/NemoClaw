@@ -16348,8 +16348,8 @@
     }
   ],
   "totals": {
-    "scripts": 50,
-    "assertions": 2007,
+    "scripts": 51,
+    "assertions": 2011,
     "zero_assertion_scripts": 1
   }
 }
