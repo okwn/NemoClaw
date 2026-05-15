@@ -838,7 +838,7 @@ function verifyOnboardInferenceSmoke(options) {
   console.error(`  Provider: ${options.provider}`);
   console.error(`  Model: ${options.model}`);
   console.error(`  API base: ${endpointUrl}`);
-  if (credentialEnv) console.error(`  Credential env: ${credentialEnv}`);
+  if (credentialEnv) console.error("  Credential env: configured");
   console.error(`  Upstream error: ${compactText(redact(probe.message || "unknown inference failure"))}`);
   process.exit(1);
 }
