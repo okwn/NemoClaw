@@ -12,7 +12,7 @@ import {
   getLatestNemoClawVersionFromGitLatestTag,
   NEMOCLAW_UPDATE_COMMAND,
   runUpdateAction,
-} from "./update";
+} from "../../../dist/lib/actions/update";
 
 describe("runUpdateAction", () => {
   it("--check reports update availability without running the installer", async () => {

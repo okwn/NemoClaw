@@ -47,6 +47,24 @@ describe("buildChain", () => {
     expect(buildChain({ chatUiUrl: "not-a-url" }).port).toBe(18789);
   });
 
+  it("falls back to the default port for invalid explicit port overrides", () => {
+    expect(buildChain({ port: 0 }).port).toBe(18789);
+    expect(buildChain({ port: 70000 }).port).toBe(18789);
+    expect(buildChain({ port: Number.NaN }).port).toBe(18789);
+  });
+
+  it("extracts a port from malformed URLs when URL parsing fails", () => {
+    const c = buildChain({ chatUiUrl: "http://[broken]:19001/path" });
+    expect(c.port).toBe(19001);
+    expect(c.accessUrl).toBe("http://[broken]:19001/path");
+  });
+
+  it("keeps only loopback CORS origin when WSL host address cannot become a URL", () => {
+    const c = buildChain({ isWsl: true, wslHostAddress: "bad host" });
+    expect(c.accessUrl).toBe("http://bad host:18789");
+    expect(c.corsOrigins).toEqual(["http://127.0.0.1:18789"]);
+  });
+
   it("returns port-only forward for IPv6 and localhost", () => {
     expect(buildChain({ chatUiUrl: "http://[::1]:18789" }).forwardTarget).toBe("18789");
     expect(buildChain({ chatUiUrl: "http://localhost:18789" }).forwardTarget).toBe("18789");
@@ -113,6 +131,7 @@ describe("buildControlUiUrls", () => {
 
   it("deduplicates and ignores non-http/empty chatUiUrl", () => {
     expect(buildControlUiUrls(null, 18789, "http://127.0.0.1:18789")).toHaveLength(1);
+    expect(buildControlUiUrls("tok", 18789, "http://127.0.0.1:18789/")).toHaveLength(1);
     expect(buildControlUiUrls("tok", 18789, "ftp://x.com")).toHaveLength(1);
     expect(buildControlUiUrls("tok", 18789, "  ")).toHaveLength(1);
   });

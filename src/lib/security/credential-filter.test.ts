@@ -8,12 +8,13 @@ import { tmpdir } from "node:os";
 import { rmSync } from "node:fs";
 
 import {
+  isConfigObject,
   isConfigValue,
   isCredentialField,
   stripCredentials,
   sanitizeConfigFile,
   isSensitiveFile,
-} from "./credential-filter.js";
+} from "../../../dist/lib/security/credential-filter.js";
 
 describe("isCredentialField", () => {
   it("matches explicit field names", () => {
@@ -43,17 +44,31 @@ describe("isCredentialField", () => {
   });
 });
 
+describe("isConfigObject", () => {
+  it("accepts only non-array objects", () => {
+    expect(isConfigObject({ ok: true })).toBe(true);
+    expect(isConfigObject(null)).toBe(false);
+    expect(isConfigObject(["not", "object"])).toBe(false);
+  });
+});
+
 describe("isConfigValue", () => {
   it("accepts plain JSON-like configuration values", () => {
     expect(isConfigValue(null)).toBe(true);
+    expect(isConfigValue(undefined)).toBe(true);
+    expect(isConfigValue(true)).toBe(true);
+    expect(isConfigValue(false)).toBe(true);
     expect(isConfigValue("hello")).toBe(true);
     expect(isConfigValue(42)).toBe(true);
+    expect(isConfigValue([true, "value", { count: 1 }])).toBe(true);
     expect(isConfigValue({ nested: [true, "value", { count: 1 }] })).toBe(true);
   });
 
   it("rejects non-JSON objects nested inside config values", () => {
     expect(isConfigValue({ when: new Date() })).toBe(false);
     expect(isConfigValue([new Map()])).toBe(false);
+    expect(isConfigValue(() => undefined)).toBe(false);
+    expect(isConfigValue(Object.create({ inherited: true }))).toBe(false);
   });
 });
 
@@ -85,6 +100,7 @@ describe("stripCredentials", () => {
     expect(stripCredentials(undefined)).toBeUndefined();
     expect(stripCredentials("hello")).toBe("hello");
     expect(stripCredentials(42)).toBe(42);
+    expect(stripCredentials(true)).toBe(true);
   });
 });
 
@@ -129,6 +145,13 @@ describe("sanitizeConfigFile", () => {
     sanitizeConfigFile(configPath);
     // Should not throw, file unchanged
     expect(readFileSync(configPath, "utf-8")).toBe("not json at all");
+  });
+
+  it("skips JSON values that are not objects", () => {
+    const configPath = join(tmpDir, "array.json");
+    writeFileSync(configPath, JSON.stringify(["safe", { token: "secret" }]));
+    sanitizeConfigFile(configPath);
+    expect(JSON.parse(readFileSync(configPath, "utf-8"))).toEqual(["safe", { token: "secret" }]);
   });
 });
 

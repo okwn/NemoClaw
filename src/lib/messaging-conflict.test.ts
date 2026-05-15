@@ -8,7 +8,7 @@ import {
   backfillMessagingChannels,
   findAllOverlaps,
   findChannelConflicts,
-} from "./messaging-conflict";
+} from "../../dist/lib/messaging-conflict";
 
 type ConflictProbe = Parameters<typeof backfillMessagingChannels>[1];
 type ProviderExists = ConflictProbe["providerExists"];
@@ -92,6 +92,48 @@ describe("findChannelConflicts", () => {
   it("returns empty when no channels are enabled", () => {
     const registry = makeRegistry([{ name: "alice", messagingChannels: ["telegram"] }]);
     expect(findChannelConflicts("bob", [], registry)).toEqual([]);
+    expect(findChannelConflicts("bob", null as never, registry)).toEqual([]);
+  });
+
+  it("ignores invalid requested channel entries", () => {
+    const registry = makeRegistry([{ name: "alice", messagingChannels: ["telegram"] }]);
+    expect(
+      findChannelConflicts("bob", ["", { channel: "" }, null as never, { nope: true } as never], registry),
+    ).toEqual([]);
+  });
+
+  it("falls back to requested hash keys for unknown channel definitions", () => {
+    const registry = makeRegistry([
+      {
+        name: "alice",
+        messagingChannels: ["custom"],
+        providerCredentialHashes: { CUSTOM_TOKEN: "hash-a" },
+      },
+    ]);
+    expect(
+      findChannelConflicts(
+        "bob",
+        [{ channel: "custom", credentialHashes: { CUSTOM_TOKEN: "hash-a" } }],
+        registry,
+      ),
+    ).toEqual([{ channel: "custom", sandbox: "alice", reason: "matching-token" }]);
+  });
+
+  it("treats unknown requested hashes as unknown-token conflicts", () => {
+    const registry = makeRegistry([
+      {
+        name: "alice",
+        messagingChannels: ["custom"],
+        providerCredentialHashes: {},
+      },
+    ]);
+    expect(
+      findChannelConflicts(
+        "bob",
+        [{ channel: "custom", credentialHashes: { CUSTOM_TOKEN: "hash-a" } }],
+        registry,
+      ),
+    ).toEqual([{ channel: "custom", sandbox: "alice", reason: "unknown-token" }]);
   });
 
   it("ignores a stopped (disabled) channel — its credential is not in use (#3381)", () => {
@@ -176,8 +218,19 @@ describe("findAllOverlaps", () => {
     const registry = makeRegistry([
       { name: "alice", messagingChannels: ["telegram"] },
       { name: "bob", messagingChannels: ["discord"] },
+      { name: "legacy" },
     ]);
     expect(findAllOverlaps(registry)).toEqual([]);
+  });
+
+  it("reports matching-token overlaps for unknown channels using unknown-token reason", () => {
+    const registry = makeRegistry([
+      { name: "alice", messagingChannels: ["custom"] },
+      { name: "bob", messagingChannels: ["custom"] },
+    ]);
+    expect(findAllOverlaps(registry)).toEqual([
+      { channel: "custom", sandboxes: ["alice", "bob"], reason: "unknown-token" },
+    ]);
   });
 
   it("ignores stopped (disabled) channels so nemoclaw status does not report phantom overlaps (#3381)", () => {
