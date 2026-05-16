@@ -4,7 +4,6 @@
 import { Flags } from "@oclif/core";
 import { NemoClawCommand } from "../../../cli/nemoclaw-oclif-command";
 
-import { CLI_NAME } from "../../../cli/branding";
 import * as sandboxConfig from "../../../sandbox/config";
 import { sandboxNameArg } from "../common";
 
@@ -55,9 +54,4 @@ export default class SandboxConfigGetCommand extends NemoClawCommand {
       throw error;
     }
   }
-}
-
-export function printConfigUsageAndExit(): void {
-  console.error(`  Usage: ${CLI_NAME} <name> config get [--key dotpath] [--format json|yaml]`);
-  process.exitCode = 1;
 }
