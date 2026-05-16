@@ -40,11 +40,19 @@ export default class SandboxConfigSetCommand extends NemoClawCommand {
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(SandboxConfigSetCommand);
-    await sandboxConfig.configSet(args.sandboxName, {
-      key: flags.key ?? null,
-      value: flags.value ?? null,
-      restart: flags.restart ?? false,
-      acceptNewPath: flags["config-accept-new-path"] ?? false,
-    });
+    try {
+      await sandboxConfig.configSet(args.sandboxName, {
+        key: flags.key ?? null,
+        value: flags.value ?? null,
+        restart: flags.restart ?? false,
+        acceptNewPath: flags["config-accept-new-path"] ?? false,
+      });
+    } catch (error) {
+      if (error instanceof sandboxConfig.SandboxConfigError) {
+        this.failWithLines(error.lines, error.exitCode);
+        return;
+      }
+      throw error;
+    }
   }
 }

@@ -31,10 +31,18 @@ export default class SandboxConfigGetCommand extends NemoClawCommand {
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(SandboxConfigGetCommand);
-    sandboxConfig.configGet(args.sandboxName, {
-      key: flags.key ?? null,
-      format: flags.format ?? "json",
-    });
+    try {
+      sandboxConfig.configGet(args.sandboxName, {
+        key: flags.key ?? null,
+        format: flags.format ?? "json",
+      });
+    } catch (error) {
+      if (error instanceof sandboxConfig.SandboxConfigError) {
+        this.failWithLines(error.lines, error.exitCode);
+        return;
+      }
+      throw error;
+    }
   }
 }
 

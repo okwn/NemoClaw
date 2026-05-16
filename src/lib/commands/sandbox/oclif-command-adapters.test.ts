@@ -3,19 +3,34 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  configGet: vi.fn(),
-  connectSandbox: vi.fn().mockResolvedValue(undefined),
-  destroySandbox: vi.fn().mockResolvedValue(undefined),
-  listSandboxChannels: vi.fn(),
-  listSandboxPolicies: vi.fn(),
-  rebuildSandbox: vi.fn().mockResolvedValue(undefined),
-  runSandboxDoctor: vi.fn().mockResolvedValue(undefined),
-  shieldsDown: vi.fn(),
-  shieldsStatus: vi.fn(),
-  shieldsUp: vi.fn(),
-  showSandboxStatus: vi.fn().mockResolvedValue(undefined),
-}));
+const mocks = vi.hoisted(() => {
+  class SandboxConfigError extends Error {
+    lines: readonly string[];
+    exitCode: number;
+
+    constructor(lines: string | readonly string[], exitCode = 1) {
+      const normalized = Array.isArray(lines) ? lines : [lines];
+      super(normalized.join("\n"));
+      this.lines = normalized;
+      this.exitCode = exitCode;
+    }
+  }
+
+  return {
+    configGet: vi.fn(),
+    connectSandbox: vi.fn().mockResolvedValue(undefined),
+    destroySandbox: vi.fn().mockResolvedValue(undefined),
+    listSandboxChannels: vi.fn(),
+    listSandboxPolicies: vi.fn(),
+    rebuildSandbox: vi.fn().mockResolvedValue(undefined),
+    runSandboxDoctor: vi.fn().mockResolvedValue(undefined),
+    shieldsDown: vi.fn(),
+    shieldsStatus: vi.fn(),
+    shieldsUp: vi.fn(),
+    showSandboxStatus: vi.fn().mockResolvedValue(undefined),
+    SandboxConfigError,
+  };
+});
 
 vi.mock("../../actions/sandbox/connect", () => ({
   connectSandbox: mocks.connectSandbox,
@@ -40,6 +55,7 @@ vi.mock("../../actions/sandbox/policy-channel", () => ({
 
 vi.mock("../../sandbox/config", () => ({
   configGet: mocks.configGet,
+  SandboxConfigError: mocks.SandboxConfigError,
 }));
 
 vi.mock("../../actions/sandbox/doctor", () => ({
@@ -131,6 +147,25 @@ describe("sandbox oclif command adapters", () => {
     expect(mocks.listSandboxPolicies).toHaveBeenCalledWith("alpha");
     expect(mocks.listSandboxChannels).toHaveBeenCalledWith("alpha");
     expect(mocks.configGet).toHaveBeenCalledWith("alpha", { key: "model", format: "yaml" });
+  });
+
+  it("maps config action failures to oclif exit codes", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      mocks.configGet.mockImplementationOnce(() => {
+        throw new mocks.SandboxConfigError(["config missing", "try again"], 5);
+      });
+
+      await expect(SandboxConfigGetCommand.run(["alpha"], rootDir)).resolves.toBeUndefined();
+      expect(process.exitCode).toBe(5);
+      expect(error).toHaveBeenCalledWith("config missing");
+      expect(error).toHaveBeenCalledWith("try again");
+    } finally {
+      process.exitCode = previousExitCode;
+      error.mockRestore();
+    }
   });
 
   it("maps doctor and shields commands to action helpers", async () => {
