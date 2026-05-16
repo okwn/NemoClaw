@@ -273,12 +273,16 @@ function validateEvalFile(evalFile: DocsEvalFile): void {
 
     const contextPath = absoluteRepoPath(evalCase.terget_context.path);
     if (!fs.existsSync(contextPath)) {
-      throw new Error(`Missing terget_context path for ${evalCase.id}: ${evalCase.terget_context.path}`);
+      throw new Error(
+        `Missing terget_context path for ${evalCase.id}: ${evalCase.terget_context.path}`,
+      );
     }
 
     const skillPath = absoluteRepoPath(skillPathForContext(evalCase.terget_context));
     if (!fs.existsSync(skillPath)) {
-      throw new Error(`Missing skill path for ${evalCase.id}: ${path.relative(REPO_ROOT, skillPath)}`);
+      throw new Error(
+        `Missing skill path for ${evalCase.id}: ${path.relative(REPO_ROOT, skillPath)}`,
+      );
     }
   }
 }
@@ -299,7 +303,11 @@ function selectEvalCases(evalFile: DocsEvalFile, options: Options): DocsEvalCase
   return evals;
 }
 
-function prepareEval(evalFile: DocsEvalFile, evalCase: DocsEvalCase, iterationDir: string): PreparedEval {
+function prepareEval(
+  evalFile: DocsEvalFile,
+  evalCase: DocsEvalCase,
+  iterationDir: string,
+): PreparedEval {
   const prompt = renderTemplate(evalFile.prompt_template, evalCase);
   const expectedOutput = renderTemplate(evalFile.expected_output_template, evalCase);
   const assertions = evalFile.assertion_templates.map((assertion) =>
@@ -552,7 +560,11 @@ function findTargetContextEvidence(runDir: string, targetPath: string): string[]
   return evidence;
 }
 
-function findRunReportEvidence(runDir: string, normalizedTarget: string, basename: string): string[] {
+function findRunReportEvidence(
+  runDir: string,
+  normalizedTarget: string,
+  basename: string,
+): string[] {
   const reportPath = path.join(runDir, "outputs", "run-report.json");
   if (!fs.existsSync(reportPath)) {
     return [];
@@ -565,7 +577,9 @@ function findRunReportEvidence(runDir: string, normalizedTarget: string, basenam
     : [];
   const normalizedContext = contextUsed.map(normalizePathForSearch);
 
-  if (normalizedContext.some((entry) => entry.includes(normalizedTarget) || entry.includes(basename))) {
+  if (
+    normalizedContext.some((entry) => entry.includes(normalizedTarget) || entry.includes(basename))
+  ) {
     evidence.push(`run-report.json context_used includes ${basename}`);
   }
   if (report.target_context_loaded === true) {
@@ -707,7 +721,8 @@ function readPassRate(filePath: string): number | null {
 function readDurationSeconds(laneDir: string): number | null {
   const timing = readOptionalJson<TimingFile>(path.join(laneDir, "timing.json"));
   const report = readOptionalJson<RunReport>(path.join(laneDir, "outputs", "run-report.json"));
-  const durationMs = numberFromUnknown(timing?.duration_ms) ?? numberFromUnknown(report?.duration_ms);
+  const durationMs =
+    numberFromUnknown(timing?.duration_ms) ?? numberFromUnknown(report?.duration_ms);
   return durationMs === null ? null : durationMs / 1000;
 }
 
@@ -815,7 +830,9 @@ function main(): void {
   }
 
   writeBenchmark(iterationDir, preparedEvals);
-  console.log(`Prepared ${preparedEvals.length} eval(s) in ${path.relative(REPO_ROOT, iterationDir)}`);
+  console.log(
+    `Prepared ${preparedEvals.length} eval(s) in ${path.relative(REPO_ROOT, iterationDir)}`,
+  );
 }
 
 main();
