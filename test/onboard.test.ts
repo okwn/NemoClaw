@@ -29,23 +29,8 @@ type CommandEntry = {
 };
 type DashboardAccess = { label: string; url: string };
 type ResumeConflict = { field: string; requested: string | null; recorded: string | null };
-type SandboxInferenceConfig = {
-  providerKey: string;
-  primaryModelRef: string;
-  inferenceBaseUrl: string;
-  inferenceApi: string;
-  inferenceCompat: ShimValue;
-};
-type ValidationClassification = { kind: string; retry: string };
 
 type OnboardTestInternals = {
-  buildProviderArgs: (
-    action: "create" | "update",
-    name: string,
-    type: string,
-    credentialEnv: string,
-    baseUrl: string | null,
-  ) => string[];
   buildSandboxConfigSyncScript: ShimFn<string>;
   classifySandboxCreateFailure: (output?: string) => { kind: string; uploadedToGateway: boolean };
   compactText: (value?: string) => string;
@@ -71,7 +56,6 @@ type OnboardTestInternals = {
   getNavigationChoice: (value?: string | null) => string | null;
   getGatewayReuseState: ShimFn<string>;
   getFutureShellPathHint: (binDir: string, pathValue?: string) => string | null;
-  getSandboxInferenceConfig: ShimFn<SandboxInferenceConfig>;
   resolveSandboxGpuConfig: (
     gpu: { type: string } | null,
     options?: { flag?: "enable" | "disable" | null; device?: string | null; env?: NodeJS.ProcessEnv },
@@ -99,10 +83,6 @@ type OnboardTestInternals = {
   } | null>;
   getSandboxStateFromOutputs: ShimFn<string>;
   isGatewayHealthy: ShimFn<boolean>;
-  classifyValidationFailure: ShimFn<ValidationClassification>;
-  hasResponsesToolCall: (body?: string | null) => boolean;
-  hasChatCompletionsToolCall: (body?: string | null) => boolean;
-  hasChatCompletionsToolCallLeak: (body?: string | null) => boolean;
   agentSupportsWebSearch: (
     agent?: AgentDefinition | null,
     dockerfilePathOverride?: string | null,
@@ -112,11 +92,6 @@ type OnboardTestInternals = {
     agent?: AgentDefinition | null,
     dockerfilePathOverride?: string | null,
   ) => Promise<ShimValue>;
-  normalizeProviderBaseUrl: (
-    value: string | null | undefined,
-    flavor: "openai" | "anthropic",
-  ) => string;
-  providerNameToOptionKey: (name?: string | null) => string | null;
   parsePolicyPresetEnv: (value: string | null) => string[];
   pullAndResolveBaseImageDigest: () => { digest: string | null; ref: string } | null;
   SANDBOX_BASE_IMAGE: string;
@@ -141,19 +116,14 @@ function isOnboardTestInternals(
 ): value is OnboardTestInternals {
   return (
     value !== null &&
-    typeof value.buildProviderArgs === "function" &&
     typeof value.buildSandboxConfigSyncScript === "function" &&
     typeof value.classifySandboxCreateFailure === "function" &&
     typeof value.findAvailableDashboardPort === "function" &&
     typeof value.resolveSandboxGpuConfig === "function" &&
     typeof value.getResumeSandboxGpuOverrides === "function" &&
-    typeof value.hasChatCompletionsToolCall === "function" &&
-    typeof value.hasChatCompletionsToolCallLeak === "function" &&
     typeof value.agentSupportsWebSearch === "function" &&
     typeof value.configureWebSearch === "function" &&
     typeof value.formatSandboxBuildEstimateNote === "function" &&
-    Object.prototype.hasOwnProperty.call(value, "providerNameToOptionKey") &&
-    typeof value.providerNameToOptionKey === "function" &&
     typeof value.writeSandboxConfigSyncFile === "function"
   );
 }
@@ -168,7 +138,6 @@ if (!isOnboardTestInternals(onboardTestInternals)) {
 }
 
 const {
-  buildProviderArgs,
   buildSandboxConfigSyncScript,
   classifySandboxCreateFailure,
   compactText,
@@ -176,7 +145,6 @@ const {
   getNavigationChoice,
   getGatewayReuseState,
   getFutureShellPathHint,
-  getSandboxInferenceConfig,
   resolveSandboxGpuConfig,
   getResumeSandboxGpuOverrides,
   getRequestedModelHint,
@@ -186,14 +154,8 @@ const {
   getResumeSandboxConflict,
   getSandboxStateFromOutputs,
   isGatewayHealthy,
-  classifyValidationFailure,
-  hasResponsesToolCall,
-  hasChatCompletionsToolCall,
-  hasChatCompletionsToolCallLeak,
   agentSupportsWebSearch,
   configureWebSearch,
-  normalizeProviderBaseUrl,
-  providerNameToOptionKey,
   parsePolicyPresetEnv,
   SANDBOX_BASE_IMAGE,
   printSandboxCreateRecoveryHints,
@@ -324,351 +286,6 @@ describe("onboard helpers", () => {
     assert.match(script, /^\s*exit$/m);
   });
 
-  it("maps NVIDIA Endpoints to the routed inference provider", () => {
-    assert.deepEqual(
-      getSandboxInferenceConfig("qwen/qwen3.5-397b-a17b", "nvidia-prod", "openai-completions"),
-      {
-        providerKey: "inference",
-        primaryModelRef: "inference/qwen/qwen3.5-397b-a17b",
-        inferenceBaseUrl: "https://inference.local/v1",
-        inferenceApi: "openai-completions",
-        inferenceCompat: null,
-      },
-    );
-  });
-
-  it("maps Model Router sandboxes through managed inference.local", () => {
-    assert.deepEqual(getSandboxInferenceConfig("nvidia-routed", "nvidia-router"), {
-      providerKey: "inference",
-      primaryModelRef: "inference/nvidia-routed",
-      inferenceBaseUrl: "https://inference.local/v1",
-      inferenceApi: "openai-completions",
-      inferenceCompat: null,
-    });
-  });
-
-  it("maps persisted Model Router provider back to the routed provider option", () => {
-    assert.equal(providerNameToOptionKey("nvidia-router"), "routed");
-  });
-
-  it("leaves Kimi K2.6 compat to the model-specific setup registry", () => {
-    assert.deepEqual(
-      getSandboxInferenceConfig("moonshotai/kimi-k2.6", "nvidia-prod", "openai-completions"),
-      {
-        providerKey: "inference",
-        primaryModelRef: "inference/moonshotai/kimi-k2.6",
-        inferenceBaseUrl: "https://inference.local/v1",
-        inferenceApi: "openai-completions",
-        inferenceCompat: null,
-      },
-    );
-  });
-
-  it("maps OpenAI-compatible endpoints to the managed inference provider", () => {
-    assert.deepEqual(
-      getSandboxInferenceConfig("deepseek-ai/DeepSeek-V4-Flash", "compatible-endpoint"),
-      {
-        providerKey: "inference",
-        primaryModelRef: "inference/deepseek-ai/DeepSeek-V4-Flash",
-        inferenceBaseUrl: "https://inference.local/v1",
-        inferenceApi: "openai-completions",
-        inferenceCompat: {
-          supportsStore: false,
-        },
-      },
-    );
-  });
-
-  it("classifies model-related 404/405 responses as model retries before endpoint retries", () => {
-    expect(
-      classifyValidationFailure({
-        httpStatus: 404,
-        message: "HTTP 404: model not found",
-      }),
-    ).toEqual({ kind: "model", retry: "model" });
-    expect(
-      classifyValidationFailure({
-        httpStatus: 405,
-        message: "HTTP 405: unsupported model",
-      }),
-    ).toEqual({ kind: "model", retry: "model" });
-  });
-
-  it("classifies TLS certificate errors as transport", () => {
-    expect(
-      classifyValidationFailure({
-        message: "transport error: invalid peer certificate: UnknownIssuer",
-      }),
-    ).toEqual({ kind: "transport", retry: "retry" });
-    expect(
-      classifyValidationFailure({
-        message: "SSL certificate problem: unable to get local issuer certificate",
-      }),
-    ).toEqual({ kind: "transport", retry: "retry" });
-    expect(
-      classifyValidationFailure({
-        message: "TLS handshake failure",
-      }),
-    ).toEqual({ kind: "transport", retry: "retry" });
-  });
-
-  it("detects tool-calling responses payloads conservatively", () => {
-    expect(
-      hasResponsesToolCall(
-        JSON.stringify({
-          output: [
-            {
-              type: "function_call",
-              name: "emit_ok",
-              arguments: '{"value":"OK"}',
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasResponsesToolCall(
-        JSON.stringify({
-          output: [
-            {
-              type: "message",
-              content: [
-                {
-                  type: "function_call",
-                  name: "emit_ok",
-                  arguments: '{"value":"OK"}',
-                },
-              ],
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasResponsesToolCall(
-        JSON.stringify({
-          output: [
-            {
-              type: "message",
-              content: [{ type: "output_text", text: "OK" }],
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-    expect(hasResponsesToolCall("{")).toBe(false);
-  });
-
-  it("detects structured chat-completions tool_calls", () => {
-    expect(
-      hasChatCompletionsToolCall(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  {
-                    type: "function",
-                    function: { name: "sessions_send", arguments: '{"message":"hello"}' },
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasChatCompletionsToolCall(
-        JSON.stringify({
-          choices: [{ message: { role: "assistant", content: "OK", tool_calls: [] } }],
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      hasChatCompletionsToolCall(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  {
-                    type: "function",
-                    function: { name: "sessions_send" },
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      hasChatCompletionsToolCall(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: "",
-                tool_calls: [
-                  {
-                    type: "text",
-                    function: { name: "sessions_send", arguments: '{"message":"hello"}' },
-                  },
-                ],
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-    expect(hasChatCompletionsToolCall("{")).toBe(false);
-  });
-
-  it("detects leaked stringified tool-call JSON in chat-completions content", () => {
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: '{\n  "arguments":{"message":"hello?"},\n  "name":"sessions_send"\n}',
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: JSON.stringify({
-                  type: "function",
-                  function: {
-                    name: "sessions_send",
-                    arguments: JSON.stringify({ message: "hello?" }),
-                  },
-                }),
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: JSON.stringify({
-                  tool_calls: [
-                    {
-                      type: "function",
-                      function: {
-                        name: "sessions_send",
-                        arguments: JSON.stringify({ message: "hello?" }),
-                      },
-                    },
-                  ],
-                }),
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: [
-                  {
-                    type: "text",
-                    text: '{"arguments":{"message":"hello?"},"name":"sessions_send"}',
-                  },
-                ],
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(true);
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: "Regular assistant text response.",
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: '{"type":"function","function":{"name":"sessions_send"}}',
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      hasChatCompletionsToolCallLeak(
-        JSON.stringify({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: [{ type: "text", text: "Regular assistant text response." }],
-                tool_calls: null,
-              },
-            },
-          ],
-        }),
-      ),
-    ).toBe(false);
-    expect(hasChatCompletionsToolCallLeak("{")).toBe(false);
-  });
-
-  it("normalizes anthropic-compatible base URLs with a trailing /v1", () => {
-    expect(normalizeProviderBaseUrl("https://proxy.example.com/v1", "anthropic")).toBe(
-      "https://proxy.example.com",
-    );
-    expect(normalizeProviderBaseUrl("https://proxy.example.com/v1/messages", "anthropic")).toBe(
-      "https://proxy.example.com",
-    );
-  });
-
   it("#2433: agentSupportsWebSearch detects whether agent Dockerfile declares the web search ARG", () => {
     // OpenClaw Dockerfile has ARG NEMOCLAW_WEB_SEARCH_ENABLED → supported.
     // Hermes Dockerfile does not → not supported.
@@ -761,28 +378,6 @@ const { loadAgent } = require(${agentDefsPath});
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
-
-  it("maps Gemini to the routed inference provider with supportsStore disabled", () => {
-    assert.deepEqual(getSandboxInferenceConfig("gemini-2.5-flash", "gemini-api"), {
-      providerKey: "inference",
-      primaryModelRef: "inference/gemini-2.5-flash",
-      inferenceBaseUrl: "https://inference.local/v1",
-      inferenceApi: "openai-completions",
-      inferenceCompat: {
-        supportsStore: false,
-      },
-    });
-  });
-
-  it("uses a probed Responses API override when one is available", () => {
-    assert.deepEqual(getSandboxInferenceConfig("gpt-5.4", "openai-api", "openai-responses"), {
-      providerKey: "openai",
-      primaryModelRef: "openai/gpt-5.4",
-      inferenceBaseUrl: "https://inference.local/v1",
-      inferenceApi: "openai-responses",
-      inferenceCompat: null,
-    });
   });
 
   it("treats the gateway as healthy only when nemoclaw is running and connected", () => {
@@ -1432,66 +1027,6 @@ startGateway(null).catch(() => {});
     expect(summarizeProbeFailure("  Service  Unavailable  ", 503, 0, "")).toBe(
       "HTTP 503: Service Unavailable",
     );
-  });
-
-  it("buildProviderArgs produces correct create arguments for generic providers", () => {
-    const args = buildProviderArgs(
-      "create",
-      "discord-bridge",
-      "generic",
-      "DISCORD_BOT_TOKEN",
-      null,
-    );
-    expect(args).toEqual([
-      "provider",
-      "create",
-      "--name",
-      "discord-bridge",
-      "--type",
-      "generic",
-      "--credential",
-      "DISCORD_BOT_TOKEN",
-    ]);
-  });
-
-  it("buildProviderArgs produces correct update arguments", () => {
-    const args = buildProviderArgs("update", "inference", "openai", "NVIDIA_API_KEY", null);
-    expect(args).toEqual(["provider", "update", "inference", "--credential", "NVIDIA_API_KEY"]);
-  });
-
-  it("buildProviderArgs appends OPENAI_BASE_URL config for openai providers with a base URL", () => {
-    const args = buildProviderArgs(
-      "create",
-      "inference",
-      "openai",
-      "NVIDIA_API_KEY",
-      "https://api.example.com/v1",
-    );
-    expect(args).toContain("--config");
-    expect(args).toContain("OPENAI_BASE_URL=https://api.example.com/v1");
-  });
-
-  it("buildProviderArgs appends ANTHROPIC_BASE_URL config for anthropic providers with a base URL", () => {
-    const args = buildProviderArgs(
-      "create",
-      "inference",
-      "anthropic",
-      "ANTHROPIC_API_KEY",
-      "https://api.anthropic.example.com",
-    );
-    expect(args).toContain("--config");
-    expect(args).toContain("ANTHROPIC_BASE_URL=https://api.anthropic.example.com");
-  });
-
-  it("buildProviderArgs ignores base URL for generic providers", () => {
-    const args = buildProviderArgs(
-      "create",
-      "slack-bridge",
-      "generic",
-      "SLACK_BOT_TOKEN",
-      "https://ignored.example.com",
-    );
-    expect(args).not.toContain("--config");
   });
 
   it("rejects sandbox names starting with a digit", () => {
