@@ -264,6 +264,7 @@ const tiers: typeof import("./policy/tiers") = require("./policy/tiers");
 const { ensureUsageNoticeConsent } = require("./onboard/usage-notice");
 const {
   findAvailableDashboardPort,
+  findDashboardForwardOwner,
   getOccupiedPorts,
   isLiveForwardStatus,
 } = require("./onboard/dashboard-port") as typeof import("./onboard/dashboard-port");
@@ -341,8 +342,14 @@ import type {
   OpenShellInstallResult,
 } from "./onboard/openshell-install";
 import { decidePolicyCarryForward } from "./onboard/policy-carryforward";
-import { resolveSandboxGpuMode, type SandboxGpuFlag, type SandboxGpuMode } from "./onboard/sandbox-gpu-mode";
+import {
+  getResumeSandboxGpuOverrides,
+  resolveSandboxGpuConfig,
+  type SandboxGpuConfig,
+  type SandboxGpuFlag,
+} from "./onboard/sandbox-gpu-mode";
 import type { SelectionDrift } from "./onboard/selection-drift";
+import { formatOnboardConfigSummary, formatSandboxBuildEstimateNote } from "./onboard/summary";
 import type {
   ModelValidationResult,
   ValidationFailureLike,
@@ -1211,74 +1218,6 @@ function shouldAllowOpenshellAboveBlueprintMax(
   return shouldUseOpenshellDevChannel(platform, env) && isOpenshellDevVersion(versionOutput);
 }
 
-type SandboxGpuConfig = {
-  mode: SandboxGpuMode;
-  hostGpuDetected: boolean;
-  sandboxGpuEnabled: boolean;
-  sandboxGpuDevice: string | null;
-  errors: string[];
-};
-
-type ResumeSandboxGpuOverrides = {
-  flag: SandboxGpuFlag;
-  device: string | null;
-};
-
-function isNvidiaGpuDetected(gpu: ReturnType<typeof nim.detectGpu>): boolean {
-  return Boolean(gpu && gpu.type === "nvidia");
-}
-
-function normalizeSandboxGpuMode(value: string | null | undefined): SandboxGpuMode | null {
-  const raw = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (!raw) return null;
-  if (raw === "auto") return "auto";
-  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return "1";
-  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return "0";
-  return null;
-}
-
-function resolveSandboxGpuConfig(
-  gpu: ReturnType<typeof nim.detectGpu>,
-  options: {
-    flag?: SandboxGpuFlag;
-    device?: string | null;
-    env?: NodeJS.ProcessEnv;
-  } = {},
-): SandboxGpuConfig {
-  const env = options.env ?? process.env;
-  const errors: string[] = [];
-  const envModeRaw = env.NEMOCLAW_SANDBOX_GPU;
-  const envMode = normalizeSandboxGpuMode(envModeRaw);
-  if (envModeRaw !== undefined && envMode === null) {
-    errors.push("NEMOCLAW_SANDBOX_GPU must be one of: auto, 1, 0.");
-  }
-
-  let mode = resolveSandboxGpuMode({ envMode, gpu, flag: options.flag });
-
-  const device = (options.device ?? env.NEMOCLAW_SANDBOX_GPU_DEVICE ?? "").trim() || null;
-  if (device && mode === "0") {
-    errors.push("NEMOCLAW_SANDBOX_GPU_DEVICE cannot be used when sandbox GPU mode is 0.");
-  }
-  if (device && options.flag !== "disable" && envMode !== "0") {
-    mode = "1";
-  }
-
-  const hostGpuDetected = isNvidiaGpuDetected(gpu);
-  if (mode === "1" && !hostGpuDetected) {
-    errors.push("Sandbox GPU was requested, but no NVIDIA GPU was detected on the host.");
-  }
-
-  return {
-    mode,
-    hostGpuDetected,
-    sandboxGpuEnabled: mode === "1" || (mode === "auto" && hostGpuDetected),
-    sandboxGpuDevice: device,
-    errors,
-  };
-}
-
 function resolveSandboxGpuFlagFromOptions(
   opts: Pick<OnboardOptions, "sandboxGpu" | "gpu" | "noGpu">,
 ): SandboxGpuFlag {
@@ -1300,26 +1239,6 @@ function resolveSandboxGpuFlagFromOptions(
   if (requestedGpuPassthrough) return "enable";
   if (optedOutGpuPassthrough) return "disable";
   return null;
-}
-
-function getResumeSandboxGpuOverrides(
-  entry: Pick<SandboxEntry, "sandboxGpuMode" | "sandboxGpuDevice"> | null | undefined,
-  sessionGpuPassthrough: boolean | undefined,
-): ResumeSandboxGpuOverrides {
-  const recordedMode = normalizeSandboxGpuMode(entry?.sandboxGpuMode);
-  if (recordedMode === "1") {
-    return { flag: "enable", device: entry?.sandboxGpuDevice || null };
-  }
-  if (recordedMode === "0") {
-    return { flag: "disable", device: null };
-  }
-  if (recordedMode === "auto") {
-    return { flag: null, device: null };
-  }
-  if (sessionGpuPassthrough === true) {
-    return { flag: "enable", device: entry?.sandboxGpuDevice || null };
-  }
-  return { flag: null, device: null };
 }
 
 function sandboxGpuRemediationLines(): string[] {
@@ -1442,27 +1361,8 @@ const {
   formatEnvAssignment,
   parsePolicyPresetEnv,
 } = urlUtils;
-
-/**
- * Resolve a credential into `process.env[envName]` so subsequent gateway
- * upserts can read it via `--credential <ENV>`. Idempotently stages any
- * pre-fix plaintext credentials.json (non-destructively) so callers that
- * reach a credential check from outside the onboard entry point — such as
- * rebuild preflight — can still find legacy values. The file itself is
- * removed only after a full successful onboard, so an interrupted run can
- * be retried without losing the user's only copy.
- *
- * @param envName Credential env variable name, e.g. `NVIDIA_API_KEY`.
- * @returns The resolved value, or `null` if `envName` is empty/unstaged.
- */
-function hydrateCredentialEnv(envName: string | null | undefined): string | null {
-  if (!envName) return null;
-  // Thin wrapper for back-compat. resolveProviderCredential() (introduced
-  // by PR #2306 as the canonical entry point) now performs the staging
-  // dance internally — env first, then a one-time on-demand legacy stage,
-  // then write back into process.env for downstream code.
-  return resolveProviderCredential(envName);
-}
+const { hydrateCredentialEnv }: typeof import("./onboard/credential-env") =
+  require("./onboard/credential-env");
 
 const {
   summarizeCurlFailure,
@@ -4828,99 +4728,6 @@ async function promptValidatedSandboxName(agent: AgentDefinition | null = null) 
 }
 
 // ── Step 5: Sandbox ──────────────────────────────────────────────
-
-type OnboardConfigSummary = {
-  provider: string | null;
-  model: string | null;
-  credentialEnv?: string | null;
-  hermesAuthMethod?: HermesAuthMethod | string | null;
-  webSearchConfig?: WebSearchConfig | null;
-  enabledChannels?: string[] | null;
-  sandboxName: string;
-  notes?: string[] | null;
-};
-
-/**
- * Render the configuration summary shown before the destructive sandbox build.
- * Extracted from confirmOnboardConfiguration() for direct unit testing — see #2165.
- *
- * Fields:
- * - credentialEnv:    env-var name of the API key (e.g. "NVIDIA_API_KEY").
- *                     Rendered with the fixed credentials.json location so
- *                     users can see where the key was stored.
- * - notes:            additional bullet lines shown under the summary,
- *                     such as a sandbox build-time estimate. Each note is
- *                     rendered as "Note: <text>" so it stays visually
- *                     distinct.
- */
-function formatSandboxBuildEstimateNote(host: ReturnType<typeof assessHost>): string | null {
-  if (host.isContainerRuntimeUnderProvisioned) {
-    return (
-      "Container runtime is under-provisioned; the sandbox build may take 30+ minutes " +
-      "or stall. See preflight warning above."
-    );
-  }
-  const cpus = host.dockerCpus;
-  const memBytes = host.dockerMemTotalBytes;
-  if (typeof cpus === "number" && typeof memBytes === "number") {
-    const memGiB = memBytes / 1024 ** 3;
-    if (cpus >= 8 && memGiB >= 16) {
-      return "Sandbox build typically takes 3–8 minutes on this host.";
-    }
-    return "Sandbox build typically takes 5–15 minutes on this host.";
-  }
-  return null;
-}
-
-function formatOnboardConfigSummary({
-  provider,
-  model,
-  credentialEnv = null,
-  hermesAuthMethod = null,
-  webSearchConfig = null,
-  enabledChannels = null,
-  sandboxName,
-  notes = [],
-}: OnboardConfigSummary): string {
-  const bar = `  ${"─".repeat(50)}`;
-  const messaging =
-    Array.isArray(enabledChannels) && enabledChannels.length > 0
-      ? enabledChannels.join(", ")
-      : "none";
-  const webSearch =
-    webSearchConfig && webSearchConfig.fetchEnabled === true ? "enabled" : "disabled";
-  const effectiveHermesAuthMethod =
-    normalizeHermesAuthMethod(hermesAuthMethod) ||
-    (provider === hermesProviderAuth.HERMES_PROVIDER_NAME &&
-    credentialEnv === HERMES_NOUS_API_KEY_CREDENTIAL_ENV
-      ? HERMES_AUTH_METHOD_API_KEY
-      : HERMES_AUTH_METHOD_OAUTH);
-  const apiKeyLine =
-    provider === hermesProviderAuth.HERMES_PROVIDER_NAME
-      ? effectiveHermesAuthMethod === HERMES_AUTH_METHOD_API_KEY
-        ? "  Nous API key: host-managed; sandbox receives inference placeholder only"
-        : "  Nous OAuth:    host-managed; sandbox receives inference placeholder only"
-      : credentialEnv
-        ? `  API key:       ${credentialEnv} (staged for OpenShell gateway registration)`
-        : `  API key:       (not required for ${provider ?? "this provider"})`;
-  const noteLines = (Array.isArray(notes) ? notes : [])
-    .filter((n) => typeof n === "string" && n.length > 0)
-    .map((n) => `  Note:          ${n}`);
-  return [
-    "",
-    bar,
-    "  Review configuration",
-    bar,
-    `  Provider:      ${provider ?? "(unset)"}`,
-    `  Model:         ${model ?? "(unset)"}`,
-    apiKeyLine,
-    `  Web search:    ${webSearch}`,
-    `  Messaging:     ${messaging}`,
-    `  Sandbox name:  ${sandboxName}`,
-    ...noteLines,
-    bar,
-  ].join("\n");
-}
 
 async function createSandbox(
   gpu: ReturnType<typeof nim.detectGpu>,
@@ -8961,24 +8768,6 @@ const CONTROL_UI_PORT = DASHBOARD_PORT;
 // Dashboard helpers — delegated to src/lib/dashboard/contract.ts
 const { buildChain, buildControlUiUrls } = dashboardContract;
 
-// Parses `openshell forward list` output and returns the sandbox currently
-// owning `portToStop`, or null. Exported for unit testing — see #2169.
-// Columns: SANDBOX  BIND  PORT  PID  STATUS (whitespace-separated).
-function findDashboardForwardOwner(
-  forwardListOutput: string | null | undefined,
-  portToStop: string,
-): string | null {
-  if (!forwardListOutput) return null;
-  const portLine = forwardListOutput
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => {
-      const parts = l.split(/\s+/);
-      return parts[2] === portToStop;
-    });
-  return portLine ? (portLine.split(/\s+/)[0] ?? null) : null;
-}
-
 function findForwardEntry(
   forwardListOutput: string | null | undefined,
   port: string,
@@ -10649,8 +10438,6 @@ module.exports = {
   readRecordedProvider,
   readRecordedModel,
   readRecordedNimContainer,
-  formatOnboardConfigSummary,
-  formatSandboxBuildEstimateNote,
   isInferenceRouteReady,
   shouldRunCompatibleEndpointSandboxSmoke,
   isNonInteractive,
