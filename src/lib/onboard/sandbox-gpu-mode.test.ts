@@ -32,6 +32,14 @@ describe("sandbox GPU mode helpers", () => {
     });
     expect(forced.mode).toBe("1");
     expect(forced.errors.join("\n")).toContain("no NVIDIA GPU");
+
+    const disabled = resolveSandboxGpuConfig(detectedGpu, {
+      flag: "disable",
+      env: { NEMOCLAW_SANDBOX_GPU: "1", NEMOCLAW_SANDBOX_GPU_DEVICE: "nvidia.com/gpu=0" },
+    });
+    expect(disabled.mode).toBe("0");
+    expect(disabled.sandboxGpuEnabled).toBe(false);
+    expect(disabled.errors).toEqual([]);
   });
 
   it("defaults to CPU sandbox on Jetson when NEMOCLAW_SANDBOX_GPU is unset", () => {

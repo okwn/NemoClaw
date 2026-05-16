@@ -66,10 +66,11 @@ export function resolveSandboxGpuConfig(
   let mode = resolveSandboxGpuMode({ envMode, gpu, flag: options.flag });
 
   const device = (options.device ?? env.NEMOCLAW_SANDBOX_GPU_DEVICE ?? "").trim() || null;
-  if (device && mode === "0") {
+  const explicitDisable = options.flag === "disable";
+  if (device && mode === "0" && !explicitDisable) {
     errors.push("NEMOCLAW_SANDBOX_GPU_DEVICE cannot be used when sandbox GPU mode is 0.");
   }
-  if (device && (options.flag === "enable" || envMode === "1")) {
+  if (device && !explicitDisable && (options.flag === "enable" || envMode === "1")) {
     mode = "1";
   }
 
