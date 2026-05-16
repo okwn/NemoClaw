@@ -14,13 +14,6 @@
 const { ROOT, validateName } = require("../runner");
 const { CLI_NAME } = require("./branding");
 const { help } = require("../actions/root-help");
-const registry = require("../state/registry");
-const { recoverRegistryEntries } = require("../registry-recovery-action");
-const {
-  isSandboxConnectFlag,
-  parseSandboxConnectArgs,
-  printSandboxConnectHelp,
-} = require("../actions/sandbox/connect");
 const { runOclifArgv, runRegisteredOclifCommand } = require("./oclif-runner");
 const {
   canonicalUsageList,
@@ -38,6 +31,33 @@ import {
 // ── Global commands (derived from command registry) ──────────────
 
 const GLOBAL_COMMANDS = globalCommandTokens();
+
+type RegistryModule = typeof import("../state/registry");
+type RegistryRecoveryModule = typeof import("../registry-recovery-action");
+type SandboxConnectModule = typeof import("../actions/sandbox/connect");
+
+let registryModule: RegistryModule | null = null;
+let registryRecoveryModule: RegistryRecoveryModule | null = null;
+let sandboxConnectModule: SandboxConnectModule | null = null;
+
+function registry(): RegistryModule {
+  registryModule ??= require("../state/registry") as RegistryModule;
+  return registryModule;
+}
+
+function registryRecovery(): RegistryRecoveryModule {
+  registryRecoveryModule ??= require("../registry-recovery-action") as RegistryRecoveryModule;
+  return registryRecoveryModule;
+}
+
+function sandboxConnect(): SandboxConnectModule {
+  sandboxConnectModule ??= require("../actions/sandbox/connect") as SandboxConnectModule;
+  return sandboxConnectModule;
+}
+
+function isPublicSandboxConnectFlag(arg: string | undefined): boolean {
+  return sandboxConnect().isSandboxConnectFlag(arg);
+}
 
 // ── Commands ─────────────────────────────────────────────────────
 
@@ -61,7 +81,7 @@ function hasHelpFlag(args: readonly string[]): boolean {
 
 function findRegisteredSandboxName(tokens: string[]): string | null {
   const registered = new Set(
-    registry.listSandboxes().sandboxes.map((s: { name: string }) => s.name),
+    registry().listSandboxes().sandboxes.map((s: { name: string }) => s.name),
   );
   return tokens.find((token) => registered.has(token)) || null;
 }
@@ -132,7 +152,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
 
   const normalized = normalizeArgv(argv, {
     globalCommands: GLOBAL_COMMANDS,
-    isSandboxConnectFlag,
+    isSandboxConnectFlag: isPublicSandboxConnectFlag,
   });
 
   if (normalized.kind === "rootHelp") {
@@ -156,7 +176,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
   const requestedSandboxActionArgs = normalized.actionArgs;
   if (normalized.connectHelpRequested) {
     validateName(cmd, "sandbox name");
-    printSandboxConnectHelp(cmd);
+    sandboxConnect().printSandboxConnectHelp(cmd);
     return;
   }
 
@@ -184,10 +204,10 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
 
   // If the registry doesn't know this name but the action is a sandbox-scoped
   // command, attempt recovery — the sandbox may still be live with a stale registry.
-  if (!registry.getSandbox(cmd) && sandboxActions.includes(requestedSandboxAction)) {
+  if (!registry().getSandbox(cmd) && sandboxActions.includes(requestedSandboxAction)) {
     validateName(cmd, "sandbox name");
-    await recoverRegistryEntries({ requestedSandboxName: cmd });
-    if (!registry.getSandbox(cmd)) {
+    await registryRecovery().recoverRegistryEntries({ requestedSandboxName: cmd });
+    if (!registry().getSandbox(cmd)) {
       if (args.length === 0) {
         const suggestion = suggestGlobalCommand(cmd);
         if (suggestion) {
@@ -197,7 +217,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
         }
       }
       console.error(`  Sandbox '${cmd}' does not exist.`);
-      const allNames = registry.listSandboxes().sandboxes.map((s: { name: string }) => s.name);
+      const allNames = registry().listSandboxes().sandboxes.map((s: { name: string }) => s.name);
       if (allNames.length > 0) {
         console.error("");
         console.error(`  Registered sandboxes: ${allNames.join(", ")}`);
@@ -215,7 +235,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
     }
   }
 
-  if (!registry.getSandbox(cmd)) {
+  if (!registry().getSandbox(cmd)) {
     const suggestion = suggestGlobalCommand(cmd);
     if (suggestion) {
       console.error(`  Unknown command: ${cmd}`);
@@ -224,13 +244,13 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
     }
   }
 
-  const sandbox = registry.getSandbox(cmd);
+  const sandbox = registry().getSandbox(cmd);
   if (sandbox) {
     validateName(cmd, "sandbox name");
     const action = requestedSandboxAction;
     const actionArgs = requestedSandboxActionArgs;
     if (action === "connect") {
-      parseSandboxConnectArgs(cmd, actionArgs);
+      sandboxConnect().parseSandboxConnectArgs(cmd, actionArgs);
     }
     await runDispatchResult(resolveLegacySandboxDispatch(cmd, action, actionArgs), {
       sandboxName: cmd,
@@ -244,7 +264,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
   console.error("");
 
   // Check if it looks like a sandbox name with missing action
-  const allNames = registry.listSandboxes().sandboxes.map((s: { name: string }) => s.name);
+  const allNames = registry().listSandboxes().sandboxes.map((s: { name: string }) => s.name);
   if (allNames.length > 0) {
     console.error(`  Registered sandboxes: ${allNames.join(", ")}`);
     console.error(`  Try: ${CLI_NAME} <sandbox-name> connect`);
