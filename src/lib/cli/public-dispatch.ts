@@ -76,14 +76,6 @@ function printConnectOrderHint(candidate: string | null): void {
 const VALID_SANDBOX_ACTIONS =
   "connect, status, doctor, logs, policy-add, policy-remove, policy-list, hosts-add, hosts-list, hosts-remove, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
 
-function printUsageLines(lines: readonly string[], sandboxName?: string): void {
-  const [usage, ...details] = lines;
-  console.error(`  Usage: ${CLI_NAME} ${sandboxName ? `${sandboxName} ` : ""}${usage}`);
-  for (const line of details) {
-    console.error(`    ${line}`);
-  }
-}
-
 function printDispatchUsageError(
   result: Extract<DispatchResult, { kind: "usageError" }>,
   sandboxName?: string,
@@ -93,7 +85,11 @@ function printDispatchUsageError(
     process.exit(1);
   }
 
-  printUsageLines(result.lines, sandboxName);
+  const [usage, ...details] = result.lines;
+  console.error(`  Usage: ${CLI_NAME} ${sandboxName ? `${sandboxName} ` : ""}${usage}`);
+  for (const line of details) {
+    console.error(`    ${line}`);
+  }
   process.exit(1);
 }
 
@@ -106,17 +102,17 @@ async function runDispatchResult(
       await runOclif(result.commandId, result.args);
       return;
     case "help":
-      renderPublicOclifHelp(result.commandId, result.publicUsage);
+      if (result.message) console.error(`  ${result.message}`);
+      renderPublicOclifHelp(result.commandId, result.publicUsage, {
+        error: typeof result.exitCode === "number" && result.exitCode !== 0,
+      });
+      if (typeof result.exitCode === "number") process.exit(result.exitCode);
       return;
     case "usageError":
       printDispatchUsageError(result, opts.sandboxName);
     case "unknownSubcommand":
       console.error(`  Unknown ${result.command} subcommand: ${result.subcommand}`);
-      if (result.usageLines?.length) {
-        printUsageLines(result.usageLines, opts.sandboxName);
-      } else {
-        console.error(`  Run '${CLI_NAME} ${result.command} help' for usage.`);
-      }
+      console.error(`  Run '${CLI_NAME} ${result.command} help' for usage.`);
       process.exit(1);
     case "unknownAction":
       console.error(`  Unknown action: ${result.action}`);

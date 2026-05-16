@@ -11,8 +11,10 @@ export type OclifDispatch = {
 
 export type HelpDispatch = {
   kind: "help";
-  publicUsage: string;
+  publicUsage: string | string[];
   commandId: string;
+  exitCode?: number;
+  message?: string;
 };
 
 export type UsageErrorDispatch = {
@@ -22,9 +24,8 @@ export type UsageErrorDispatch = {
 
 export type UnknownSubcommandDispatch = {
   kind: "unknownSubcommand";
-  command: "credentials" | "channels";
+  command: "credentials";
   subcommand: string;
-  usageLines?: string[];
 };
 
 export type UnknownActionDispatch = {
@@ -92,10 +93,10 @@ function legacyRoutes(): LegacyRoute[] {
     .sort((a, b) => b.legacyTokens.length - a.legacyTokens.length);
 }
 
-function parentUsageLines(action: string): string[] {
+function parentPublicUsage(action: string): string[] {
   const lines = legacyRoutes()
     .filter((route) => route.legacyTokens[0] === action)
-    .map((route) => route.publicUsage.replace(/^<name>\s+/, ""));
+    .map((route) => route.publicUsage);
   return [...new Set(lines)];
 }
 
@@ -166,6 +167,15 @@ const CHANNEL_SUBCOMMANDS = new Set(["add", "list", "remove", "start", "stop"]);
 
 const PARENT_ACTIONS = new Set(["share", "skill", "snapshot"]);
 
+function parentHelp(action: string, message?: string): HelpDispatch {
+  return {
+    kind: "help",
+    commandId: `sandbox:${action}`,
+    publicUsage: parentPublicUsage(action),
+    exitCode: message ? 1 : undefined,
+    message,
+  };
+}
 
 export function resolveLegacySandboxDispatch(
   sandboxName: string,
@@ -194,17 +204,12 @@ export function resolveLegacySandboxDispatch(
   if (action === "channels") {
     const subcommand = actionArgs[0] ?? "";
     if (!CHANNEL_SUBCOMMANDS.has(subcommand)) {
-      return {
-        kind: "unknownSubcommand",
-        command: "channels",
-        subcommand,
-        usageLines: parentUsageLines("channels"),
-      };
+      return parentHelp("channels", `Unknown channels subcommand: ${subcommand}`);
     }
   }
 
   if (action === "config" || action === "shields") {
-    return { kind: "usageError", lines: parentUsageLines(action) };
+    return parentHelp(action);
   }
 
   if (action === "share" && hasHelpFlag(actionArgs)) {

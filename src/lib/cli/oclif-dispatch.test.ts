@@ -186,36 +186,39 @@ describe("resolveLegacySandboxDispatch", () => {
     });
   });
 
-  it("derives legacy usage errors for config and shields groups from command metadata", () => {
+  it("returns metadata-derived parent help for config and shields groups", () => {
     expect(resolveLegacySandboxDispatch("alpha", "config", ["bogus"])).toEqual({
-      kind: "usageError",
-      lines: [
-        "config get [--key <dotpath>] [--format json|yaml]",
-        "config set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]",
-        "config rotate-token",
+      kind: "help",
+      commandId: "sandbox:config",
+      publicUsage: [
+        "<name> config get [--key <dotpath>] [--format json|yaml]",
+        "<name> config set --key <dotpath> --value <value> [--restart] [--config-accept-new-path]",
+        "<name> config rotate-token",
       ],
     });
     expect(resolveLegacySandboxDispatch("alpha", "shields", ["bogus"])).toEqual({
-      kind: "usageError",
-      lines: [
-        "shields down [--timeout 5m] [--reason <text>] [--policy permissive]",
-        "shields up",
-        "shields status",
+      kind: "help",
+      commandId: "sandbox:shields",
+      publicUsage: [
+        "<name> shields down [--timeout 5m] [--reason <text>] [--policy permissive]",
+        "<name> shields up",
+        "<name> shields status",
       ],
     });
   });
 
   it("reports channel subcommand and action errors", () => {
     expect(resolveLegacySandboxDispatch("alpha", "channels", ["bogus"])).toEqual({
-      kind: "unknownSubcommand",
-      command: "channels",
-      subcommand: "bogus",
-      usageLines: [
-        "channels list",
-        "channels add <channel> [--dry-run]",
-        "channels remove <channel> [--dry-run]",
-        "channels stop <channel> [--dry-run]",
-        "channels start <channel> [--dry-run]",
+      kind: "help",
+      commandId: "sandbox:channels",
+      exitCode: 1,
+      message: "Unknown channels subcommand: bogus",
+      publicUsage: [
+        "<name> channels list",
+        "<name> channels add <channel> [--dry-run]",
+        "<name> channels remove <channel> [--dry-run]",
+        "<name> channels stop <channel> [--dry-run]",
+        "<name> channels start <channel> [--dry-run]",
       ],
     });
     expect(resolveLegacySandboxDispatch("alpha", "bogus", [])).toEqual({

@@ -14,6 +14,8 @@ type PublicHelpCommand = OclifCommandMetadata & {
   id: string;
 };
 
+export type PublicUsage = string | readonly string[];
+
 class PublicUsageCommandHelp extends CommandHelp {
   public constructor(command: PublicHelpCommand, publicUsage: string) {
     super(
@@ -94,14 +96,30 @@ function toPublicHelpCommand(
   };
 }
 
-export function renderPublicOclifHelp(commandId: string, publicUsage: string): void {
-  const metadata = getRegisteredOclifCommandMetadata(commandId);
-  if (!metadata || commandId === "sandbox:share") {
-    console.log(`\n  Usage: ${CLI_NAME} ${publicUsage}`);
+function renderFallbackUsage(publicUsage: PublicUsage, log: (message?: string) => void): void {
+  const usages = Array.isArray(publicUsage) ? publicUsage : [publicUsage];
+  if (usages.length === 1) {
+    log(`\n  Usage: ${CLI_NAME} ${usages[0]}`);
     return;
   }
 
-  console.log(
+  log("\n  Usage:");
+  for (const usage of usages) log(`    ${CLI_NAME} ${usage}`);
+}
+
+export function renderPublicOclifHelp(
+  commandId: string,
+  publicUsage: PublicUsage,
+  options: { error?: boolean } = {},
+): void {
+  const log = options.error ? console.error : console.log;
+  const metadata = getRegisteredOclifCommandMetadata(commandId);
+  if (!metadata || commandId === "sandbox:share" || typeof publicUsage !== "string") {
+    renderFallbackUsage(publicUsage, log);
+    return;
+  }
+
+  log(
     new PublicUsageCommandHelp(toPublicHelpCommand(commandId, metadata, publicUsage), publicUsage).generate(),
   );
 }
