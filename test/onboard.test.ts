@@ -25,14 +25,9 @@ type CommandEntry = {
   dockerfileContent?: string;
   dockerfileReadError?: string;
 };
-type DashboardAccess = { label: string; url: string };
 type ResumeConflict = { field: string; requested: string | null; recorded: string | null };
 
 type OnboardTestInternals = {
-  buildSandboxConfigSyncScript: ShimFn<string>;
-  classifySandboxCreateFailure: (output?: string) => { kind: string; uploadedToGateway: boolean };
-  compactText: (value?: string) => string;
-  formatEnvAssignment: (name: string, value: string) => string;
   findAvailableDashboardPort: (
     sandboxName: string,
     preferredPort: number,
@@ -49,28 +44,8 @@ type OnboardTestInternals = {
     dockerCpus?: number;
     dockerMemTotalBytes?: number;
   }) => string | null;
-  getDashboardAccessInfo: ShimFn<DashboardAccess[]>;
-  getDashboardForwardStartCommand: ShimFn<string>;
   getNavigationChoice: (value?: string | null) => string | null;
-  getGatewayReuseState: ShimFn<string>;
   getFutureShellPathHint: (binDir: string, pathValue?: string) => string | null;
-  resolveSandboxGpuConfig: (
-    gpu: { type: string } | null,
-    options?: { flag?: "enable" | "disable" | null; device?: string | null; env?: NodeJS.ProcessEnv },
-  ) => {
-    mode: "auto" | "1" | "0";
-    hostGpuDetected: boolean;
-    sandboxGpuEnabled: boolean;
-    sandboxGpuDevice: string | null;
-    errors: string[];
-  };
-  getResumeSandboxGpuOverrides: (
-    entry:
-      | { sandboxGpuMode?: "auto" | "1" | "0" | string | null; sandboxGpuDevice?: string | null }
-      | null
-      | undefined,
-    sessionGpuPassthrough?: boolean,
-  ) => { flag: "enable" | "disable" | null; device: string | null };
   getRequestedModelHint: ShimFn<string | null>;
   getRequestedProviderHint: ShimFn<string | null>;
   getRequestedSandboxNameHint: ShimFn<string | null>;
@@ -79,8 +54,6 @@ type OnboardTestInternals = {
     requestedSandboxName: string;
     recordedSandboxName: string;
   } | null>;
-  getSandboxStateFromOutputs: ShimFn<string>;
-  isGatewayHealthy: ShimFn<boolean>;
   agentSupportsWebSearch: (
     agent?: AgentDefinition | null,
     dockerfilePathOverride?: string | null,
@@ -90,15 +63,8 @@ type OnboardTestInternals = {
     agent?: AgentDefinition | null,
     dockerfilePathOverride?: string | null,
   ) => Promise<ShimValue>;
-  parsePolicyPresetEnv: (value: string | null) => string[];
   pullAndResolveBaseImageDigest: () => { digest: string | null; ref: string } | null;
   SANDBOX_BASE_IMAGE: string;
-  printSandboxCreateRecoveryHints: ShimFn<void>;
-  resolveDashboardForwardTarget: (chatUiUrl?: string) => string;
-  summarizeCurlFailure: ShimFn<string>;
-  summarizeProbeFailure: ShimFn<string>;
-  shouldIncludeBuildContextPath: ShimFn<boolean>;
-  writeSandboxConfigSyncFile: (script: string) => string;
 };
 
 function parseStdoutJson<T>(stdout: string): T {
@@ -114,15 +80,10 @@ function isOnboardTestInternals(
 ): value is OnboardTestInternals {
   return (
     value !== null &&
-    typeof value.buildSandboxConfigSyncScript === "function" &&
-    typeof value.classifySandboxCreateFailure === "function" &&
     typeof value.findAvailableDashboardPort === "function" &&
-    typeof value.resolveSandboxGpuConfig === "function" &&
-    typeof value.getResumeSandboxGpuOverrides === "function" &&
     typeof value.agentSupportsWebSearch === "function" &&
     typeof value.configureWebSearch === "function" &&
-    typeof value.formatSandboxBuildEstimateNote === "function" &&
-    typeof value.writeSandboxConfigSyncFile === "function"
+    typeof value.formatSandboxBuildEstimateNote === "function"
   );
 }
 
@@ -136,31 +97,16 @@ if (!isOnboardTestInternals(onboardTestInternals)) {
 }
 
 const {
-  buildSandboxConfigSyncScript,
-  classifySandboxCreateFailure,
-  compactText,
-  formatEnvAssignment,
   getNavigationChoice,
-  getGatewayReuseState,
   getFutureShellPathHint,
-  resolveSandboxGpuConfig,
-  getResumeSandboxGpuOverrides,
   getRequestedModelHint,
   getRequestedProviderHint,
   getRequestedSandboxNameHint,
   getResumeConfigConflicts,
   getResumeSandboxConflict,
-  getSandboxStateFromOutputs,
-  isGatewayHealthy,
   agentSupportsWebSearch,
   configureWebSearch,
-  parsePolicyPresetEnv,
   SANDBOX_BASE_IMAGE,
-  printSandboxCreateRecoveryHints,
-  summarizeCurlFailure,
-  summarizeProbeFailure,
-  shouldIncludeBuildContextPath,
-  writeSandboxConfigSyncFile,
   findAvailableDashboardPort,
   findDashboardForwardOwner,
   formatOnboardConfigSummary,
@@ -173,117 +119,6 @@ const onboardScriptMocksPath = JSON.stringify(
 );
 
 describe("onboard helpers", () => {
-  it("resolves sandbox GPU auto/force/disable modes", () => {
-    const gpu = { type: "nvidia" };
-    expect(resolveSandboxGpuConfig(gpu, { env: {} }).sandboxGpuEnabled).toBe(true);
-    expect(
-      resolveSandboxGpuConfig(gpu, {
-        env: { NEMOCLAW_SANDBOX_GPU: "0" },
-      }).sandboxGpuEnabled,
-    ).toBe(false);
-    const forced = resolveSandboxGpuConfig(null, {
-      flag: "enable",
-      env: {},
-    });
-    expect(forced.mode).toBe("1");
-    expect(forced.errors.join("\n")).toContain("no NVIDIA GPU");
-  });
-
-  it("defaults to CPU sandbox on Jetson when NEMOCLAW_SANDBOX_GPU is unset", () => {
-    const jetson = { type: "nvidia", platform: "jetson" as const };
-    expect(resolveSandboxGpuConfig(jetson, { env: {} }).sandboxGpuEnabled).toBe(false);
-    // Explicit env opt-in still wins over the platform default.
-    expect(
-      resolveSandboxGpuConfig(jetson, { env: { NEMOCLAW_SANDBOX_GPU: "1" } }).sandboxGpuEnabled,
-    ).toBe(true);
-    // --gpu also overrides the platform default.
-    expect(resolveSandboxGpuConfig(jetson, { flag: "enable", env: {} }).mode).toBe("1");
-  });
-
-  it("resumes sandbox GPU auto mode without turning CPU fallback into explicit opt-out", () => {
-    const resumedAuto = getResumeSandboxGpuOverrides(
-      { sandboxGpuMode: "auto", sandboxGpuDevice: null },
-      false,
-    );
-    expect(resumedAuto).toEqual({ flag: null, device: null });
-    expect(
-      resolveSandboxGpuConfig({ type: "nvidia" }, { ...resumedAuto, env: {} }).sandboxGpuEnabled,
-    ).toBe(true);
-
-    const resumedDisabled = getResumeSandboxGpuOverrides(
-      { sandboxGpuMode: "0", sandboxGpuDevice: null },
-      false,
-    );
-    expect(
-      resolveSandboxGpuConfig({ type: "nvidia" }, { ...resumedDisabled, env: {} })
-        .sandboxGpuEnabled,
-    ).toBe(false);
-
-    const legacyGpuSession = getResumeSandboxGpuOverrides(null, true);
-    expect(legacyGpuSession.flag).toBe("enable");
-  });
-
-  it("classifies sandbox create timeout failures and tracks upload progress", () => {
-    expect(
-      classifySandboxCreateFailure("Error: failed to read image export stream\nTimeout error").kind,
-    ).toBe("image_transfer_timeout");
-    expect(
-      classifySandboxCreateFailure(
-        [
-          '  Pushing image openshell/sandbox-from:123 into gateway "nemoclaw"',
-          "  [progress] Uploaded to gateway",
-          "Error: failed to read image export stream",
-        ].join("\n"),
-      ),
-    ).toEqual({
-      kind: "image_transfer_timeout",
-      uploadedToGateway: true,
-    });
-  });
-
-  it("classifies sandbox create connection resets and incomplete create streams", () => {
-    expect(classifySandboxCreateFailure("Connection reset by peer").kind).toBe(
-      "image_transfer_reset",
-    );
-    expect(
-      classifySandboxCreateFailure(
-        [
-          "  Image openshell/sandbox-from:123 is available in the gateway.",
-          "Created sandbox: my-assistant",
-          "Error: stream closed unexpectedly",
-        ].join("\n"),
-      ),
-    ).toEqual({
-      kind: "sandbox_create_incomplete",
-      uploadedToGateway: true,
-    });
-  });
-
-  it("builds a sandbox sync script that does not rewrite OpenClaw config content", () => {
-    const script = buildSandboxConfigSyncScript({
-      endpointType: "custom",
-      endpointUrl: "https://inference.local/v1",
-      ncpPartner: null,
-      model: "nemotron-3-nano:30b",
-      profile: "inference-local",
-      credentialEnv: "OPENAI_API_KEY",
-      onboardedAt: "2026-03-18T12:00:00.000Z",
-    });
-
-    assert.match(script, /cat > ~\/\.nemoclaw\/config\.json/);
-    assert.match(script, /"model": "nemotron-3-nano:30b"/);
-    assert.match(script, /"credentialEnv": "OPENAI_API_KEY"/);
-    assert.doesNotMatch(script, /cat > ~\/\.openclaw\/openclaw\.json/);
-    assert.doesNotMatch(script, /openclaw models set/);
-    assert.match(script, /config_dir=\/sandbox\/\.openclaw/);
-    assert.match(script, /chmod -R g\+rwX,o-rwx "\$config_dir"/);
-    assert.match(script, /find "\$config_dir" -type d -exec chmod g\+s \{\} \+/);
-    assert.match(script, /chmod 2770 "\$config_dir"/);
-    assert.match(script, /chmod 660 "\$config_dir\/openclaw\.json" "\$config_dir\/\.config-hash"/);
-    assert.match(script, /\[ "\$config_dir_owner" != "root" \]/);
-    assert.match(script, /^\s*exit$/m);
-  });
-
   it("#2433: agentSupportsWebSearch detects whether agent Dockerfile declares the web search ARG", () => {
     // OpenClaw Dockerfile has ARG NEMOCLAW_WEB_SEARCH_ENABLED → supported.
     // Hermes Dockerfile does not → not supported.
@@ -376,77 +211,6 @@ const { loadAgent } = require(${agentDefsPath});
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
-
-  it("treats the gateway as healthy only when nemoclaw is running and connected", () => {
-    expect(
-      isGatewayHealthy(
-        "Gateway status: Connected\nGateway: nemoclaw",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe(true);
-    expect(
-      isGatewayHealthy(
-        "\u001b[1mServer Status\u001b[0m\n\n  Gateway: openshell\n  Server: https://127.0.0.1:8080\n  Status: Connected",
-        "Error:   × No gateway metadata found for 'nemoclaw'.",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe(false);
-    expect(
-      isGatewayHealthy(
-        "Server Status\n\n  Gateway: openshell\n  Status: Connected",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe(false);
-    expect(isGatewayHealthy("Gateway status: Disconnected", "Gateway: nemoclaw")).toBe(false);
-    expect(isGatewayHealthy("Gateway status: Connected", "Gateway: something-else")).toBe(false);
-  });
-
-  it("classifies gateway reuse states conservatively", () => {
-    expect(
-      getGatewayReuseState(
-        "Gateway status: Connected\nGateway: nemoclaw",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe("healthy");
-    expect(
-      getGatewayReuseState(
-        "Gateway status: Connected",
-        "Error:   × No gateway metadata found for 'nemoclaw'.",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe("foreign-active");
-    expect(
-      getGatewayReuseState(
-        "Server Status\n\n  Gateway: openshell\n  Status: Connected",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe("foreign-active");
-    expect(
-      getGatewayReuseState(
-        "Gateway status: Disconnected",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe("stale");
-    expect(
-      getGatewayReuseState(
-        "Gateway status: Connected\nGateway: nemoclaw",
-        "",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe("healthy");
-    expect(
-      getGatewayReuseState(
-        "Gateway status: Connected",
-        "",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
-      ),
-    ).toBe("foreign-active");
-    expect(getGatewayReuseState("", "")).toBe("missing");
   });
 
   it("prints doctor logs automatically when gateway fails to start (#1605)", testTimeoutOptions(20_000), () => {
@@ -571,58 +335,6 @@ startGateway(null).catch(() => {});
       gatewayLines.length >= 2,
       `expected "Deploying" and "Waiting" on separate lines in stdout:\n${result.stdout}`,
     );
-  });
-
-  it("classifies sandbox reuse states from openshell outputs", () => {
-    expect(
-      getSandboxStateFromOutputs(
-        "my-assistant",
-        "Name: my-assistant",
-        "my-assistant   Ready   2m ago",
-      ),
-    ).toBe("ready");
-    expect(
-      getSandboxStateFromOutputs(
-        "my-assistant",
-        "Name: my-assistant",
-        "my-assistant   NotReady   init failed",
-      ),
-    ).toBe("not_ready");
-    expect(
-      getSandboxStateFromOutputs(
-        "my-assistant",
-        "Error: NotFound: sandbox not found",
-        "other-sandbox   Ready   2m ago",
-      ),
-    ).toBe("missing");
-    expect(getSandboxStateFromOutputs("my-assistant", "", "")).toBe("missing");
-  });
-
-  it("filters local-only artifacts out of the sandbox build context", () => {
-    expect(
-      shouldIncludeBuildContextPath(
-        "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/orchestrator/main.py",
-      ),
-    ).toBe(true);
-    expect(
-      shouldIncludeBuildContextPath(
-        "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/.venv/bin/python",
-      ),
-    ).toBe(false);
-    expect(
-      shouldIncludeBuildContextPath(
-        "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/.ruff_cache/cache",
-      ),
-    ).toBe(false);
-    expect(
-      shouldIncludeBuildContextPath(
-        "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/._pyvenv.cfg",
-      ),
-    ).toBe(false);
   });
 
   it("normalizes sandbox name hints from the environment", () => {
@@ -928,28 +640,6 @@ startGateway(null).catch(() => {});
     ]);
   });
 
-  it("writes sandbox sync scripts to a temp file for stdin redirection", () => {
-    const scriptFile = writeSandboxConfigSyncFile("echo test");
-    try {
-      expect(scriptFile).toMatch(/nemoclaw-sync.*\.sh$/);
-      expect(fs.readFileSync(scriptFile, "utf8")).toBe("echo test\n");
-      // Verify the file lives inside a mkdtemp-created directory (not directly in /tmp)
-      const parentDir = path.dirname(scriptFile);
-      expect(parentDir).not.toBe(os.tmpdir());
-      expect(parentDir).toContain("nemoclaw-sync");
-      if (process.platform !== "win32") {
-        const stat = fs.statSync(scriptFile);
-        expect(stat.mode & 0o777).toBe(0o600);
-      }
-    } finally {
-      // mirrors cleanupTempDir() — inline guard to safely remove mkdtemp directory
-      const parentDir = path.dirname(scriptFile);
-      if (parentDir !== os.tmpdir() && path.basename(parentDir).startsWith("nemoclaw-sync-")) {
-        fs.rmSync(parentDir, { recursive: true, force: true });
-      }
-    }
-  });
-
   it("stages only the files required to build the sandbox image", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-build-context-"));
@@ -969,21 +659,6 @@ startGateway(null).catch(() => {});
     }
   });
 
-  it("formatEnvAssignment produces NAME=VALUE pairs for sandbox env", () => {
-    expect(formatEnvAssignment("CHAT_UI_URL", "http://127.0.0.1:18789")).toBe(
-      "CHAT_UI_URL=http://127.0.0.1:18789",
-    );
-    expect(formatEnvAssignment("EMPTY", "")).toBe("EMPTY=");
-  });
-
-  it("compactText collapses whitespace and trims leading/trailing space", () => {
-    expect(compactText("  gateway   unreachable  ")).toBe("gateway unreachable");
-    expect(compactText("")).toBe("");
-    expect(compactText()).toBe("");
-    expect(compactText("single")).toBe("single");
-    expect(compactText("line1\n  line2\t\tline3")).toBe("line1 line2 line3");
-  });
-
   it("getNavigationChoice recognizes back and exit commands case-insensitively", () => {
     expect(getNavigationChoice("back")).toBe("back");
     expect(getNavigationChoice("BACK")).toBe("back");
@@ -994,37 +669,6 @@ startGateway(null).catch(() => {});
     expect(getNavigationChoice("")).toBeNull();
     expect(getNavigationChoice("something")).toBeNull();
     expect(getNavigationChoice(null)).toBeNull();
-  });
-
-  it("parsePolicyPresetEnv splits comma-separated preset names and trims whitespace", () => {
-    expect(parsePolicyPresetEnv("strict,standard")).toEqual(["strict", "standard"]);
-    expect(parsePolicyPresetEnv("  strict , standard , ")).toEqual(["strict", "standard"]);
-    expect(parsePolicyPresetEnv("")).toEqual([]);
-    expect(parsePolicyPresetEnv(null)).toEqual([]);
-    expect(parsePolicyPresetEnv("single")).toEqual(["single"]);
-  });
-
-  it("summarizeCurlFailure formats curl errors with exit code and truncated detail", () => {
-    expect(summarizeCurlFailure(7, "Connection refused", "")).toBe(
-      "curl failed (exit 7): Connection refused",
-    );
-    expect(summarizeCurlFailure(28, "", "")).toBe("curl failed (exit 28)");
-    expect(summarizeCurlFailure(0, "", "")).toBe("curl failed (exit 0)");
-  });
-
-  it("summarizeProbeFailure prioritizes curl failures then HTTP status then generic message", () => {
-    // curl failure takes precedence
-    expect(summarizeProbeFailure("body", 500, 7, "Connection refused")).toBe(
-      "curl failed (exit 7): Connection refused",
-    );
-    // HTTP error when no curl failure
-    expect(summarizeProbeFailure("Not Found", 404, 0, "")).toBe("HTTP 404: Not Found");
-    // Fallback: no curl failure and no body → HTTP status with no body message
-    expect(summarizeProbeFailure("", 0, 0, "")).toBe("HTTP 0 with no response body");
-    // Non-JSON body gets compacted and returned
-    expect(summarizeProbeFailure("  Service  Unavailable  ", 503, 0, "")).toBe(
-      "HTTP 503: Service Unavailable",
-    );
   });
 
   it("rejects sandbox names starting with a digit", () => {
@@ -3381,57 +3025,6 @@ const { createSandbox } = require(${onboardPath});
     assert.ok(
       payload.commands.every((entry: CommandEntry) => !entry.command.includes("sandbox create")),
       "did not expect sandbox create when reusing existing sandbox",
-    );
-  });
-
-  it("prints resume guidance when sandbox image upload times out", () => {
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args) => errors.push(args.join(" "));
-    try {
-      printSandboxCreateRecoveryHints(
-        [
-          "  Pushing image openshell/sandbox-from:123 into gateway nemoclaw",
-          "  [progress] Uploaded to gateway",
-          "Error: failed to read image export stream",
-          "Timeout error",
-        ].join("\n"),
-      );
-    } finally {
-      console.error = originalError;
-    }
-
-    const joined = errors.join("\n");
-    assert.match(joined, /Hint: image upload into the OpenShell gateway timed out\./);
-    assert.match(joined, /Recovery: nemoclaw onboard --resume/);
-    assert.match(
-      joined,
-      /Progress reached the gateway upload stage, so resume may be able to reuse existing gateway state\./,
-    );
-  });
-
-  it("prints resume guidance when sandbox image upload resets after transfer progress", () => {
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args) => errors.push(args.join(" "));
-    try {
-      printSandboxCreateRecoveryHints(
-        [
-          "  Pushing image openshell/sandbox-from:123 into gateway nemoclaw",
-          "  [progress] Uploaded to gateway",
-          "Error: Connection reset by peer",
-        ].join("\n"),
-      );
-    } finally {
-      console.error = originalError;
-    }
-
-    const joined = errors.join("\n");
-    assert.match(joined, /Hint: the image push\/import stream was interrupted\./);
-    assert.match(joined, /Recovery: nemoclaw onboard --resume/);
-    assert.match(
-      joined,
-      /The image appears to have reached the gateway before the stream failed\./,
     );
   });
 

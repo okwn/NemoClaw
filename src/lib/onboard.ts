@@ -341,7 +341,12 @@ import type {
   OpenShellInstallResult,
 } from "./onboard/openshell-install";
 import { decidePolicyCarryForward } from "./onboard/policy-carryforward";
-import { resolveSandboxGpuMode, type SandboxGpuFlag, type SandboxGpuMode } from "./onboard/sandbox-gpu-mode";
+import {
+  getResumeSandboxGpuOverrides,
+  resolveSandboxGpuConfig,
+  type SandboxGpuConfig,
+  type SandboxGpuFlag,
+} from "./onboard/sandbox-gpu-mode";
 import type { SelectionDrift } from "./onboard/selection-drift";
 import type {
   ModelValidationResult,
@@ -1211,74 +1216,6 @@ function shouldAllowOpenshellAboveBlueprintMax(
   return shouldUseOpenshellDevChannel(platform, env) && isOpenshellDevVersion(versionOutput);
 }
 
-type SandboxGpuConfig = {
-  mode: SandboxGpuMode;
-  hostGpuDetected: boolean;
-  sandboxGpuEnabled: boolean;
-  sandboxGpuDevice: string | null;
-  errors: string[];
-};
-
-type ResumeSandboxGpuOverrides = {
-  flag: SandboxGpuFlag;
-  device: string | null;
-};
-
-function isNvidiaGpuDetected(gpu: ReturnType<typeof nim.detectGpu>): boolean {
-  return Boolean(gpu && gpu.type === "nvidia");
-}
-
-function normalizeSandboxGpuMode(value: string | null | undefined): SandboxGpuMode | null {
-  const raw = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (!raw) return null;
-  if (raw === "auto") return "auto";
-  if (raw === "1" || raw === "true" || raw === "yes" || raw === "on") return "1";
-  if (raw === "0" || raw === "false" || raw === "no" || raw === "off") return "0";
-  return null;
-}
-
-function resolveSandboxGpuConfig(
-  gpu: ReturnType<typeof nim.detectGpu>,
-  options: {
-    flag?: SandboxGpuFlag;
-    device?: string | null;
-    env?: NodeJS.ProcessEnv;
-  } = {},
-): SandboxGpuConfig {
-  const env = options.env ?? process.env;
-  const errors: string[] = [];
-  const envModeRaw = env.NEMOCLAW_SANDBOX_GPU;
-  const envMode = normalizeSandboxGpuMode(envModeRaw);
-  if (envModeRaw !== undefined && envMode === null) {
-    errors.push("NEMOCLAW_SANDBOX_GPU must be one of: auto, 1, 0.");
-  }
-
-  let mode = resolveSandboxGpuMode({ envMode, gpu, flag: options.flag });
-
-  const device = (options.device ?? env.NEMOCLAW_SANDBOX_GPU_DEVICE ?? "").trim() || null;
-  if (device && mode === "0") {
-    errors.push("NEMOCLAW_SANDBOX_GPU_DEVICE cannot be used when sandbox GPU mode is 0.");
-  }
-  if (device && options.flag !== "disable" && envMode !== "0") {
-    mode = "1";
-  }
-
-  const hostGpuDetected = isNvidiaGpuDetected(gpu);
-  if (mode === "1" && !hostGpuDetected) {
-    errors.push("Sandbox GPU was requested, but no NVIDIA GPU was detected on the host.");
-  }
-
-  return {
-    mode,
-    hostGpuDetected,
-    sandboxGpuEnabled: mode === "1" || (mode === "auto" && hostGpuDetected),
-    sandboxGpuDevice: device,
-    errors,
-  };
-}
-
 function resolveSandboxGpuFlagFromOptions(
   opts: Pick<OnboardOptions, "sandboxGpu" | "gpu" | "noGpu">,
 ): SandboxGpuFlag {
@@ -1300,26 +1237,6 @@ function resolveSandboxGpuFlagFromOptions(
   if (requestedGpuPassthrough) return "enable";
   if (optedOutGpuPassthrough) return "disable";
   return null;
-}
-
-function getResumeSandboxGpuOverrides(
-  entry: Pick<SandboxEntry, "sandboxGpuMode" | "sandboxGpuDevice"> | null | undefined,
-  sessionGpuPassthrough: boolean | undefined,
-): ResumeSandboxGpuOverrides {
-  const recordedMode = normalizeSandboxGpuMode(entry?.sandboxGpuMode);
-  if (recordedMode === "1") {
-    return { flag: "enable", device: entry?.sandboxGpuDevice || null };
-  }
-  if (recordedMode === "0") {
-    return { flag: "disable", device: null };
-  }
-  if (recordedMode === "auto") {
-    return { flag: null, device: null };
-  }
-  if (sessionGpuPassthrough === true) {
-    return { flag: "enable", device: entry?.sandboxGpuDevice || null };
-  }
-  return { flag: null, device: null };
 }
 
 function sandboxGpuRemediationLines(): string[] {
