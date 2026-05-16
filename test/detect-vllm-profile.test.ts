@@ -10,7 +10,7 @@ describe("detectVllmProfile", () => {
     const profile = detectVllmProfile({ platform: "spark", type: "nvidia" });
     expect(profile).not.toBeNull();
     expect(profile!.name).toBe("DGX Spark");
-    expect(profile!.model).toBe("Qwen/Qwen3.6-27B-FP8");
+    expect(profile!.defaultModel.id).toBe("Qwen/Qwen3.6-27B-FP8");
   });
 
   it("returns the Spark profile when legacy gpu.spark is true", () => {
@@ -29,7 +29,7 @@ describe("detectVllmProfile", () => {
     const profile = detectVllmProfile({ type: "nvidia" });
     expect(profile).not.toBeNull();
     expect(profile!.name).toBe("Linux + NVIDIA GPU");
-    expect(profile!.model).toContain("Nemotron-3-Nano-4B");
+    expect(profile!.defaultModel.id).toContain("Nemotron-3-Nano-4B");
   });
 
   it("prefers Spark over generic when both flags qualify", () => {

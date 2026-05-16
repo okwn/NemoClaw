@@ -9,6 +9,14 @@ const { runCapture, runShell } = require("../runner");
 const { dockerCapture, dockerSpawn } = require("../adapters/docker");
 const { VLLM_PORT } = require("../core/ports");
 const { getGpuIndicesByName } = require("./nim");
+import {
+  DEFAULT_VLLM_MODEL,
+  VLLM_MODELS,
+  assertGatedModelAccess,
+  buildVllmServeCommand,
+  selectVllmModelFromEnv,
+  type VllmModelDef,
+} from "./vllm-models";
 
 // Per-platform install recipe. Add new platforms by appending an entry to
 // the profile table at the bottom of this file. The menu key in onboard.ts
@@ -16,7 +24,11 @@ const { getGpuIndicesByName } = require("./nim");
 interface VllmProfile {
   name: string;            // human label, e.g. "DGX Spark"
   image: string;           // container image
-  model: string;           // model id pulled at first run
+  // Default model when NEMOCLAW_VLLM_MODEL is unset. Per-platform default
+  // because Spark/Station can host a 27B model, but generic discrete-GPU
+  // Linux falls back to the small Nemotron-Nano-4B that fits on consumer
+  // cards.
+  defaultModel: VllmModelDef;
   containerName: string;
   // docker run flags excluding the image and the entrypoint command. The
   // caller appends -p / --name / etc. that are not platform-specific.
@@ -25,8 +37,6 @@ interface VllmProfile {
   // dockerRunFlags at install time. Used by Station to pick the GB300 GPU
   // out of a mixed-GPU host instead of using `--gpus all`.
   buildDockerRunFlags?: () => string[];
-  // bash -c command passed to docker run (pip install + vllm serve …)
-  command: string;
   // Approximate first-run time shown in the confirmation prompt.
   estimatedMinutes: string;
   // Image-pull deadline. First run on a slow link can be several minutes.
@@ -43,10 +53,16 @@ interface VllmProfile {
   loadTimeoutSec: number;
 }
 
+function nemotronNanoModel(): VllmModelDef {
+  const match = VLLM_MODELS.find((m) => m.envValue === "nemotron-3-nano-4b");
+  if (!match) throw new Error("vllm-models registry is missing the nemotron-3-nano-4b entry");
+  return match;
+}
+
 const SPARK_PROFILE: VllmProfile = {
   name: "DGX Spark",
   image: "nvcr.io/nvidia/vllm:26.03.post1-py3",
-  model: "Qwen/Qwen3.6-27B-FP8",
+  defaultModel: DEFAULT_VLLM_MODEL,
   containerName: "nemoclaw-vllm",
   dockerRunFlags: [
     "--gpus",
@@ -57,21 +73,6 @@ const SPARK_PROFILE: VllmProfile = {
     "-e",
     "HF_HOME=/root/.cache/huggingface",
   ],
-  command:
-    "pip install vllm[fastsafetensors] && vllm serve Qwen/Qwen3.6-27B-FP8 " +
-    "--gpu-memory-utilization 0.7 " +
-    "--tensor-parallel-size 1 " +
-    "--pipeline-parallel-size 1 " +
-    "--data-parallel-size 1 " +
-    "--max-model-len 262144 " +
-    "--port 8000 " +
-    "--max-num-seqs 4 " +
-    "--trust-remote-code " +
-    "--reasoning-parser qwen3 " +
-    "--enable-auto-tool-choice " +
-    "--tool-call-parser qwen3_coder " +
-    "--load-format fastsafetensors " +
-    "--enable-prefix-caching",
   estimatedMinutes: "10–30 minutes",
   pullTimeoutSec: 900,
   loadTimeoutSec: 1800,
@@ -98,7 +99,7 @@ const SPARK_PROFILE: VllmProfile = {
 const STATION_PROFILE: VllmProfile = {
   name: "DGX Station",
   image: SPARK_PROFILE.image,
-  model: SPARK_PROFILE.model,
+  defaultModel: SPARK_PROFILE.defaultModel,
   containerName: "nemoclaw-vllm",
   dockerRunFlags: SPARK_PROFILE.dockerRunFlags,
   buildDockerRunFlags: () => {
@@ -119,7 +120,6 @@ const STATION_PROFILE: VllmProfile = {
       "HF_HOME=/root/.cache/huggingface",
     ];
   },
-  command: SPARK_PROFILE.command,
   estimatedMinutes: SPARK_PROFILE.estimatedMinutes,
   pullTimeoutSec: SPARK_PROFILE.pullTimeoutSec,
   loadTimeoutSec: SPARK_PROFILE.loadTimeoutSec,
@@ -133,18 +133,9 @@ const STATION_PROFILE: VllmProfile = {
 const GENERIC_LINUX_PROFILE: VllmProfile = {
   name: "Linux + NVIDIA GPU",
   image: SPARK_PROFILE.image,
-  model: "nvidia/NVIDIA-Nemotron-3-Nano-4B-FP8",
+  defaultModel: nemotronNanoModel(),
   containerName: "nemoclaw-vllm",
   dockerRunFlags: SPARK_PROFILE.dockerRunFlags,
-  command:
-    "pip install vllm[fastsafetensors] && " +
-    "vllm serve nvidia/NVIDIA-Nemotron-3-Nano-4B-FP8 " +
-    "--gpu-memory-utilization 0.7 " +
-    "--tensor-parallel-size 1 " +
-    "--pipeline-parallel-size 1 " +
-    "--data-parallel-size 1 " +
-    "--max-model-len 262000 " +
-    "--port 8000 --trust-remote-code --load-format fastsafetensors",
   estimatedMinutes: SPARK_PROFILE.estimatedMinutes,
   pullTimeoutSec: SPARK_PROFILE.pullTimeoutSec,
   loadTimeoutSec: SPARK_PROFILE.loadTimeoutSec,
@@ -205,8 +196,11 @@ function pullImage(profile: VllmProfile): { ok: boolean; reason?: string } {
 }
 
 // Run `hf download <model>` inside a one-shot container of the same image.
-function downloadModel(profile: VllmProfile): Promise<{ ok: boolean; reason?: string }> {
-  emit(`Pre-downloading model with hf: ${profile.model}`);
+function downloadModel(
+  profile: VllmProfile,
+  model: VllmModelDef,
+): Promise<{ ok: boolean; reason?: string }> {
+  emit(`Pre-downloading model with hf: ${model.id}`);
   return new Promise((resolve) => {
     const proc = dockerSpawn(
       [
@@ -219,7 +213,7 @@ function downloadModel(profile: VllmProfile): Promise<{ ok: boolean; reason?: st
         profile.image,
         "hf",
         "download",
-        profile.model,
+        model.id,
       ],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
@@ -278,7 +272,10 @@ function downloadModel(profile: VllmProfile): Promise<{ ok: boolean; reason?: st
   });
 }
 
-function startContainer(profile: VllmProfile): { ok: boolean; reason?: string } {
+function startContainer(
+  profile: VllmProfile,
+  model: VllmModelDef,
+): { ok: boolean; reason?: string } {
   emit(`Starting vLLM container (${profile.containerName})`);
   // Idempotent: tear down any prior container by the same name first.
   runShell(`docker rm -f ${profile.containerName}`, {
@@ -291,7 +288,7 @@ function startContainer(profile: VllmProfile): { ok: boolean; reason?: string } 
   const flags = resolvedFlags.join(" ");
   const cmd =
     `docker run -d ${flags} -p ${String(VLLM_PORT)}:8000 ` +
-    `--name ${profile.containerName} ${profile.image} bash -c ${JSON.stringify(profile.command)}`;
+    `--name ${profile.containerName} ${profile.image} bash -c ${JSON.stringify(buildVllmServeCommand(model))}`;
   const result = runShell(cmd, { ignoreError: true, suppressOutput: true });
   if (result.status !== 0) {
     return { ok: false, reason: `docker run failed (exit ${String(result.status)})` };
@@ -408,10 +405,24 @@ export async function installVllm(
   profile: VllmProfile,
   opts: InstallVllmOptions,
 ): Promise<{ ok: boolean }> {
+  // Resolve the model to serve: `NEMOCLAW_VLLM_MODEL` override if set, else
+  // the platform default. Validate gated-model access (HF_TOKEN required for
+  // models like DeepSeek-R1 Distill 70B) before touching docker so the user
+  // does not burn a multi-minute pull on a 401.
+  let model: VllmModelDef;
+  try {
+    const requested = selectVllmModelFromEnv();
+    model = requested.id === profile.defaultModel.id ? profile.defaultModel : requested;
+    assertGatedModelAccess(model);
+  } catch (err) {
+    console.error(`  vLLM install failed: ${(err as Error).message}`);
+    return { ok: false };
+  }
+
   console.log("");
   console.log(`  vLLM (${profile.name}):`);
   console.log(`    Image: ${profile.image}`);
-  console.log(`    Model: ${profile.model}`);
+  console.log(`    Model: ${model.id}${model.id === profile.defaultModel.id ? "" : " (NEMOCLAW_VLLM_MODEL override)"}`);
   if (!opts.hasImage) console.log("    Image download on first run, cached after");
   console.log("    Model download on first run, cached after");
   console.log("");
@@ -438,13 +449,13 @@ export async function installVllm(
     return { ok: false };
   }
 
-  const modelDownload = await downloadModel(profile);
+  const modelDownload = await downloadModel(profile, model);
   if (!modelDownload.ok) {
     console.error(`  vLLM install failed: ${String(modelDownload.reason)}`);
     return { ok: false };
   }
 
-  const start = startContainer(profile);
+  const start = startContainer(profile, model);
   if (!start.ok) {
     console.error(`  vLLM install failed: ${String(start.reason)}`);
     return { ok: false };
