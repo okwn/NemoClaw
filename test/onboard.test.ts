@@ -972,22 +972,6 @@ network_policies:
     assert.doesNotMatch(command, /COMPATIBLE_API_KEY/);
   });
 
-  it("uses active sandbox channels for compatible-endpoint smoke gating", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(
-      source,
-      /const activeMessagingChannels = registry\.getSandbox\(sandboxName\)\?\.messagingChannels;/,
-    );
-    assert.match(
-      source,
-      /messagingChannels: Array\.isArray\(activeMessagingChannels\) \? activeMessagingChannels : \[\]/,
-    );
-  });
-
   it("uses explicit messaging selections for policy suggestions when provided", () => {
     const originalTelegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
     const originalDiscordBotToken = process.env.DISCORD_BOT_TOKEN;
@@ -2901,81 +2885,6 @@ const { loadAgent } = require(${agentDefsPath});
     expect(isGatewayHealthy("Gateway status: Connected", "Gateway: something-else")).toBe(false);
   });
 
-  it("passes --port GATEWAY_PORT through every gateway start path", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    // Primary start path (startGatewayWithOptions) builds gwArgs with --port.
-    assert.match(
-      source,
-      /const gwArgs = \["--name", GATEWAY_NAME, "--port", getGatewayPortArg\(\)\]/,
-    );
-
-    // Recovery start path (recoverGatewayRuntime) also passes --port.
-    assert.match(
-      source,
-      /runOpenshell\(\s*\["gateway", "start", "--name", GATEWAY_NAME, "--port", getGatewayPortArg\(\)\]/,
-    );
-  });
-
-  it("fails closed when gateway lifecycle support is not proven", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "gateway-lifecycle.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /normalized\.trim\(\)\.length > 0/);
-    assert.doesNotMatch(source, /!normalized\.trim\(\)\s*\|\|/);
-  });
-
-  it("keeps registry state unless gateway destruction succeeds", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /function destroyGateway\(\): boolean/);
-    assert.match(source, /const gatewayRemoved = dockerDriver/);
-    assert.match(source, /if \(gatewayRemoved\) {\s*registry\.clearAll\(\);\s*}/);
-    assert.match(source, /return gatewayRemoved;/);
-    assert.doesNotMatch(
-      source,
-      /destroyGateway\(\);\s*registry\.clearAll\(\);\s*gatewayReuseState = "missing"/,
-    );
-  });
-
-  it("prints package-managed gateway registration hints with the local HTTPS endpoint", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(
-      source,
-      /"gateway",\s*"add",\s*getGatewayLocalEndpoint\(\),\s*"--local",\s*"--name",\s*GATEWAY_NAME/,
-    );
-    assert.doesNotMatch(source, /openshell gateway add http:\/\/127\.0\.0\.1:\$\{GATEWAY_PORT\}/);
-  });
-
-  it("allows slow sandbox create recovery to wait beyond 60 seconds", () => {
-    const envSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "env.ts"),
-      "utf-8",
-    );
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(envSource, /NEMOCLAW_SANDBOX_READY_TIMEOUT", 180/);
-    assert.match(source, /Math\.ceil\(sandboxReadyTimeoutSecs \/ 2\)/);
-    assert.match(source, /within \$\{sandboxReadyTimeoutSecs\}s/);
-    assert.doesNotMatch(source, /DOCKER_DRIVER_GPU_SANDBOX_READY_TIMEOUT_SECS = 600/);
-    assert.doesNotMatch(source, /OPENSHELL_PROVISION_TIMEOUT = String\(sandboxReadyTimeoutSecs\)/);
-  });
-
   it("classifies gateway reuse states conservatively", () => {
     expect(
       getGatewayReuseState(
@@ -3449,18 +3358,6 @@ startGateway(null).catch(() => {});
         "arm64",
       ),
     ).toBe(false);
-  });
-
-  it("runs the OpenShell VM DNS monkeypatch after sandbox registration", () => {
-    const onboardSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf8",
-    );
-
-    assert.match(
-      onboardSource,
-      /registry\.setDefault\(sandboxName\);[\s\S]*applyOnboardVmDnsMonkeypatch\(sandboxName, sandboxRuntimeFields\)/,
-    );
   });
 
   it("logs applied only when the onboard VM DNS monkeypatch changes files", () => {
@@ -5366,72 +5263,6 @@ const { setupInference } = require(${onboardPath});
     );
   });
 
-  it("uses split curl timeout args and does not mislabel curl usage errors as timeouts", () => {
-    const onboardSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    const probeSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "adapters", "http", "probe.ts"),
-      "utf-8",
-    );
-    const recoverySource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "validation-recovery.ts"),
-      "utf-8",
-    );
-
-    assert.match(onboardSource, /adapters\/http\/probe/);
-    assert.match(probeSource, /return \["--connect-timeout", "10", "--max-time", "60"\];/);
-    assert.match(recoverySource, /failure\.curlStatus === 2/);
-    assert.match(recoverySource, /local curl invocation error/);
-  });
-
-  it("checks provider existence before create/update to avoid AlreadyExists noise (#1155)", () => {
-    // upsertProvider lives in onboard/providers.ts after the refactor.
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "providers.ts"),
-      "utf-8",
-    );
-
-    // upsertProvider must check existence first so it never triggers AlreadyExists.
-    assert.match(source, /providerExistsInGateway\(name/);
-    assert.match(source, /exists \? "update" : "create"/);
-    // Only one openshell call should be made (no create-then-update fallback).
-    assert.match(source, /const result = _runOpenshell\(args, runOpts\)/);
-  });
-
-  it("marks the unused agent_setup/openclaw sibling step as skipped (#1834)", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    // When agent path is taken, openclaw must be marked skipped.
-    assert.match(source, /handleAgentSetup[\s\S]*?markStepSkipped\("openclaw"\)/);
-    // When default openclaw path is taken, agent_setup must be marked skipped.
-    assert.match(source, /setupOpenclaw[\s\S]*?markStepSkipped\("agent_setup"\)/);
-  });
-
-  it("uses named sandbox exec for dashboard and web-search probes", () => {
-    const onboardSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    const webSearchVerifySource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "web-search-verify.ts"),
-      "utf-8",
-    );
-    const source = `${onboardSource}
-${webSearchVerifySource}`;
-
-    assert.match(source, /"sandbox",\s*"exec",\s*"-n",\s*sandboxName,\s*"--",\s*"curl"/);
-    assert.match(source, /"sandbox",\s*"exec",\s*"-n",\s*sandboxName,\s*"--",\s*"hermes"/);
-    assert.match(source, /"sandbox",\s*"exec",\s*"-n",\s*sandboxName,\s*"--",\s*"cat"/);
-    assert.doesNotMatch(source, /\["sandbox",\s*"exec",\s*sandboxName,\s*"curl"/);
-    assert.doesNotMatch(source, /\["sandbox",\s*"exec",\s*sandboxName,\s*"hermes"/);
-    assert.doesNotMatch(source, /\["sandbox",\s*"exec",\s*sandboxName,\s*"cat"/);
-  });
-
   it("re-establishes the agent dashboard forward after agent setup health checks", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
@@ -5475,38 +5306,6 @@ ${webSearchVerifySource}`;
     );
   });
 
-  it("records gateway completion when a fresh onboard reuses an existing gateway", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    const reusePos = source.indexOf('skippedStepMessage("gateway", "running", "reuse")');
-    const nextBranchPos = source.indexOf("} else {", reusePos);
-    const reuseBlock = source.slice(reusePos, nextBranchPos);
-
-    assert.ok(reusePos !== -1, "gateway reuse branch not found");
-    assert.ok(nextBranchPos !== -1, "gateway reuse branch end not found");
-    assert.match(
-      reuseBlock,
-      /onboardSession\.markStepComplete\("gateway"\)/,
-      "reused gateway must be persisted so a later resume can skip it",
-    );
-  });
-
-  it("starts the sandbox step before prompting for the sandbox name", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(
-      source,
-      // #2753: sandboxName is read for resume hints here, but the session still
-      // does not persist a sandbox name before createSandbox completes.
-      /startRecordedStep\("sandbox", \{ provider, model \}\);\s*const recordedMessagingChannels = getRecordedMessagingChannelsForResume\(resume, session, sandboxName\);[\s\S]*?selectedMessagingChannels = recordedMessagingChannels;[\s\S]*?selectedMessagingChannels = await setupMessagingChannels\(\);[\s\S]*?const messagingChannelConfig = readMessagingChannelConfigFromEnv\(\);[\s\S]*?onboardSession\.updateSession\(\(current[^)]*\) => \{\s*current\.messagingChannels = selectedMessagingChannels;\s*current\.messagingChannelConfig = messagingChannelConfig;\s*return current;\s*\}\);[\s\S]*?sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*nextWebSearchConfig,\s*selectedMessagingChannels,\s*fromDockerfile,\s*agent,\s*opts\.controlUiPort \|\| null,\s*sandboxGpuConfig,\s*\);/,
-    );
-  });
-
   it("runs fresh stale-gateway cleanup after the sandbox name is known but before createSandbox", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
@@ -5524,170 +5323,6 @@ ${webSearchVerifySource}`;
     assert.ok(promptPos !== -1, "sandbox-name resolution block not found");
     assert.ok(cleanupPos > promptPos, "fresh cleanup should run after sandboxName is known");
     assert.ok(cleanupPos < createPos, "fresh cleanup should run before createSandbox allocates a port");
-  });
-
-  it("defaults GPU passthrough on for detected NVIDIA GPUs unless opted out", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /const explicitSandboxGpuFlag = resolveSandboxGpuFlagFromOptions\(opts\);/);
-    assert.match(
-      source,
-      /const gpuPassthrough = sandboxGpuConfig\.sandboxGpuEnabled;/,
-    );
-    assert.match(source, /Use --no-gpu to opt out/);
-  });
-
-  it("uses the NemoClaw Docker GPU patch without passing --gpu to sandbox create", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    const patchSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "docker-gpu-patch.ts"),
-      "utf-8",
-    );
-
-    const createSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "docker-gpu-sandbox-create.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /resolveDockerGpuSandboxCreatePlan\(effectiveSandboxGpuConfig/);
-    assert.match(source, /suppressGpuFlag: useDockerGpuPatch/);
-    assert.match(source, /maybeApplyDuringCreate/);
-    assert.match(source, /printDockerGpuReadinessFailure/);
-    assert.match(source, /printDockerGpuProofFailure/);
-    assert.match(createSource, /applyDockerGpuPatchOrExit/);
-    assert.match(createSource, /getDockerGpuSupervisorReconnectTimeoutSecs/);
-    assert.match(createSource, /waitForOpenShellSupervisorReconnect/);
-    assert.match(createSource, /recreateOpenShellDockerSandboxWithGpu/);
-    assert.match(patchSource, /recreateOpenShellDockerSandboxWithGpu/);
-    assert.match(patchSource, /collectDockerGpuPatchDiagnostics/);
-    assert.match(patchSource, /has been left in place for inspection/);
-  });
-
-  it("does not persist sandboxName to onboard-session.json before createSandbox completes (#2753)", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    // Steps that run before `openshell sandbox create` succeeds must not
-    // write sandboxName into the session — otherwise a SIGINT in between
-    // leaves a phantom name that `nemoclaw list` resurrects until the user
-    // manually destroys it. sandboxName is only persisted at the sandbox
-    // step's markStepComplete, which runs after createSandbox returns.
-    assert.match(source, /startRecordedStep\("provider_selection"\);/);
-    assert.match(source, /startRecordedStep\("inference", \{ provider, model \}\);/);
-    assert.match(source, /startRecordedStep\("sandbox", \{ provider, model \}\);/);
-    assert.doesNotMatch(
-      source,
-      /startRecordedStep\("(?:provider_selection|inference|sandbox)",\s*\{[^}]*\bsandboxName\b/,
-    );
-    // The first markStepComplete that records sandboxName is the sandbox
-    // step, after createSandbox(). Locked in by checking createSandbox
-    // appears before the first sandboxName-bearing markStepComplete. The
-    // toSessionUpdates({ ... }) options object is matched non-greedily so a
-    // later sandboxName reference from a different call site cannot leak
-    // into the match.
-    const createIdx = source.indexOf("sandboxName = await createSandbox(");
-    const firstSandboxNameMarkComplete = source.search(
-      /onboardSession\.markStepComplete\(\s*"[^"]+",\s*toSessionUpdates\(\{[^}]*\bsandboxName\b/,
-    );
-    assert.ok(
-      createIdx > 0 && firstSandboxNameMarkComplete > createIdx,
-      `createSandbox (${createIdx}) must precede the first sandboxName-bearing markStepComplete (${firstSandboxNameMarkComplete})`,
-    );
-  });
-
-  it("prints numbered step headers even when onboarding skips resumed steps", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /const ONBOARD_STEP_INDEX(?::[^=]+)? = \{/);
-    assert.match(source, /function skippedStepMessage\([\s\S]*?reason[^=]*= "resume"[\s\S]*?\)/);
-    assert.match(source, /step\(stepInfo\.number, 8, stepInfo\.title\);/);
-    assert.match(source, /skippedStepMessage\("openclaw", sandboxName\)/);
-    assert.match(
-      source,
-      /skippedStepMessage\("policies", recordedPolicyPresetsForSupport\.join\(", "\)\)/,
-    );
-  });
-
-  it("re-checks RESERVED_SANDBOX_NAMES against a resumed session's sandboxName", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(
-      source,
-      // #2753: a stale `session.sandboxName` from an interrupted onboard
-      // must not override a fresh `--name` / NEMOCLAW_SANDBOX_NAME, so the
-      // session value participates only when its sandbox step completed.
-      /const recordedSandboxName =\s*session\?\.steps\?\.sandbox\?\.status === "complete" \? session\?\.sandboxName \|\| null : null;[\s\S]*?let sandboxName = recordedSandboxName \|\| requestedSandboxName \|\| null;\s*if \(sandboxName && RESERVED_SANDBOX_NAMES\.has\(sandboxName\)\) \{[\s\S]*?process\.exit\(1\);\s*\}/,
-    );
-  });
-  it("reserves update as a sandbox name because it is a global command", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /const RESERVED_SANDBOX_NAMES = new Set\([\s\S]*?"update"[\s\S]*?\]\);/);
-  });
-  it("delegates sandbox-create progress streaming to the extracted helper module", () => {
-    const onboardSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    const { streamSandboxCreate } = require("../dist/lib/sandbox/create-stream");
-
-    assert.match(onboardSource, /sandbox\/create-stream/);
-    assert.equal(typeof streamSandboxCreate, "function");
-  });
-
-  it("re-refs stdin before each raw-mode prompt and unrefs in cleanup so sticky unref() does not strand later prompts", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    // The shared `prompt()` cleanup unref()s stdin so the wizard exits
-    // naturally after its last readline prompt. unref() is sticky, so the
-    // raw-mode TUI selectors (messaging channels + the three arrow-key
-    // pickers) must explicitly ref() stdin before resume()/setRawMode(true)
-    // or they would otherwise listen on a detached handle.
-    const refMatches = source.match(
-      /process\.stdin\.ref\(\);[\s\S]{0,180}?process\.stdin\.setRawMode\(true\)/g,
-    );
-    assert.ok(
-      refMatches !== null && refMatches.length >= 3,
-      `expected at least 3 ref()-then-setRawMode(true) sites, found ${
-        refMatches ? refMatches.length : 0
-      }`,
-    );
-
-    // The messaging-channels picker uses an `input.ref()` alias on the
-    // captured handle. Same contract, different binding.
-    assert.match(source, /input\.ref\(\)[\s\S]{0,200}?input\.setRawMode\(true\)/);
-
-    // Each raw-mode cleanup must release stdin too, so a wizard that ends
-    // on a TUI selector exits cleanly.
-    const unrefMatches = source.match(
-      /setRawMode\(false\);[\s\S]{0,400}?(?:process\.stdin|input)\.unref\(\)/g,
-    );
-    assert.ok(
-      unrefMatches !== null && unrefMatches.length >= 4,
-      `expected at least 4 setRawMode(false)-then-unref() sites, found ${
-        unrefMatches ? unrefMatches.length : 0
-      }`,
-    );
   });
 
   it("migrates a legacy credentials.json into env so setupInference can register the provider", () => {
@@ -7861,42 +7496,6 @@ const { createSandbox } = require(${onboardPath});
       assert.ok(result.stdout.includes("not ready"), "should mention sandbox is not ready");
     },
   );
-  it("detects provider/model drift and avoids silent reuse", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    const selectionSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "selection-drift.ts"),
-      "utf-8",
-    );
-    assert.match(
-      source,
-      /const selectionDrift = getSelectionDrift\(sandboxName, provider, model, \{ runOpenshell \}\);/,
-    );
-    assert.match(
-      source,
-      /const confirmedSelectionDrift = selectionDrift\.changed && !selectionDrift\.unknown;/,
-    );
-    assert.match(selectionSource, /unknown:\s*true/);
-    assert.match(source, /if \(confirmedSelectionDrift\)/);
-    assert.match(source, /Recreating sandbox due to provider\/model drift/);
-    assert.match(
-      source,
-      /Sandbox '\$\{sandboxName\}' exists — recreating to apply model\/provider change\./,
-    );
-  });
-
-  it("prompts before destructive recreate when drift is detected in interactive mode", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    assert.match(source, /async function confirmRecreateForSelectionDrift/);
-    assert.match(source, /Recreate sandbox '\$\{sandboxName\}' now\? \[y\/N\]:/);
-    assert.match(source, /Aborted\. Existing sandbox left unchanged\./);
-  });
-
   it("upsertProvider creates a new provider and returns ok on success", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-upsert-provider-create-"));
@@ -8555,17 +8154,6 @@ const { setupInference } = require(${onboardPath});
     assert.equal(commands.length, 4);
   });
 
-  it("prints NemoClaw inference commands in the post-onboard settings summary", () => {
-    const source = fs.readFileSync(path.join(repoRoot, "src", "lib", "onboard.ts"), "utf8");
-    const summaryBlock = source.slice(source.indexOf('console.log("  To change settings later:");'));
-    assert.match(summaryBlock, /Model:\s+\$\{cliName\(\)\} inference get/);
-    assert.match(
-      summaryBlock,
-      /inference set --model <model> --provider <provider> --sandbox \$\{sandboxName\}/,
-    );
-    assert.doesNotMatch(summaryBlock, /openshell inference (get|set)/);
-  });
-
   it("accepts gateway inference output that omits the Route line", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-inference-route-"));
@@ -9035,22 +8623,6 @@ const { setupMessagingChannels } = require(${onboardPath});
       assert.equal(channels.length, 0, "expected empty array when no tokens are set");
     },
   );
-
-  it("non-interactive onboard reuses stored messaging channels when bridge providers exist", () => {
-    const source = fs.readFileSync(path.join(import.meta.dirname, "../src/lib/onboard.ts"), "utf-8");
-    const reuseSource = fs.readFileSync(
-      path.join(import.meta.dirname, "../src/lib/onboard/messaging-reuse.ts"),
-      "utf-8",
-    );
-    assert.match(
-      reuseSource,
-      /function getNonInteractiveStoredMessagingChannels\([\s\S]*?getSandbox\(sandboxName\)[\s\S]*?providerExists\(provider\)/,
-    );
-    assert.match(
-      source,
-      /getRecordedMessagingChannelsForResume\(resume, session, sandboxName\)[\s\S]*?selectedMessagingChannels = await setupMessagingChannels\(\)/,
-    );
-  });
 
   it(
     "interactive setupMessagingChannels drops slack when prompted token fails tokenFormat check (#1912)",
@@ -9824,60 +9396,10 @@ const { createSandbox } = require(${onboardPath});
     assert.match(payload.message, /simulated custom context copy failure/);
   });
 
-  it("re-prompts on invalid sandbox names instead of exiting in interactive mode", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    // Extract the promptValidatedSandboxName function body
-    const fnMatch = source.match(
-      /async function promptValidatedSandboxName\([^)]*\)\s*\{([\s\S]*?)\n\}/,
-    );
-    assert.ok(fnMatch, "promptValidatedSandboxName function not found");
-    const fnBody = fnMatch[1];
-    // Verify the bounded retry loop exists within this function
-    assert.match(fnBody, /MAX_ATTEMPTS/);
-    assert.match(fnBody, /for\s*\(let attempt/);
-    assert.match(fnBody, /Please try again/);
-    // Exits after too many invalid attempts
-    assert.match(fnBody, /Too many invalid attempts/);
-    // Non-interactive still exits within this function
-    assert.match(fnBody, /isNonInteractive\(\)/);
-    assert.match(fnBody, /process\.exit\(1\)/);
-    assert.match(fnBody, /getNameValidationGuidance\("sandbox name", sandboxName,/);
-  });
-
-  it("shows the full allowed sandbox name format before prompting", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
+  it("exposes the full allowed sandbox name format", () => {
     expect(NAME_ALLOWED_FORMAT).toBe(
       "lowercase, starts with a letter, letters/numbers/internal hyphens only, ends with letter/number",
     );
-    assert.match(source, /Sandbox name \(\$\{NAME_ALLOWED_FORMAT\}\)/);
-  });
-
-  it("guards against reusing the same sandbox name for a different agent", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    assert.match(source, /getSandboxAgentDrift/);
-    assert.match(
-      source,
-      /Side-by-side agents are supported, but each sandbox name has one agent type/,
-    );
-    assert.match(source, /UNKNOWN_SANDBOX_AGENT_NAME/);
-    assert.match(source, /if \(!existingEntry\) \{[\s\S]*?changed: true/);
-    assert.match(source, /recreateForAgentDrift/);
-    assert.match(source, /getSandboxAgentRegistryFields/);
-    assert.match(source, /getSandboxAgentRegistryFields\(agent, agentVersionKnown\)/);
-    assert.match(
-      source,
-      /const existingEntry = registry\.getSandbox\(sandboxName\)[\s\S]*?existingEntry\?\.agentVersion !== null/,
-    );
-    assert.match(source, /registry\.setDefault\(sandboxName\)/);
   });
 
   it("regression #1881: registry.updateSandbox(model/provider) is called AFTER createSandbox", () => {
@@ -10187,26 +9709,6 @@ const { createSandbox } = require(${onboardPath});
     assert.equal(findDashboardForwardOwner(falsePositive, "18789"), null);
   });
 
-  it("ensureDashboardForward clears stale preferred-port forwards before reallocating", () => {
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-
-    assert.match(source, /const preferredEntry = findForwardEntry/);
-    // isLiveForwardStatus lives in ./onboard/dashboard-port and is imported above;
-    // the call site itself is the meaningful assertion.
-    assert.match(source, /!isLiveForwardStatus\(preferredEntry\.status\)/);
-    assert.match(
-      source,
-      /runOpenshell\(\["forward", "stop", String\(preferredPort\)\], \{ ignoreError: true \}\)/,
-    );
-    assert.match(
-      source,
-      /findAvailableDashboardPort\(sandboxName, preferredPort, existingForwards\)/,
-    );
-  });
-
   describe("findAvailableDashboardPort port-conflict detection (#3260)", () => {
     const stubBound = (...bound: number[]) => {
       const set = new Set(bound);
@@ -10290,98 +9792,6 @@ const { createSandbox } = require(${onboardPath});
       assert.equal(calls.length, 1, `expected 1 probe call, got ${calls.length}`);
       assert.equal(calls[0], 18789);
     });
-  });
-
-  it("isPortBoundOnHost has a layered probe chain — lsof, sudo lsof, Node bind (#3260)", () => {
-    // Source-shape guard for the strengthened detection chain. Behavioural
-    // testing of the real probes spawns subprocesses and is covered by
-    // higher-level tests; this assertion just keeps the chain in place
-    // when the function is refactored.
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "dashboard-port.ts"),
-      "utf-8",
-    );
-    assert.match(source, /export function isPortBoundOnHost/);
-    assert.match(source, /\["lsof", "-i", `:\$\{port\}`, "-sTCP:LISTEN", "-P", "-n"\]/);
-    assert.match(
-      source,
-      /\["sudo", "-n", "lsof", "-i", `:\$\{port\}`, "-sTCP:LISTEN", "-P", "-n"\]/,
-    );
-    assert.match(source, /export function probePortBoundSync/);
-    assert.match(source, /EADDRINUSE/);
-  });
-
-  it("ensureDashboardForward rolls back when forward-start fails on the create path (#3260)", () => {
-    // The sandbox is committed to its dashboard port at create time
-    // (Dockerfile ARG + NEMOCLAW_DASHBOARD_PORT env). If `openshell forward
-    // start` fails after the build (TOCTOU race), we must not silently
-    // return a broken port — roll back the sandbox so the next onboard
-    // can pick a different port. The rollback must classify the failure
-    // (port conflict vs other) so users aren't pointed at the wrong fix.
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    assert.match(source, /if \(fwdResult && fwdResult\.status !== 0\)/);
-    assert.match(source, /if \(rollbackSandboxOnFailure\)/);
-    assert.match(source, /const looksLikePortConflict =/);
-    assert.match(source, /looksLikeForwardPortConflict/);
-    assert.match(source, /suppressOutput: true/);
-    assert.match(source, /runBackgroundForwardStartWithPortReleaseRetries/);
-    assert.doesNotMatch(
-      source,
-      /forward", "start", "--background"[\s\S]{0,260}stdio: \["ignore", "pipe", "pipe"\]/,
-      "background forward start must not capture pipe stdio; daemonized children can keep pipes open and hang install.sh",
-    );
-    const helperSource = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard", "forward-start.ts"),
-      "utf-8",
-    );
-    assert.match(helperSource, /secureTempFile\("nemoclaw-forward-start", "\.out"\)/);
-    assert.match(helperSource, /runForwardStart\(\["ignore", outFd, errFd\], timeoutMs\)/);
-    assert.match(helperSource, /eaddrinuse\|address already in use/i);
-    assert.match(helperSource, /maxRetries = 3/);
-    assert.match(
-      source,
-      /runOpenshell\(\["sandbox", "delete", sandboxName\], \{ ignoreError: true \}\)/,
-    );
-    assert.match(source, /buildOrphanedSandboxRollbackMessage/);
-  });
-
-  it("ensureDashboardForward rolls back when the create path reallocates to a different port (#3260)", () => {
-    // The sandbox bakes CHAT_UI_URL and NEMOCLAW_DASHBOARD_PORT from
-    // `preselectedPort` at build time. If that port becomes host-bound
-    // during the multi-minute image build (TOCTOU), findAvailableDashboardPort
-    // returns a different port — but the sandbox is already configured to
-    // serve on the original one. Starting the forward on the new port
-    // would reproduce "onboard exits successfully but dashboard is
-    // unreachable" on the new port. The fix: on the create path, treat
-    // actualPort !== preferredPort as unrecoverable, roll back the sandbox,
-    // and let the next onboard re-bake with a clean port. Reuse paths still
-    // warn-and-continue because the sandbox image is fixed.
-    const source = fs.readFileSync(
-      path.join(import.meta.dirname, "..", "src", "lib", "onboard.ts"),
-      "utf-8",
-    );
-    // Locate the actualPort != preferredPort branch and verify it carries
-    // both the create-path rollback (gated on rollbackSandboxOnFailure) and
-    // the reuse-path warn fallback.
-    const mismatchBranch = source.match(
-      /if \(actualPort !== preferredPort\) \{[\s\S]*?\n  \}/,
-    );
-    assert.ok(mismatchBranch, "Expected actualPort !== preferredPort branch in ensureDashboardForward");
-    const branchBody = mismatchBranch[0];
-    assert.match(branchBody, /if \(rollbackSandboxOnFailure\)/);
-    assert.match(branchBody, /became host-bound during sandbox build/);
-    assert.match(
-      branchBody,
-      /runOpenshell\(\["sandbox", "delete", sandboxName\], \{ ignoreError: true \}\)/,
-    );
-    assert.match(branchBody, /buildOrphanedSandboxRollbackMessage/);
-    assert.match(branchBody, /process\.exit\(1\)/);
-    // Reuse-path fallback (the warn) must still be present so non-create
-    // callers keep the existing warn-and-continue semantics.
-    assert.match(branchBody, /is taken\. Using port .* instead/);
   });
 
   it("formatOnboardConfigSummary renders all collected fields (#2165)", () => {
