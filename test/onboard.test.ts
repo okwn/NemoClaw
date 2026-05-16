@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 import type { AgentDefinition } from "../dist/lib/agent/defs.js";
 import { loadAgent } from "../dist/lib/agent/defs.js";
 import { applyOnboardVmDnsMonkeypatch } from "../dist/lib/onboard/vm-dns-monkeypatch.js";
@@ -3893,9 +3894,16 @@ const { createSandbox } = require(${onboardPath});
       assert.match(createCommand.command, /--provider my-assistant-telegram-bridge/);
       assert.match(createCommand.command, /--policy [^ ]*nemoclaw-initial-policy[^ ]*\.yaml/);
       assert.equal(createCommand.policyReadError, undefined);
-      assert.match(createCommand.policyContent || "", /network_policies:/);
-      assert.match(createCommand.policyContent || "", /slack:/);
-      assert.match(createCommand.policyContent || "", /wss-primary\.slack\.com/);
+      const policyDoc = YAML.parse(createCommand.policyContent || "") || {};
+      const slackEndpointHosts = (policyDoc.network_policies?.slack?.endpoints || []).map(
+        (entry: { host?: string }) => entry.host,
+      );
+      const slackWebsocketHosts = slackEndpointHosts
+        .filter((host: string | undefined) =>
+          host === "wss-primary.slack.com" || host === "wss-backup.slack.com",
+        )
+        .sort();
+      assert.deepEqual(slackWebsocketHosts, ["wss-backup.slack.com", "wss-primary.slack.com"].sort());
 
       // Messaging tokens must NOT appear in the sandbox create command
       // (they flow exclusively through the openshell provider credential system).
@@ -4149,8 +4157,12 @@ const { createSandbox } = require(${onboardPath});
         !payload.slackBinaryPaths.includes("/usr/local/bin/node"),
         "Hermes Slack policy must not be replaced by the generic Node Slack preset",
       );
-      assert.ok(payload.slackEndpointHosts.includes("wss-primary.slack.com"));
-      assert.ok(payload.slackEndpointHosts.includes("wss-backup.slack.com"));
+      const slackWebsocketHosts = payload.slackEndpointHosts
+        .filter((host: string) =>
+          host === "wss-primary.slack.com" || host === "wss-backup.slack.com",
+        )
+        .sort();
+      assert.deepEqual(slackWebsocketHosts, ["wss-backup.slack.com", "wss-primary.slack.com"].sort());
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
