@@ -3,7 +3,13 @@
 
 import { NemoClawCommand } from "../../../cli/nemoclaw-oclif-command";
 
-import { buildHostAliasArgs, getHostsRuntimeBridge, hostAliasAddArgs, hostAliasMutationFlags } from "./common";
+import {
+  buildHostAliasArgs,
+  getHostsRuntimeBridge,
+  hostAliasAddArgs,
+  hostAliasMutationFlags,
+  isHostAliasFailure,
+} from "./common";
 
 export default class HostsAddCommand extends NemoClawCommand {
   static id = "sandbox:hosts:add";
@@ -17,9 +23,17 @@ export default class HostsAddCommand extends NemoClawCommand {
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(HostsAddCommand);
-    getHostsRuntimeBridge().addSandboxHostAlias(
-      args.sandboxName,
-      buildHostAliasArgs([args.hostname, args.ip], flags),
-    );
+    try {
+      getHostsRuntimeBridge().addSandboxHostAlias(
+        args.sandboxName,
+        buildHostAliasArgs([args.hostname, args.ip], flags),
+      );
+    } catch (error) {
+      if (isHostAliasFailure(error)) {
+        this.failWithLines(error.lines, error.exitCode);
+        return;
+      }
+      throw error;
+    }
   }
 }

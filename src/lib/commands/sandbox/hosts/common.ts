@@ -11,6 +11,12 @@ type HostsRuntimeBridge = {
   removeSandboxHostAlias: (sandboxName: string, args?: string[]) => void;
 };
 
+type HostAliasFailure = {
+  name?: string;
+  lines?: readonly string[];
+  exitCode?: number;
+};
+
 let runtimeBridgeFactory = (): HostsRuntimeBridge => {
   const actions = require("../../../actions/sandbox/host-aliases") as HostsRuntimeBridge;
   return actions;
@@ -22,6 +28,16 @@ export function setHostsRuntimeBridgeFactoryForTest(factory: () => HostsRuntimeB
 
 export function getHostsRuntimeBridge(): HostsRuntimeBridge {
   return runtimeBridgeFactory();
+}
+
+export function isHostAliasFailure(error: unknown): error is Required<HostAliasFailure> {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    (error as HostAliasFailure).name === "HostAliasesCommandError" &&
+    Array.isArray((error as HostAliasFailure).lines) &&
+    typeof (error as HostAliasFailure).exitCode === "number"
+  );
 }
 
 const sandboxNameArg = Args.string({ name: "sandbox", description: "Sandbox name", required: true });
