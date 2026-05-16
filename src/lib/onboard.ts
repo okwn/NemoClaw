@@ -6466,7 +6466,7 @@ async function setupNim(
       console.log("");
     }
   }
-  const requestedProvider = isNonInteractive() ? getNonInteractiveProvider() : null;
+  const requestedProvider = getNonInteractiveProvider();
   const requestedModel = isNonInteractive()
     ? getNonInteractiveModel(requestedProvider || "build")
     : null;
