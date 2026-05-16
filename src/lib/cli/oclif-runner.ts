@@ -25,11 +25,13 @@ function isOclifParseError(error: unknown): boolean {
     error && typeof error === "object"
       ? (error as { constructor?: { name?: string } }).constructor?.name
       : "";
+  const message = error instanceof Error ? error.message : "";
   return (
     name === "NonExistentFlagsError" ||
     name === "RequiredArgsError" ||
     name === "UnexpectedArgsError" ||
-    name === "CLIError"
+    name === "CLIError" ||
+    message.startsWith("Parsing --")
   );
 }
 

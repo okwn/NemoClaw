@@ -568,6 +568,13 @@ describe("CLI dispatch", () => {
     expect(out).toMatch(/OpenClaw or Hermes\s+sandbox config/);
   });
 
+  it("inference set rejects empty provider values during oclif parsing", () => {
+    const result = run("inference set --provider '' --model nvidia/model");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("Parsing --provider");
+    expect(result.out).toContain("OpenShell inference provider name cannot be empty");
+  });
+
   it("inference get reports the live NemoClaw gateway route", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-inference-get-"));
     const localBin = path.join(home, "bin");

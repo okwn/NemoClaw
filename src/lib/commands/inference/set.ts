@@ -3,6 +3,18 @@
 
 import { Flags } from "@oclif/core";
 
+function requiredNonEmptyFlag(description: string) {
+  return Flags.string({
+    description,
+    parse: async (input: string) => {
+      const trimmed = input.trim();
+      if (!trimmed) throw new Error(`${description} cannot be empty`);
+      return trimmed;
+    },
+    required: true,
+  });
+}
+
 import {
   InferenceSetError,
   runInferenceSet,
@@ -33,14 +45,8 @@ export default class InferenceSetCommand extends NemoClawCommand {
     },
   ];
   static flags = {
-    provider: Flags.string({
-      description: "OpenShell inference provider name",
-      required: true,
-    }),
-    model: Flags.string({
-      description: "Model id to route through the selected provider",
-      required: true,
-    }),
+    provider: requiredNonEmptyFlag("OpenShell inference provider name"),
+    model: requiredNonEmptyFlag("Model id to route through the selected provider"),
     sandbox: Flags.string({
       description:
         "Registered sandbox to sync; defaults to the NemoClaw default sandbox or the unambiguous Hermes sandbox under nemohermes",
