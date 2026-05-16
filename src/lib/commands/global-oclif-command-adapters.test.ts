@@ -174,10 +174,19 @@ describe("global oclif command adapters", () => {
     });
   });
 
-  it("maps inference get flags into the inference action", async () => {
-    await InferenceGetCommand.run(["--json"], rootDir);
-
-    expect(mocks.runInferenceGet).toHaveBeenCalledWith({ json: true });
+  it("maps inference get JSON output into oclif JSON handling", async () => {
+    mocks.runInferenceGet.mockResolvedValueOnce({ provider: "nvidia-prod", model: "nvidia/model-a" });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      await InferenceGetCommand.run(["--json"], rootDir);
+      expect(mocks.runInferenceGet).toHaveBeenCalledWith({ quiet: true });
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({
+        provider: "nvidia-prod",
+        model: "nvidia/model-a",
+      });
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("records inference action failures without throwing oclif ExitError", async () => {

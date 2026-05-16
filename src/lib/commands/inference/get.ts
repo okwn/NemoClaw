@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Flags } from "@oclif/core";
-
 import {
   InferenceGetError,
   runInferenceGet,
@@ -12,6 +10,7 @@ import { NemoClawCommand } from "../../cli/nemoclaw-oclif-command";
 export default class InferenceGetCommand extends NemoClawCommand {
   static id = "inference:get";
   static strict = true;
+  static enableJsonFlag = true;
   static summary = "Show the active NemoClaw inference route";
   static description = "Read the live OpenShell inference route through the NemoClaw CLI.";
   static usage = ["inference get [--json]"];
@@ -26,16 +25,13 @@ export default class InferenceGetCommand extends NemoClawCommand {
       order: 36,
     },
   ];
-  static flags = {
-    json: Flags.boolean({
-      description: "Print provider and model as JSON",
-    }),
-  };
+  static flags = {};
 
-  public async run(): Promise<void> {
-    const { flags } = await this.parse(InferenceGetCommand);
+  public async run(): Promise<unknown> {
+    await this.parse(InferenceGetCommand);
     try {
-      await runInferenceGet({ json: flags.json === true });
+      const result = await runInferenceGet({ quiet: this.jsonEnabled() });
+      if (this.jsonEnabled()) return result;
     } catch (error) {
       if (error instanceof InferenceGetError) {
         this.failWithLines([error.message], error.exitCode);
