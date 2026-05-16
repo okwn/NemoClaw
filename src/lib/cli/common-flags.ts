@@ -18,3 +18,7 @@ export function dryRunFlag(description = "Preview without applying") {
 export function jsonFlag(description = "Print output as JSON") {
   return Flags.boolean({ description });
 }
+
+export function quietFlag(description = "Suppress non-essential stderr output") {
+  return Flags.boolean({ char: "q", description });
+}

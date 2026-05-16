@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Args, Flags } from "@oclif/core";
+import { Args } from "@oclif/core";
+import { quietFlag } from "../cli/common-flags";
 import { NemoClawCommand } from "../cli/nemoclaw-oclif-command";
 
 import { GatewayTokenCommandError, runGatewayTokenCommand } from "../gateway-token-command";
@@ -69,7 +70,7 @@ export default class GatewayTokenCliCommand extends NemoClawCommand {
     }),
   };
   static flags = {
-    quiet: Flags.boolean({ char: "q", description: "Suppress the stderr security warning" }),
+    quiet: quietFlag("Suppress the stderr security warning"),
   };
 
   public async run(): Promise<void> {
