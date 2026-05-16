@@ -749,7 +749,7 @@ This variant of <code class="docutils literal notranslate"><span class="pre">nem
 Use <code class="docutils literal notranslate"><span class="pre">--no-gpu</span></code> to opt out when you want host-side inference providers only and do not need direct GPU access inside the sandbox.
 Use <code class="docutils literal notranslate"><span class="pre">--gpu</span></code> to require GPU passthrough and fail fast if an NVIDIA GPU is not detected.
 Use <code class="docutils literal notranslate"><span class="pre">--sandbox-gpu</span></code> or <code class="docutils literal notranslate"><span class="pre">--no-sandbox-gpu</span></code> to control only direct NVIDIA GPU access inside the sandbox.
-Use <code class="docutils literal notranslate"><span class="pre">--sandbox-gpu-device</span> <span class="pre">&lt;device&gt;</span></code> to pass a specific OpenShell GPU device selector to <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">sandbox</span> <span class="pre">create</span></code>.
+Use <code class="docutils literal notranslate"><span class="pre">--sandbox-gpu</span> <span class="pre">--sandbox-gpu-device</span> <span class="pre">&lt;device&gt;</span></code> to pass a specific OpenShell GPU device selector to <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">sandbox</span> <span class="pre">create</span></code>; device selectors require explicit sandbox GPU enablement.
 On Linux Docker-driver gateways, NemoClaw can create the sandbox first and then recreate the OpenShell-managed Docker container with NVIDIA GPU access when that compatibility path is needed.
 If the patch fails, onboarding keeps diagnostics and prints a manual cleanup command rather than deleting the failed sandbox automatically.</p>
 <p>Prerequisites:</p>
@@ -1861,6 +1861,10 @@ Set them before running <code class="docutils literal notranslate"><span class="
 <td><p>release tag</p></td>
 <td><p>For internal installer commands: the release tag to install. Overridden by the <code class="docutils literal notranslate"><span class="pre">--install-tag</span></code> flag.</p></td>
 </tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NEMOCLAW_VLLM_MODEL</span></code></p></td>
+<td><p>registry slug or Hugging Face model id</p></td>
+<td><p>Selects the model the managed-vLLM install path serves. Recognised slugs: <code class="docutils literal notranslate"><span class="pre">qwen3.6-27b</span></code>, <code class="docutils literal notranslate"><span class="pre">nemotron-3-nano-4b</span></code>, <code class="docutils literal notranslate"><span class="pre">deepseek-r1-distill-70b</span></code>. Unset uses the per-platform profile default. Gated models (e.g. <code class="docutils literal notranslate"><span class="pre">deepseek-r1-distill-70b</span></code>) require <code class="docutils literal notranslate"><span class="pre">HF_TOKEN</span></code> or <code class="docutils literal notranslate"><span class="pre">HUGGING_FACE_HUB_TOKEN</span></code>.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -1918,7 +1922,7 @@ Set them before running <code class="docutils literal notranslate"><span class="
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NEMOCLAW_SANDBOX_GPU_DEVICE</span></code></p></td>
 <td><p>OpenShell GPU device selector</p></td>
-<td><p>Selects the GPU device passed with <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">sandbox</span> <span class="pre">create</span> <span class="pre">--gpu-device</span></code>. Setting this value enables sandbox GPU passthrough unless <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_SANDBOX_GPU=0</span></code> is also set, which is rejected.</p></td>
+<td><p>Selects the GPU device passed with <code class="docutils literal notranslate"><span class="pre">openshell</span> <span class="pre">sandbox</span> <span class="pre">create</span> <span class="pre">--gpu-device</span></code>. Requires explicit sandbox GPU enablement with <code class="docutils literal notranslate"><span class="pre">NEMOCLAW_SANDBOX_GPU=1</span></code> (or <code class="docutils literal notranslate"><span class="pre">--sandbox-gpu</span></code> for CLI-driven onboarding); otherwise onboarding rejects the selector instead of treating it as an implicit opt-in.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NEMOCLAW_DOCKER_GPU_PATCH</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> to disable, anything else to keep the default</p></td>

@@ -679,14 +679,23 @@ If you change them on an existing sandbox, recreate the sandbox so the new value
 </section>
 <section id="verify-the-active-model">
 <h2>Verify the Active Model<a class="headerlink" href="#verify-the-active-model" title="Link to this heading">#</a></h2>
-<p>Run the inference command to confirm the live gateway route:</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">inference</span> <span class="pre">get</span></code> to print the provider and model the gateway is currently routing to.
+Run it before <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">inference</span> <span class="pre">set</span></code> to confirm the starting state, or after a switch to verify the new route.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>inference<span class="w"> </span>get
+<span class="go">Provider: nvidia-prod</span>
+<span class="go">Model:    nvidia/nemotron-3-super-120b-a12b</span>
 </pre></div>
 </div>
-<p>Add <code class="docutils literal notranslate"><span class="pre">--json</span></code> for machine-readable output:</p>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">--json</span></code> for machine-readable output.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>inference<span class="w"> </span>get<span class="w"> </span>--json
+<span class="go">{</span>
+<span class="go">  &quot;provider&quot;: &quot;nvidia-prod&quot;,</span>
+<span class="go">  &quot;model&quot;: &quot;nvidia/nemotron-3-super-120b-a12b&quot;</span>
+<span class="go">}</span>
 </pre></div>
 </div>
+<p>The command exits non-zero with <code class="docutils literal notranslate"><span class="pre">OpenShell</span> <span class="pre">inference</span> <span class="pre">route</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">configured.</span></code> when the gateway has no registered inference route.
+Run <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">onboard</span></code> to configure one.</p>
 <p>Run the status command when you also need sandbox, service, and messaging health:</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>&lt;name&gt;<span class="w"> </span>status
 </pre></div>
