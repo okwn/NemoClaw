@@ -15,6 +15,16 @@ export default class DeprecatedStopCommand extends NemoClawCommand {
   static description = "Deprecated alias for tunnel stop.";
   static usage = ["stop"];
   static examples = ["<%= config.bin %> stop"];
+  static display = [
+    {
+      usage: "nemoclaw stop",
+      description: "Deprecated alias for 'tunnel stop'",
+      group: "Services",
+      deprecated: true,
+      scope: "global",
+      order: 35,
+    },
+  ];
   static flags = {
   };
 

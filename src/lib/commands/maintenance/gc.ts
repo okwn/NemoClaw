@@ -12,6 +12,16 @@ export default class GarbageCollectImagesCommand extends NemoClawCommand {
   static description = "Remove sandbox Docker images that are not referenced by registered sandboxes.";
   static usage = ["gc [--dry-run] [--yes|-y|--force]"];
   static examples = ["<%= config.bin %> gc --dry-run", "<%= config.bin %> gc --yes"];
+  static display = [
+    {
+      usage: "nemoclaw gc",
+      description: "Remove orphaned sandbox Docker images",
+      flags: "(--yes|-y|--force, --dry-run)",
+      group: "Cleanup",
+      scope: "global",
+      order: 42,
+    },
+  ];
   static flags = {
     "dry-run": dryRunFlag("Show images that would be removed without deleting"),
     yes: yesFlag(),

@@ -13,6 +13,16 @@ export default class SetupCliCommand extends NemoClawCommand {
   static description = "Deprecated alias for onboard.";
   static usage = ["setup [flags]"];
   static examples = ["<%= config.bin %> setup --name alpha"];
+  static display = [
+    {
+      usage: "nemoclaw setup",
+      description: "Deprecated alias for nemoclaw onboard",
+      group: "Compatibility Commands",
+      deprecated: true,
+      scope: "global",
+      order: 29,
+    },
+  ];
   static flags = buildOnboardFlags();
 
   public async run(): Promise<void> {

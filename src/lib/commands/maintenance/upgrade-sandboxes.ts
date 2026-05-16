@@ -17,6 +17,16 @@ export default class UpgradeSandboxesCommand extends NemoClawCommand {
     "<%= config.bin %> upgrade-sandboxes --check",
     "<%= config.bin %> upgrade-sandboxes --auto --yes",
   ];
+  static display = [
+    {
+      usage: "nemoclaw upgrade-sandboxes",
+      description: "Detect and rebuild stale sandboxes",
+      flags: "(--check, --auto, --yes|-y)",
+      group: "Upgrade",
+      scope: "global",
+      order: 41,
+    },
+  ];
   static flags = {
     check: Flags.boolean({ description: "Only check whether sandboxes need upgrading" }),
     auto: Flags.boolean({ description: "Automatically rebuild running stale sandboxes" }),

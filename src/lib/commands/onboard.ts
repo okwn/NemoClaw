@@ -19,6 +19,22 @@ export default class OnboardCliCommand extends NemoClawCommand {
   static description = "Configure inference, credentials, and sandbox settings.";
   static usage = onboardUsage;
   static examples = onboardExamples;
+  static display = [
+    {
+      usage: "nemoclaw onboard",
+      description: "Configure inference endpoint and credentials",
+      group: "Getting Started",
+      scope: "global",
+      order: 0,
+    },
+    {
+      usage: "nemoclaw onboard --from",
+      description: "Use a custom Dockerfile for the sandbox image",
+      group: "Getting Started",
+      scope: "global",
+      order: 1,
+    },
+  ];
   static flags = buildOnboardFlags();
 
   public async run(): Promise<void> {

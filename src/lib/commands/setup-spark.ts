@@ -13,6 +13,16 @@ export default class SetupSparkCliCommand extends NemoClawCommand {
   static description = "Deprecated alias for onboard.";
   static usage = ["setup-spark [flags]"];
   static examples = ["<%= config.bin %> setup-spark --name alpha"];
+  static display = [
+    {
+      usage: "nemoclaw setup-spark",
+      description: "Deprecated alias for nemoclaw onboard",
+      group: "Compatibility Commands",
+      deprecated: true,
+      scope: "global",
+      order: 30,
+    },
+  ];
   static flags = buildOnboardFlags();
 
   public async run(): Promise<void> {

@@ -21,6 +21,16 @@ export default class UpdateCommand extends NemoClawCommand {
     "<%= config.bin %> update",
     "<%= config.bin %> update --yes",
   ];
+  static display = [
+    {
+      usage: "nemoclaw update",
+      description: `Run the maintained ${CLI_DISPLAY_NAME} installer update flow`,
+      flags: "(--check, --yes|-y)",
+      group: "Upgrade",
+      scope: "global",
+      order: 40,
+    },
+  ];
   static flags = {
     check: Flags.boolean({ description: "Check update availability without running the installer" }),
     yes: yesFlag(),
