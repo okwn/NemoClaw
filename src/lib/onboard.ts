@@ -271,6 +271,8 @@ const {
   isLiveForwardStatus,
 } = require("./onboard/dashboard-port") as typeof import("./onboard/dashboard-port");
 const { destroyGatewayForReuse } = require("./onboard/gateway-cleanup") as typeof import("./onboard/gateway-cleanup");
+const { destroyGatewayWithVolumeCleanup } =
+  require("./onboard/gateway-destroy") as typeof import("./onboard/gateway-destroy");
 const {
   gatewayCliSupportsLifecycleCommands,
 } = require("./onboard/gateway-lifecycle") as typeof import("./onboard/gateway-lifecycle");
@@ -2772,32 +2774,16 @@ async function refreshDockerDriverGatewayReuseState(
 }
 
 function destroyGateway(): boolean {
-  const dockerDriver = isLinuxDockerDriverGatewayEnabled();
-  if (dockerDriver) {
-    stopDockerDriverGatewayProcess();
-  }
-
-  const hasLifecycleCommands = gatewayCliSupportsLifecycleCommands(runCaptureOpenshell);
-  const gatewayRemoved = dockerDriver
-    ? removeDockerDriverGatewayRegistration()
-    : hasLifecycleCommands
-      ? runOpenshell(["gateway", "destroy", "-g", GATEWAY_NAME], {
-        ignoreError: true,
-        }).status === 0
-      : runOpenshell(["gateway", "remove", GATEWAY_NAME], {
-        ignoreError: true,
-        }).status === 0;
-
-  // Clear the local registry so `nemoclaw list` stays consistent with OpenShell state. (#532)
-  if (gatewayRemoved) {
-    registry.clearAll();
-  }
-  if (gatewayRemoved && (dockerDriver || hasLifecycleCommands)) {
-    // Legacy OpenShell gateway cleanup doesn't remove Docker volumes, which
-    // leaves corrupted cluster state that breaks the next gateway start.
-    dockerRemoveVolumesByPrefix(`openshell-cluster-${GATEWAY_NAME}`, { ignoreError: true });
-  }
-  return gatewayRemoved;
+  return destroyGatewayWithVolumeCleanup({
+    clearRegistry: registry.clearAll,
+    dockerRemoveVolumesByPrefix,
+    gatewayName: GATEWAY_NAME,
+    hasLifecycleCommands: () => gatewayCliSupportsLifecycleCommands(runCaptureOpenshell),
+    isDockerDriverGatewayEnabled: isLinuxDockerDriverGatewayEnabled,
+    removeDockerDriverGatewayRegistration,
+    runOpenshell,
+    stopDockerDriverGatewayProcess,
+  });
 }
 
 type FinalGatewayStartFailureOptions = {
