@@ -20,6 +20,7 @@ export default class SkillInstallCliCommand extends NemoClawCommand {
     {
       usage: "nemoclaw <name> skill install",
       description: "Deploy a skill directory to the sandbox",
+      flags: "<path>",
       group: "Skills",
       scope: "sandbox",
       order: 16,

@@ -22,7 +22,7 @@ export default class HostsAddCommand extends NemoClawCommand {
     {
       usage: "nemoclaw <name> hosts-add",
       description: "Add a sandbox /etc/hosts alias",
-      flags: "(--dry-run)",
+      flags: "<hostname> <ip> [--dry-run]",
       group: "Policy Presets",
       scope: "sandbox",
       order: 19.1,

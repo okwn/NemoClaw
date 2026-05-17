@@ -27,6 +27,8 @@ function setIfDefined(
 }
 
 async function main(): Promise<void> {
+  process.env.OCLIF_METADATA_MANIFEST_GENERATION = "1";
+
   const root = packageRoot();
   const config = await OclifConfig.load(root);
   const metadata: Record<string, SerializableCommandMetadata> = {};

@@ -37,11 +37,20 @@ function generatedMetadataPath(): string {
 
 let cachedMetadata: Record<string, OclifCommandMetadata> | null = null;
 
-function loadGeneratedOclifMetadata(): Record<string, OclifCommandMetadata> | null {
+function isGeneratingMetadataManifest(): boolean {
+  return process.env.OCLIF_METADATA_MANIFEST_GENERATION === "1";
+}
+
+function loadGeneratedOclifMetadata(): Record<string, OclifCommandMetadata> {
   if (cachedMetadata) return cachedMetadata;
 
   const metadataPath = generatedMetadataPath();
-  if (!fs.existsSync(metadataPath)) return null;
+  if (!fs.existsSync(metadataPath) && isGeneratingMetadataManifest()) return {};
+  if (!fs.existsSync(metadataPath)) {
+    throw new Error(
+      `Missing generated oclif metadata manifest at ${metadataPath}. Run npm run build:cli before invoking CLI metadata consumers.`,
+    );
+  }
 
   cachedMetadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as Record<
     string,
@@ -51,7 +60,7 @@ function loadGeneratedOclifMetadata(): Record<string, OclifCommandMetadata> | nu
 }
 
 export function getRegisteredOclifCommandsMetadata(): Record<string, OclifCommandMetadata> {
-  return loadGeneratedOclifMetadata() ?? {};
+  return loadGeneratedOclifMetadata();
 }
 
 export function getRegisteredOclifCommandMetadata(
