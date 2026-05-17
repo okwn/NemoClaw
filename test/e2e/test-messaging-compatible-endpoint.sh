@@ -508,7 +508,13 @@ check_openclaw_agent_turn() {
   hop_count_before=$(grep -c "proxy_hop_headers=" "$COMPAT_MOCK_LOG" 2>/dev/null) || hop_count_before=0
 
   # 2>/dev/null drops openclaw progress/log lines so stdout is JSON-only.
-  raw=$(run_with_timeout 90 ssh -F "$ssh_cfg" \
+  # NemoClaw#3632: increased from 90 → 180 s. OpenClaw 2026.4.24 defers
+  # plugin/channel initialisation until the first agent turn. On slower CI
+  # runners the gateway event loop may be blocked for >60 s by
+  # openclaw-weixin staging + Telegram channel setup, pushing the first
+  # turn past the 90 s budget.  The mock responds in <1 s (C5 proves it),
+  # so the extra headroom only covers gateway boot, not inference latency.
+  raw=$(run_with_timeout 180 ssh -F "$ssh_cfg" \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
     -o ConnectTimeout=10 \
@@ -664,6 +670,28 @@ fi
 check_openclaw_config
 check_gateway_ready
 check_sandbox_inference
+
+# NemoClaw#3632: Wait for the gateway to finish deferred plugin/channel
+# initialisation before sending the first openclaw-agent turn.  OpenClaw
+# 2026.4.24 defers openclaw-weixin staging and Telegram channel setup until
+# after the gateway port is listening, so the C4 TCP check and C5 curl
+# both pass while the event loop is still busy.  A short health-check poll
+# avoids the intermittent C8 timeout on slower CI runners.
+_gw_ready=0
+for _gwi in $(seq 1 30); do
+  if openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc \
+      "curl -sf --max-time 5 http://127.0.0.1:18789/api/health" >/dev/null 2>&1; then
+    _gw_ready=1
+    break
+  fi
+  sleep 2
+done
+if [ "$_gw_ready" -eq 1 ]; then
+  pass "C4b: Gateway health endpoint reachable (plugin init complete)"
+else
+  info "C4b: Gateway health endpoint not reachable after 60 s — proceeding anyway"
+fi
+
 check_openclaw_agent_turn
 
 if grep -q "POST /v1/chat/completions auth=ok" "$COMPAT_MOCK_LOG" 2>/dev/null; then
