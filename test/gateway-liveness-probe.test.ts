@@ -17,16 +17,6 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 describe("gateway liveness probe (#2020)", () => {
   const content = fs.readFileSync(path.join(ROOT, "src/lib/onboard.ts"), "utf-8");
 
-  it("verifyGatewayContainerRunning() helper exists and checks Docker state", () => {
-    const match = content.match(/function verifyGatewayContainerRunning\([\s\S]*?^}/m);
-    expect(match).toBeTruthy();
-    if (!match) throw new Error("Expected verifyGatewayContainerRunning() in src/lib/onboard.ts");
-    // Must use a Docker inspect helper to probe container state
-    expect(match[0]).toMatch(/docker(?:Inspect|ContainerInspectFormat)\(/);
-    // Must check .State.Running, not just container existence
-    expect(match[0]).toContain("{{.State.Running}}");
-  });
-
   it("preflight probes the container when gatewayReuseState is 'healthy'", () => {
     // The preflight section must call the probe before entering the port loop.
     // Scope to preflight so the regex can't accidentally match the main onboard block.
@@ -36,7 +26,7 @@ describe("gateway liveness probe (#2020)", () => {
     expect(preflightEnd).toBeGreaterThan(preflightStart);
     const preflightSection = content.slice(preflightStart, preflightEnd);
     const preflightProbe = preflightSection.match(
-      /let gatewayReuseState = gatewaySnapshot\.gatewayReuseState[\s\S]*?verifyGatewayContainerRunning\(\)[\s\S]*?destroyGatewayForReuse\(/,
+      /let gatewayReuseState = gatewaySnapshot\.gatewayReuseState[\s\S]*?verifyGatewayContainerRunning\([^)]*\)[\s\S]*?destroyGatewayForReuse\(/,
     );
     expect(preflightProbe).toBeTruthy();
   });
@@ -46,16 +36,9 @@ describe("gateway liveness probe (#2020)", () => {
     // Scope to the onboard() function so the regex can't accidentally match the preflight block.
     const onboardSection = content.slice(content.indexOf("async function onboard("));
     const mainFlowProbe = onboardSection.match(
-      /let gatewayReuseState = gatewaySnapshot\.gatewayReuseState[\s\S]*?verifyGatewayContainerRunning\(\)[\s\S]*?const canReuseHealthyGateway/,
+      /let gatewayReuseState = gatewaySnapshot\.gatewayReuseState[\s\S]*?verifyGatewayContainerRunning\([^)]*\)[\s\S]*?const canReuseHealthyGateway/,
     );
     expect(mainFlowProbe).toBeTruthy();
-  });
-
-  it("returns tri-state: running, missing, or unknown", () => {
-    // The helper must distinguish container-removed from Docker-unavailable
-    expect(content).toContain('return "running"');
-    expect(content).toContain('return "missing"');
-    expect(content).toContain('return "unknown"');
   });
 
   it("only downgrades to 'missing' when container is confirmed missing", () => {

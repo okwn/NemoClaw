@@ -271,6 +271,8 @@ const {
   isLiveForwardStatus,
 } = require("./onboard/dashboard-port") as typeof import("./onboard/dashboard-port");
 const { destroyGatewayForReuse } = require("./onboard/gateway-cleanup") as typeof import("./onboard/gateway-cleanup");
+const { verifyGatewayContainerRunning } =
+  require("./onboard/gateway-container-running") as typeof import("./onboard/gateway-container-running");
 const { destroyGatewayWithVolumeCleanup } =
   require("./onboard/gateway-destroy") as typeof import("./onboard/gateway-destroy");
 const {
@@ -380,39 +382,6 @@ const HERMES_NOUS_API_KEY_CREDENTIAL_ENV =
   hermesProviderAuth.HERMES_NOUS_API_KEY_CREDENTIAL_ENV || "NOUS_API_KEY";
 const HERMES_NOUS_API_KEY_HELP_URL = "https://portal.nousresearch.com/manage-subscription";
 
-/**
- * Probe whether the gateway Docker container is actually running.
- * openshell CLI metadata can be stale after a manual `docker rm`, so this
- * verifies the container is live before trusting a "healthy" reuse state.
- *
- * Returns "running" | "missing" | "unknown".
- * - "running"  — container exists and State.Running is true
- * - "missing"  — container was removed or exists but is stopped (not reusable)
- * - "unknown"  — any other failure (daemon down, timeout, etc.)
- *
- * Callers should only trigger stale-metadata cleanup on "missing", not on
- * "unknown", to avoid destroying a healthy gateway when Docker is temporarily
- * unavailable.  See #2020.
- */
-function verifyGatewayContainerRunning() {
-  const containerName = `openshell-cluster-${GATEWAY_NAME}`;
-  const result = dockerInspect(
-    ["--type", "container", "--format", "{{.State.Running}}", containerName],
-    { ignoreError: true, suppressOutput: true },
-  );
-  if (result.status === 0 && String(result.stdout || "").trim() === "true") {
-    return "running";
-  }
-  // Container exists but is stopped (exit 0, Running !== "true")
-  if (result.status === 0) {
-    return "missing";
-  }
-  const stderr = (result.stderr || "").toString();
-  if (stderr.includes("No such object") || stderr.includes("No such container")) {
-    return "missing";
-  }
-  return "unknown";
-}
 const OPENCLAW_LAUNCH_AGENT_PLIST = "~/Library/LaunchAgents/ai.openclaw.gateway.plist";
 
 const BRAVE_SEARCH_HELP_URL = "https://brave.com/search/api/";
@@ -3669,7 +3638,7 @@ async function preflight(
   // package-managed OpenShell gateways do not have an openshell-cluster-*
   // Docker container, so the live CLI health check is the source of truth.
   if (gatewayReuseState === "healthy" && gatewayCliSupportsLifecycleCommands(runCaptureOpenshell)) {
-    const containerState = verifyGatewayContainerRunning();
+    const containerState = verifyGatewayContainerRunning(GATEWAY_NAME);
     if (containerState === "missing") {
       console.log("  Gateway metadata is stale (container not running). Cleaning up...");
       runOpenshell(["forward", "stop", String(DASHBOARD_PORT)], { ignoreError: true });
@@ -9649,7 +9618,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     // package-managed OpenShell gateways do not have an openshell-cluster-*
     // Docker container, so the live CLI health check is the source of truth.
     if (gatewayReuseState === "healthy" && gatewayCliSupportsLifecycleCommands(runCaptureOpenshell)) {
-      const containerState = verifyGatewayContainerRunning();
+      const containerState = verifyGatewayContainerRunning(GATEWAY_NAME);
       if (containerState === "missing") {
         console.log("  Gateway metadata is stale (container not running). Cleaning up...");
         runOpenshell(["forward", "stop", String(DASHBOARD_PORT)], { ignoreError: true });
