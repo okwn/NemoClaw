@@ -1089,11 +1089,17 @@ The command is a static reference; it does not consult credentials or the runnin
 </section>
 <section id="nemoclaw-name-channels-add-channel">
 <h3><code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;name&gt;</span> <span class="pre">channels</span> <span class="pre">add</span> <span class="pre">&lt;channel&gt;</span></code><a class="headerlink" href="#nemoclaw-name-channels-add-channel" title="Link to this heading">#</a></h3>
-<p>Store credentials for a messaging channel (<code class="docutils literal notranslate"><span class="pre">telegram</span></code>, <code class="docutils literal notranslate"><span class="pre">discord</span></code>, or <code class="docutils literal notranslate"><span class="pre">slack</span></code>) and rebuild the sandbox so the image picks up the new channel.
-The command prompts for any missing token, registers it with the OpenShell gateway, then asks whether to rebuild immediately.
-Running <code class="docutils literal notranslate"><span class="pre">add</span></code> for an already-configured channel simply overwrites the stored tokens — the operation is idempotent.
+<p>Register a messaging channel with the sandbox and rebuild so the image picks up the new channel.
+Channels fall into three login modes:</p>
+<ul class="simple">
+<li><p><strong>Token paste</strong> (<code class="docutils literal notranslate"><span class="pre">telegram</span></code>, <code class="docutils literal notranslate"><span class="pre">discord</span></code>, <code class="docutils literal notranslate"><span class="pre">slack</span></code>): the command prompts for any missing token and registers it with the OpenShell gateway.</p></li>
+<li><p><strong>Host-side QR</strong> (<code class="docutils literal notranslate"><span class="pre">wechat</span></code>): the command runs an interactive host-side QR scan to capture a static session token, then registers it with the gateway.</p></li>
+<li><p><strong>In-sandbox QR</strong> (<code class="docutils literal notranslate"><span class="pre">whatsapp</span></code>): the command registers a tokenless bridge with the gateway; you complete pairing from inside the sandbox after the rebuild by running <code class="docutils literal notranslate"><span class="pre">openclaw</span> <span class="pre">channels</span> <span class="pre">login</span> <span class="pre">--channel</span> <span class="pre">whatsapp</span></code>.</p></li>
+</ul>
+<p>After registering the channel, NemoClaw asks whether to rebuild immediately.
+Running <code class="docutils literal notranslate"><span class="pre">add</span></code> for an already-configured channel simply overwrites the stored credentials where applicable — the operation is idempotent.
 Channel names are trimmed and lowercased before NemoClaw stores credentials, names bridge providers, or prints rebuild messages.
-After a successful add, NemoClaw prints a <code class="docutils literal notranslate"><span class="pre">policy-add</span> <span class="pre">&lt;channel&gt;</span></code> hint when a matching built-in network policy preset exists but is not applied to the sandbox yet.</p>
+If a matching built-in network policy preset exists, NemoClaw applies it to the sandbox before the rebuild so the bridge has egress to its upstream API; if applying the preset fails, NemoClaw warns and tells you to re-apply manually with <code class="docutils literal notranslate"><span class="pre">nemoclaw</span> <span class="pre">&lt;sandbox&gt;</span> <span class="pre">policy-add</span> <span class="pre">&lt;channel&gt;</span></code>.</p>
 <div class="highlight-console notranslate"><div class="highlight"><pre><span></span><span class="gp">$ </span>nemoclaw<span class="w"> </span>my-assistant<span class="w"> </span>channels<span class="w"> </span>add<span class="w"> </span>telegram
 </pre></div>
 </div>
