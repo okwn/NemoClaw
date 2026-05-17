@@ -133,6 +133,7 @@ function hasDirectProductionPathHint(text: string): boolean {
   return (
     /["'`]\.\.\/Dockerfile(?:\.base)?["'`]/.test(text) ||
     /["'`]\.\.\/bin\//.test(text) ||
+    /["'`]\.\.\/agents\//.test(text) ||
     /["'`]\.\.\/scripts\//.test(text) ||
     /["'`]\.\.\/src\//.test(text) ||
     /["'`]\.\.\/dist\//.test(text) ||
@@ -143,6 +144,9 @@ function hasDirectProductionPathHint(text: string): boolean {
       text,
     ) ||
     /(import\.meta\.dirname|import\.meta\.url)[\s\S]*["'`](?![\w.-]+\.test\.ts["'`])[\w.-]+\.ts["'`]/.test(
+      text,
+    ) ||
+    /\b(?:START_SCRIPT|SCRIPT_PATH|DOCKERFILE(?:_[A-Z]+)?|HERMES_[A-Z_]+|CANONICAL_FIX|NEMOCLAW_START_SCRIPT)\b/.test(
       text,
     ) ||
     /["'`]nemoclaw["'`].*["'`]src["'`]/.test(text) ||
@@ -589,6 +593,32 @@ function collectAssertionsInNode(
   return assertions;
 }
 
+function fallbackLineScan(sourceFile: ts.SourceFile, root: ts.Node): Assertion[] {
+  const rootText = root.getText(sourceFile);
+  const sourceVars = new Set<string>();
+  const assertions: Assertion[] = [];
+
+  const sourceReadRe = /(?:const|let|var)\s+(\w+)\s*=\s*(?:\w+\.)?readFileSync\(([^\n;]+)/g;
+  for (const match of rootText.matchAll(sourceReadRe)) {
+    const [, variable, target] = match;
+    if (variable && target && isProductionPathExpression(target, new Set())) {
+      sourceVars.add(variable);
+    }
+  }
+
+  if (sourceVars.size === 0) return assertions;
+
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node)) {
+      const assertion = assertionFromCall(sourceFile, node, sourceVars, new Set());
+      if (assertion) assertions.push(assertion);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(root);
+  return assertions;
+}
+
 function scanFile(absPath: string): SourceShapeCase[] {
   const relPath = normalizePathText(relative(REPO_ROOT, absPath));
   const text = readFileSync(absPath, "utf-8");
@@ -609,12 +639,10 @@ function scanFile(absPath: string): SourceShapeCase[] {
           productionPathVars,
           sourceFunctions,
         );
-        const assertions = collectAssertionsInNode(
-          sourceFile,
-          body,
-          sourceVars,
-          productionPathVars,
-        );
+        const assertions = [
+          ...collectAssertionsInNode(sourceFile, body, sourceVars, productionPathVars),
+          ...fallbackLineScan(sourceFile, body),
+        ];
         if (assertions.length > 0) {
           const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
           cases.push({
