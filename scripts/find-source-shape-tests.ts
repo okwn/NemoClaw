@@ -49,6 +49,11 @@ type VariableDecl = {
   readonly initializer: ts.Expression;
 };
 
+type SourceFunction = {
+  readonly name: string;
+  readonly sourceRead: SourceRead;
+};
+
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TEST_NAME_PATTERN = /\.(test|spec)\.(js|ts|mjs|mts|cjs|cts)$/;
 const SKIP_DIRS = new Set([
@@ -92,8 +97,12 @@ function isTestFile(absPath: string): boolean {
   return TEST_NAME_PATTERN.test(basename(rel));
 }
 
+function stripStringLiterals(text: string): string {
+  return text.replace(/(['"`])(?:\\.|(?!\1)[\\s\\S])*\1/g, "");
+}
+
 function textContainsIdentifier(text: string, identifier: string): boolean {
-  return new RegExp(`\\b${escapeRegExp(identifier)}\\b`).test(text);
+  return new RegExp(`\\b${escapeRegExp(identifier)}\\b`).test(stripStringLiterals(text));
 }
 
 function escapeRegExp(value: string): string {
@@ -130,6 +139,12 @@ function hasDirectProductionPathHint(text: string): boolean {
     /["'`]\.\.\/["'`]\s*,\s*["'`](?:\.github|agents|bin|dist|nemoclaw|nemoclaw-blueprint|scripts|src|Dockerfile(?:\.base)?|install\.sh|package\.json)["'`]/.test(
       text,
     ) ||
+    /["'`]\.\.["'`]\s*,\s*["'`](?:\.github|agents|bin|dist|nemoclaw|nemoclaw-blueprint|scripts|src|Dockerfile(?:\.base)?|install\.sh|package\.json)["'`]/.test(
+      text,
+    ) ||
+    /(import\.meta\.dirname|import\.meta\.url)[\s\S]*["'`](?![\w.-]+\.test\.ts["'`])[\w.-]+\.ts["'`]/.test(
+      text,
+    ) ||
     /["'`]nemoclaw["'`].*["'`]src["'`]/.test(text) ||
     /["'`](nemoclaw|nemohermes)\.js["'`]/.test(text)
   );
@@ -160,7 +175,7 @@ function isSourceTextLikeName(name: string): boolean {
 }
 
 function isTextDerivation(initText: string): boolean {
-  return /(\.match(All)?\b|\.slice\b|\.split\b|\.replace(All)?\b|\.trim(End)?\b|\.join\b|String\(|Heredoc\b|Snippet\b|Block\b|extract[A-Z])/.test(
+  return /(\.indexOf\b|\.search\b|\.includes\b|\.match(All)?\b|\.slice\b|\.split\b|\.replace(All)?\b|\.trim(End)?\b|\.join\b|String\(|Heredoc\b|Snippet\b|Block\b|extract[A-Z])/.test(
     initText,
   );
 }
@@ -242,18 +257,43 @@ function collectProductionPathVars(
   return pathVars;
 }
 
+function callTargetName(expression: ts.Expression): string | null {
+  if (ts.isIdentifier(expression)) return expression.text;
+  if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+  return null;
+}
+
 function sourceReadFromInitializer(
   sourceFile: ts.SourceFile,
   variable: VariableDecl,
   productionPathVars: ReadonlySet<string>,
+  sourceFunctions: ReadonlyMap<string, SourceRead>,
 ): SourceRead | null {
   const init = variable.initializer;
-  if (!ts.isCallExpression(init) || !isReadFileCall(init) || init.arguments.length === 0) {
+  if (!ts.isCallExpression(init)) {
     return null;
   }
 
-  const targetText = init.arguments[0].getText(sourceFile);
-  if (!isProductionPathExpression(targetText, productionPathVars)) {
+  if (isReadFileCall(init) && init.arguments.length > 0) {
+    const targetText = init.arguments[0].getText(sourceFile);
+    if (!isProductionPathExpression(targetText, productionPathVars)) {
+      return null;
+    }
+
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(
+      variable.initializer.getStart(),
+    );
+    return {
+      line: line + 1,
+      column: character + 1,
+      variable: variable.name,
+      expression: variable.initializer.getText(sourceFile),
+    };
+  }
+
+  const targetName = callTargetName(init.expression);
+  const functionSourceRead = targetName ? sourceFunctions.get(targetName) : undefined;
+  if (!functionSourceRead) {
     return null;
   }
 
@@ -264,20 +304,73 @@ function sourceReadFromInitializer(
     line: line + 1,
     column: character + 1,
     variable: variable.name,
-    expression: variable.initializer.getText(sourceFile),
+    expression: `${variable.initializer.getText(sourceFile)} -> ${functionSourceRead.expression}`,
   };
+}
+
+function collectSourceFunctions(
+  sourceFile: ts.SourceFile,
+  productionPathVars: ReadonlySet<string>,
+): Map<string, SourceRead> {
+  const sourceFunctions = new Map<string, SourceRead>();
+
+  function sourceReadFromExpression(expression: ts.Expression): SourceRead | null {
+    if (
+      !ts.isCallExpression(expression) ||
+      !isReadFileCall(expression) ||
+      expression.arguments.length === 0
+    ) {
+      return null;
+    }
+    const targetText = expression.arguments[0].getText(sourceFile);
+    if (!isProductionPathExpression(targetText, productionPathVars)) {
+      return null;
+    }
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(expression.getStart());
+    return {
+      line: line + 1,
+      column: character + 1,
+      variable: "<return>",
+      expression: expression.getText(sourceFile),
+    };
+  }
+
+  function visit(node: ts.Node): void {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      let sourceRead: SourceRead | null = null;
+      function visitFunctionBody(child: ts.Node): void {
+        if (sourceRead) return;
+        if (ts.isReturnStatement(child) && child.expression) {
+          sourceRead = sourceReadFromExpression(child.expression);
+        }
+        ts.forEachChild(child, visitFunctionBody);
+      }
+      if (node.body) visitFunctionBody(node.body);
+      if (sourceRead) sourceFunctions.set(node.name.text, sourceRead);
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return sourceFunctions;
 }
 
 function collectSourceVars(
   sourceFile: ts.SourceFile,
   variables: readonly VariableDecl[],
   productionPathVars: ReadonlySet<string>,
+  sourceFunctions: ReadonlyMap<string, SourceRead>,
 ): { sourceVars: Set<string>; sourceReads: SourceRead[] } {
   const sourceVars = new Set<string>();
   const sourceReads: SourceRead[] = [];
 
   for (const variable of variables) {
-    const sourceRead = sourceReadFromInitializer(sourceFile, variable, productionPathVars);
+    const sourceRead = sourceReadFromInitializer(
+      sourceFile,
+      variable,
+      productionPathVars,
+      sourceFunctions,
+    );
     if (sourceRead) {
       sourceVars.add(variable.name);
       sourceReads.push(sourceRead);
@@ -335,6 +428,9 @@ function assertionFromSubject(
   productionPathVars: ReadonlySet<string>,
 ): Assertion | null {
   const subject = subjectExpr.getText(sourceFile);
+  if (/\bfs\.statSync\(/.test(subject)) {
+    return null;
+  }
   const referencesSource = [...sourceVars].some((name) => textContainsIdentifier(subject, name));
   const directSourceRead =
     ts.isCallExpression(subjectExpr) &&
@@ -506,10 +602,12 @@ function scanFile(absPath: string): SourceShapeCase[] {
       if (body) {
         const variables = scopedVariableDecls(sourceFile, allVariables, node, body);
         const productionPathVars = collectProductionPathVars(sourceFile, variables);
+        const sourceFunctions = collectSourceFunctions(sourceFile, productionPathVars);
         const { sourceVars, sourceReads } = collectSourceVars(
           sourceFile,
           variables,
           productionPathVars,
+          sourceFunctions,
         );
         const assertions = collectAssertionsInNode(
           sourceFile,
