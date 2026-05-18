@@ -25,8 +25,8 @@ import { renderPublicOclifHelp } from "./public-oclif-help";
 import {
   translatePublicGlobalArgv,
   translatePublicSandboxArgv,
-  type DispatchResult,
-  type HelpDispatch,
+  type PublicTranslationResult,
+  type PublicHelpTranslation,
 } from "./public-argv-translation";
 
 // ── Global commands (derived from command registry) ──────────────
@@ -114,14 +114,13 @@ function validSandboxActionsText(): string {
   return sandboxActionList().filter(Boolean).join(", ");
 }
 
-function shouldExecuteViaNativeArgv(result: Extract<DispatchResult, { kind: "nativeArgv" }>): boolean {
+function shouldExecuteViaNativeArgv(result: Extract<PublicTranslationResult, { kind: "nativeArgv" }>): boolean {
   if (hasHelpFlag(result.args)) return false;
   if (result.commandId.startsWith("sandbox:")) return true;
   return result.commandId.includes(":") && !result.commandId.startsWith("root:");
 }
-
 function printDispatchUsageError(
-  result: Extract<DispatchResult, { kind: "usageError" }>,
+  result: Extract<PublicTranslationResult, { kind: "publicUsageError" }>,
   sandboxName?: string,
 ): never {
   if (result.lines.length === 0) {
@@ -193,7 +192,7 @@ function validatePublicConnectArgs(
   }
 }
 
-function renderDispatchHelp(result: HelpDispatch): void {
+function renderDispatchHelp(result: PublicHelpTranslation): void {
   if (result.message) console.error(`  ${result.message}`);
   renderPublicOclifHelp(result.commandId, result.publicUsage, {
     error: typeof result.exitCode === "number" && result.exitCode !== 0,
@@ -201,8 +200,8 @@ function renderDispatchHelp(result: HelpDispatch): void {
   if (typeof result.exitCode === "number") process.exit(result.exitCode);
 }
 
-async function runDispatchResult(
-  result: DispatchResult,
+async function runPublicTranslationResult(
+  result: PublicTranslationResult,
   opts: { sandboxName?: string } = {},
 ): Promise<void> {
   switch (result.kind) {
@@ -213,13 +212,13 @@ async function runDispatchResult(
         await runCompatibilityOclifCommand(result.commandId, result.args);
       }
       return;
-    case "help":
+    case "publicHelp":
       renderDispatchHelp(result);
       return;
-    case "usageError":
+    case "publicUsageError":
       printDispatchUsageError(result, opts.sandboxName);
       return;
-    case "unknownAction":
+    case "unknownPublicAction":
       console.error(`  Unknown action: ${result.action}`);
       console.error(`  Valid actions: ${validSandboxActionsText()}`);
       process.exit(1);
@@ -251,7 +250,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
   }
 
   if (normalized.kind === "global") {
-    await runDispatchResult(translatePublicGlobalArgv(normalized.command, normalized.args));
+    await runPublicTranslationResult(translatePublicGlobalArgv(normalized.command, normalized.args));
     return;
   }
 
@@ -270,7 +269,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
     hasHelpFlag(requestedSandboxActionArgs)
   ) {
     validateName(cmd, "sandbox name");
-    await runDispatchResult(
+    await runPublicTranslationResult(
       translatePublicSandboxArgv(cmd, requestedSandboxAction, requestedSandboxActionArgs),
       {
         sandboxName: cmd,
@@ -298,7 +297,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
     const action = requestedSandboxAction;
     const actionArgs = requestedSandboxActionArgs;
     validatePublicConnectArgs(cmd, action, actionArgs);
-    await runDispatchResult(translatePublicSandboxArgv(cmd, action, actionArgs), {
+    await runPublicTranslationResult(translatePublicSandboxArgv(cmd, action, actionArgs), {
       sandboxName: cmd,
     });
     return;

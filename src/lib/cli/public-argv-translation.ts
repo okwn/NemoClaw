@@ -9,36 +9,36 @@ import {
 } from "./oclif-metadata";
 import { globalRouteTokenVariants, sandboxRouteTokens } from "./public-route-metadata";
 
-export type NativeArgvDispatch = {
+export type NativeArgvTranslation = {
   kind: "nativeArgv";
   commandId: string;
   args: string[];
   argv: string[];
 };
 
-export type HelpDispatch = {
-  kind: "help";
+export type PublicHelpTranslation = {
+  kind: "publicHelp";
   publicUsage: string | string[];
   commandId: string;
   exitCode?: number;
   message?: string;
 };
 
-export type UsageErrorDispatch = {
-  kind: "usageError";
+export type PublicUsageErrorTranslation = {
+  kind: "publicUsageError";
   lines: string[];
 };
 
-export type UnknownActionDispatch = {
-  kind: "unknownAction";
+export type UnknownPublicActionTranslation = {
+  kind: "unknownPublicAction";
   action: string;
 };
 
-export type DispatchResult =
-  | NativeArgvDispatch
-  | HelpDispatch
-  | UsageErrorDispatch
-  | UnknownActionDispatch;
+export type PublicTranslationResult =
+  | NativeArgvTranslation
+  | PublicHelpTranslation
+  | PublicUsageErrorTranslation
+  | UnknownPublicActionTranslation;
 
 type LegacyRoute = {
   commandId: string;
@@ -173,20 +173,20 @@ function startsWithTokens(tokens: readonly string[], prefix: readonly string[]):
   return prefix.every((token, index) => tokens[index] === token);
 }
 
-function routeToNativeArgv(route: LegacyRoute, sandboxName: string, args: string[]): DispatchResult {
+function routeToNativeArgv(route: LegacyRoute, sandboxName: string, args: string[]): PublicTranslationResult {
   if (hasHelpFlag(args)) {
-    return { kind: "help", commandId: route.commandId, publicUsage: route.publicUsage };
+    return { kind: "publicHelp", commandId: route.commandId, publicUsage: route.publicUsage };
   }
   return nativeArgv(route.commandId, [sandboxName, ...args]);
 }
 
-function nativeArgv(commandId: string, args: string[]): NativeArgvDispatch {
+function nativeArgv(commandId: string, args: string[]): NativeArgvTranslation {
   return { kind: "nativeArgv", commandId, args, argv: [...commandId.split(":"), ...args] };
 }
 
-function globalParentHelp(topic: string, message?: string): HelpDispatch {
+function globalParentHelp(topic: string, message?: string): PublicHelpTranslation {
   return {
-    kind: "help",
+    kind: "publicHelp",
     commandId: topic,
     publicUsage: globalParentPublicUsage(topic),
     exitCode: message ? 1 : undefined,
@@ -194,7 +194,7 @@ function globalParentHelp(topic: string, message?: string): HelpDispatch {
   };
 }
 
-export function translatePublicGlobalArgv(cmd: string, args: string[]): DispatchResult {
+export function translatePublicGlobalArgv(cmd: string, args: string[]): PublicTranslationResult {
   const inputTokens = [cmd, ...args];
   for (const route of globalRoutes()) {
     if (!startsWithTokens(inputTokens, route.tokens)) continue;
@@ -209,7 +209,7 @@ export function translatePublicGlobalArgv(cmd: string, args: string[]): Dispatch
     return globalParentHelp(cmd, `Unknown ${cmd} subcommand: ${subcommand}`);
   }
 
-  return { kind: "usageError", lines: [] };
+  return { kind: "publicUsageError", lines: [] };
 }
 
 function parentSubcommands(action: string): Set<string> {
@@ -225,9 +225,9 @@ function hasRegisteredOclifParentCommand(action: string): boolean {
   return getRegisteredOclifCommandMetadata(`sandbox:${action}`) !== null;
 }
 
-function parentHelp(action: string, message?: string): HelpDispatch {
+function parentHelp(action: string, message?: string): PublicHelpTranslation {
   return {
-    kind: "help",
+    kind: "publicHelp",
     commandId: `sandbox:${action}`,
     publicUsage: parentPublicUsage(action),
     exitCode: message ? 1 : undefined,
@@ -239,7 +239,7 @@ export function translatePublicSandboxArgv(
   sandboxName: string,
   action: string,
   actionArgs: string[],
-): DispatchResult {
+): PublicTranslationResult {
   if (action === "connect") {
     return nativeArgv("sandbox:connect", [sandboxName, ...actionArgs]);
   }
@@ -274,7 +274,7 @@ export function translatePublicSandboxArgv(
 
   if (action === "share" && hasHelpFlag(actionArgs)) {
     return {
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:share",
       publicUsage: "<name> share <mount|unmount|status>",
     };
@@ -284,5 +284,5 @@ export function translatePublicSandboxArgv(
     return nativeArgv(`sandbox:${action}`, [sandboxName, ...(hasHelpFlag(actionArgs) ? [] : actionArgs)]);
   }
 
-  return { kind: "unknownAction", action };
+  return { kind: "unknownPublicAction", action };
 }

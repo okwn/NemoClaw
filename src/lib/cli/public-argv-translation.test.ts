@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   translatePublicGlobalArgv,
   translatePublicSandboxArgv,
-  type DispatchResult,
+  type PublicTranslationResult,
 } from "./public-argv-translation";
 import { SANDBOX_ROUTE_OVERRIDES, sandboxRouteTokens } from "./public-route-metadata";
 
 function expectNative(
-  result: DispatchResult,
+  result: PublicTranslationResult,
   commandId: string,
   args: string[],
   argv = [...commandId.split(":"), ...args],
@@ -62,7 +62,7 @@ describe("public route/display separation", () => {
 
     expectNative(dispatch.translatePublicGlobalArgv("list", []), "list", []);
     expect(dispatch.translatePublicGlobalArgv("renamed-list", [])).toEqual({
-      kind: "usageError",
+      kind: "publicUsageError",
       lines: [],
     });
     expectNative(
@@ -71,7 +71,7 @@ describe("public route/display separation", () => {
       ["alpha"],
     );
     expect(dispatch.translatePublicSandboxArgv("alpha", "renamed-status", [])).toEqual({
-      kind: "unknownAction",
+      kind: "unknownPublicAction",
       action: "renamed-status",
     });
 
@@ -113,14 +113,14 @@ describe("translatePublicGlobalArgv", () => {
 
   it("returns metadata-derived parent help for unsupported global forms", () => {
     expect(translatePublicGlobalArgv("tunnel", ["restart"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "tunnel",
       publicUsage: ["tunnel start", "tunnel stop"],
       exitCode: 1,
       message: "Unknown tunnel subcommand: restart",
     });
     expect(translatePublicGlobalArgv("inference", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "inference",
       publicUsage: [
         "inference get [--json]",
@@ -130,37 +130,37 @@ describe("translatePublicGlobalArgv", () => {
       message: "Unknown inference subcommand: bogus",
     });
     expect(translatePublicGlobalArgv("credentials", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "credentials",
       publicUsage: ["credentials list", "credentials reset <PROVIDER> [--yes|-y]"],
       exitCode: 1,
       message: "Unknown credentials subcommand: bogus",
     });
-    expect(translatePublicGlobalArgv("bogus", [])).toEqual({ kind: "usageError", lines: [] });
+    expect(translatePublicGlobalArgv("bogus", [])).toEqual({ kind: "publicUsageError", lines: [] });
   });
 });
 
 describe("public help compatibility cases", () => {
   it("keeps public-grammar help for supported compatibility islands", () => {
     expect(translatePublicGlobalArgv("credentials", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "credentials",
       publicUsage: ["credentials list", "credentials reset <PROVIDER> [--yes|-y]"],
       exitCode: 1,
       message: "Unknown credentials subcommand: bogus",
     });
     expect(translatePublicSandboxArgv("alpha", "status", ["--help"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:status",
       publicUsage: "<name> status",
     });
     expect(translatePublicSandboxArgv("alpha", "share", ["--help"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:share",
       publicUsage: "<name> share <mount|unmount|status>",
     });
     expect(translatePublicSandboxArgv("alpha", "channels", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:channels",
       exitCode: 1,
       message: "Unknown channels subcommand: bogus",
@@ -200,12 +200,12 @@ describe("translatePublicSandboxArgv", () => {
 
   it("keeps legacy public help usage for sandbox-scoped commands", () => {
     expect(translatePublicSandboxArgv("alpha", "status", ["--help"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:status",
       publicUsage: "<name> status",
     });
     expect(translatePublicSandboxArgv("alpha", "logs", ["--help"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:logs",
       publicUsage: "<name> logs [--follow] [--tail <lines>|-n <lines>] [--since <duration>]",
     });
@@ -214,7 +214,7 @@ describe("translatePublicSandboxArgv", () => {
   it("translates sandbox recover through metadata-derived dispatch", () => {
     expectNative(translatePublicSandboxArgv("alpha", "recover", []), "sandbox:recover", ["alpha"]);
     expect(translatePublicSandboxArgv("alpha", "recover", ["--help"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:recover",
       publicUsage: "<name> recover",
     });
@@ -263,7 +263,7 @@ describe("translatePublicSandboxArgv", () => {
 
   it("keeps share parent help public", () => {
     expect(translatePublicSandboxArgv("alpha", "share", ["--help"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:share",
       publicUsage: "<name> share <mount|unmount|status>",
     });
@@ -289,7 +289,7 @@ describe("translatePublicSandboxArgv", () => {
 
   it("returns metadata-derived parent help for config and shields groups", () => {
     expect(translatePublicSandboxArgv("alpha", "config", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:config",
       exitCode: 1,
       message: "Unknown config subcommand: bogus",
@@ -300,7 +300,7 @@ describe("translatePublicSandboxArgv", () => {
       ],
     });
     expect(translatePublicSandboxArgv("alpha", "shields", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:shields",
       exitCode: 1,
       message: "Unknown shields subcommand: bogus",
@@ -314,7 +314,7 @@ describe("translatePublicSandboxArgv", () => {
 
   it("reports channel subcommand errors from metadata-derived parent routes", () => {
     expect(translatePublicSandboxArgv("alpha", "channels", ["bogus"])).toEqual({
-      kind: "help",
+      kind: "publicHelp",
       commandId: "sandbox:channels",
       exitCode: 1,
       message: "Unknown channels subcommand: bogus",
@@ -327,7 +327,7 @@ describe("translatePublicSandboxArgv", () => {
       ],
     });
     expect(translatePublicSandboxArgv("alpha", "bogus", [])).toEqual({
-      kind: "unknownAction",
+      kind: "unknownPublicAction",
       action: "bogus",
     });
   });
