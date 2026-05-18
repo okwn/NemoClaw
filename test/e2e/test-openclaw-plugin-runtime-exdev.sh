@@ -129,7 +129,7 @@ session_id="plugin-exdev-$(date +%s)"
 # clear any deps preinstalled by gateway startup. On unfixed OpenClaw builds,
 # the installer attempts fs.rename(stagedDir, targetDir), which fails with
 # EXDEV when stagedDir is on /dev/shm and targetDir is under /sandbox.
-remote_cmd="rm -rf /sandbox/.openclaw/plugin-runtime-deps/openclaw-* 2>/dev/null || true; rm -f /sandbox/.openclaw/agents/main/sessions/${session_id}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${session_id}.trajectory.jsonl 2>/dev/null || true; TMPDIR=/dev/shm XDG_RUNTIME_DIR= openclaw agent --agent main --json --session-id '${session_id}' -m 'Reply with exactly one word: PONG'"
+remote_cmd="rm -rf /sandbox/.openclaw/plugin-runtime-deps/openclaw-* 2>/dev/null || true; rm -f /sandbox/.openclaw/agents/main/sessions/${session_id}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${session_id}.trajectory.jsonl 2>/dev/null || true; TMPDIR=/dev/shm NEMOCLAW_TMPDIR=/tmp openclaw agent --agent main --json --session-id '${session_id}' -m 'Reply with exactly one word: PONG'"
 "$TIMEOUT_CMD" 420 openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd" \
   >"$AGENT_LOG" 2>&1 || agent_rc=$?
 redact_file "$AGENT_LOG"
