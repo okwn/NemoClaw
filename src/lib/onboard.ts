@@ -9744,6 +9744,9 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
         !forceProviderSelection && resume && isInferenceRouteReady(provider, model);
       if (resumeInference) {
         if (provider === hermesProviderAuth.HERMES_PROVIDER_NAME) {
+          if (!sandboxName) {
+            sandboxName = await promptValidatedSandboxName(agent);
+          }
           startRecordedStep("inference", { provider, model });
           const inferenceResult = await setupInference(
             sandboxName,
