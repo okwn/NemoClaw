@@ -43,32 +43,3 @@ export interface PublicCommandDisplayEntry {
   /** Stable display order used when rendering grouped root help. */
   order: number;
 }
-
-/** @deprecated Use PublicCommandDisplayEntry for new code. */
-export type CommandDisplayEntry = PublicCommandDisplayEntry;
-
-export type PublicCommandDisplayClass<T> = T & {
-  publicDisplay?: readonly PublicCommandDisplayEntry[];
-};
-
-export function withPublicCommandDisplay<T>(
-  commandClass: T,
-  publicDisplay: readonly PublicCommandDisplayEntry[],
-): PublicCommandDisplayClass<T> {
-  (commandClass as PublicCommandDisplayClass<T>).publicDisplay = publicDisplay;
-  return commandClass as PublicCommandDisplayClass<T>;
-}
-
-/** @deprecated Prefer static publicDisplay or withPublicCommandDisplay(). */
-export type CommandDisplayClass<T> = PublicCommandDisplayClass<T> & {
-  display?: readonly PublicCommandDisplayEntry[];
-};
-
-/** @deprecated Prefer static publicDisplay or withPublicCommandDisplay(). */
-export function withCommandDisplay<T>(
-  commandClass: T,
-  display: readonly PublicCommandDisplayEntry[],
-): CommandDisplayClass<T> {
-  (commandClass as CommandDisplayClass<T>).display = display;
-  return commandClass as CommandDisplayClass<T>;
-}

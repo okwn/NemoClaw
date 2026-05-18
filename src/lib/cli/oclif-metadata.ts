@@ -19,8 +19,6 @@ export type OclifCommandMetadata = {
   id?: string;
   /** Public compatibility help/listing metadata for `nemoclaw <name> action` grammar. */
   publicDisplay?: readonly PublicCommandDisplayEntry[];
-  /** @deprecated Use publicDisplay for NemoClaw public compatibility metadata. */
-  display?: readonly PublicCommandDisplayEntry[];
   state?: string;
   strict?: boolean;
   summary?: string;

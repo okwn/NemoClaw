@@ -37,7 +37,7 @@ describe("public route/display separation", () => {
       const realMetadata = actual.getRegisteredOclifCommandsMetadata();
       const withUsage = (commandId: string, usage: string) => {
         const metadata = realMetadata[commandId];
-        const displayEntry = metadata.publicDisplay?.[0] ?? metadata.display?.[0];
+        const displayEntry = metadata.publicDisplay?.[0];
         return {
           ...metadata,
           publicDisplay: displayEntry ? [{ ...displayEntry, usage }] : [],

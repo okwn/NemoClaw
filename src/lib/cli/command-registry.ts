@@ -57,7 +57,7 @@ type RegisteredCommandDisplayEntry = PublicCommandDisplayEntry & { commandId: st
 function displayEntriesFromOclifMetadata(): CommandDef[] {
   const entries: RegisteredCommandDisplayEntry[] = [];
   for (const [commandId, metadata] of Object.entries(getRegisteredOclifCommandsMetadata())) {
-    const publicDisplay = metadata.publicDisplay ?? metadata.display ?? [];
+    const publicDisplay = metadata.publicDisplay ?? [];
     for (const displayEntry of publicDisplay) {
       entries.push({ ...displayEntry, commandId });
     }

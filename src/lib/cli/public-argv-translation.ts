@@ -76,7 +76,7 @@ function hasChildCommand(commandId: string, commandIds: ReadonlySet<string>): bo
 }
 
 function publicDisplayEntries(metadata: OclifCommandMetadata): readonly PublicCommandDisplayEntry[] {
-  return metadata.publicDisplay ?? metadata.display ?? [];
+  return metadata.publicDisplay ?? [];
 }
 
 function publicUsageFromDisplayEntry(entry: PublicCommandDisplayEntry): string {
