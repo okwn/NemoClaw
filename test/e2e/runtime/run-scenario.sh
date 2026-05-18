@@ -311,7 +311,7 @@ if [[ "${DOCKER_OPTIONAL_UNAVAILABLE}" -eq 1 ]]; then
   FILTERED_SUITE_IDS=()
   for suite_id in "${SUITE_IDS[@]}"; do
     case "${suite_id}" in
-      smoke|inference|credentials|hermes-specific|local-ollama-inference|ollama-proxy)
+      smoke | inference | credentials | hermes-specific | local-ollama-inference | ollama-proxy)
         echo "SKIP: suite.${suite_id} skipped because optional Docker runtime ${RUNTIME_ID} is unavailable"
         ;;
       *)
