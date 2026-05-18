@@ -119,23 +119,6 @@ sandbox_exec() {
   echo "$result"
 }
 
-quote_for_remote_sh() {
-  local value="${1:-}"
-  printf "'%s'" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
-}
-
-sandbox_exec_sh_script() {
-  local script="$1"
-  shift
-  local encoded remote_cmd arg
-  encoded="$(printf '%s' "$script" | base64 | tr -d '\n')"
-  remote_cmd="tmp=\$(mktemp); trap 'rm -f \"\$tmp\"' EXIT; printf %s $(quote_for_remote_sh "$encoded") | base64 -d > \"\$tmp\"; sh \"\$tmp\""
-  for arg in "$@"; do
-    remote_cmd+=" $(quote_for_remote_sh "$arg")"
-  done
-  openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd"
-}
-
 # shellcheck source=test/e2e/lib/sandbox-teardown.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/sandbox-teardown.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
@@ -392,8 +375,8 @@ gateway_issue_script=$(
     : "${OPENCLAW_STATE_DIR:?OPENCLAW_STATE_DIR missing from runtime shell env}"
     : "${OPENCLAW_CONFIG_PATH:?OPENCLAW_CONFIG_PATH missing from runtime shell env}"
     : "${OPENCLAW_OAUTH_DIR:?OPENCLAW_OAUTH_DIR missing from runtime shell env}"
-    printf 'GATEWAY_OPENCLAW_ENV OPENCLAW_STATE_DIR=%s OPENCLAW_OAUTH_DIR=%s\n' "$OPENCLAW_STATE_DIR" "$OPENCLAW_OAUTH_DIR"
-    exec gosu gateway env \
+    printf 'GATEWAY_OPENCLAW_ENV uid=%s gid=%s OPENCLAW_STATE_DIR=%s OPENCLAW_OAUTH_DIR=%s\n' "$(id -u)" "$(id -g)" "$OPENCLAW_STATE_DIR" "$OPENCLAW_OAUTH_DIR"
+    exec env \
       HOME=/sandbox \
       OPENCLAW_HOME="$OPENCLAW_HOME" \
       OPENCLAW_STATE_DIR="$OPENCLAW_STATE_DIR" \
@@ -405,6 +388,7 @@ gateway_issue_script=$(
       https_proxy="${https_proxy:-}" \
       NO_PROXY="${NO_PROXY:-}" \
       no_proxy="${no_proxy:-}" \
+      NODE_OPTIONS="${NODE_OPTIONS:-}" \
       FAKE_SLACK_API_HOST=host.openshell.internal \
       FAKE_SLACK_API_PORT="$fake_slack_api_port" \
       SLACK_PAIRING_USER="$slack_pairing_user" \
@@ -639,8 +623,17 @@ console.log(`PAIRING_E2E_RESULT ${JSON.stringify({
 NODE
 SCRIPT
 )
-gateway_issue_output=$(sandbox_exec_sh_script "$gateway_issue_script" "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" 2>&1)
-gateway_issue_status=$?
+sandbox_container_id=$(docker ps --quiet \
+  --filter "label=openshell.ai/managed-by=openshell" \
+  --filter "label=openshell.ai/sandbox-name=${SANDBOX_NAME}" \
+  | head -n 1)
+gateway_issue_output="OpenShell-managed Docker container not found for ${SANDBOX_NAME}"
+gateway_issue_status=1
+if [ -n "$sandbox_container_id" ]; then
+  info "Using Docker exec for gateway-context helper (${sandbox_container_id:0:12})"
+  gateway_issue_output=$(run_with_timeout 90 docker exec -i --user gateway:sandbox "$sandbox_container_id" sh -s -- "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" <<<"$gateway_issue_script" 2>&1)
+  gateway_issue_status=$?
+fi
 info "Gateway pairing issue output: ${gateway_issue_output:0:600}"
 if [ $gateway_issue_status -eq 0 ] && echo "$gateway_issue_output" | grep -q '^PAIRING_E2E_RESULT '; then
   pass "Gateway-context Slack Socket Mode handler created a pairing request"

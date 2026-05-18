@@ -10860,7 +10860,7 @@
       "assertions": [
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 199,
+          "line": 182,
           "text": "NVIDIA_API_KEY not set",
           "polarity": "fail",
           "normalized_id": "nvidia.api.key.not.set",
@@ -10868,7 +10868,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 202,
+          "line": 185,
           "text": "NVIDIA_API_KEY is set",
           "polarity": "pass",
           "normalized_id": "nvidia.api.key.is.set",
@@ -10876,7 +10876,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 205,
+          "line": 188,
           "text": "Docker is not running",
           "polarity": "fail",
           "normalized_id": "docker.is.not.running",
@@ -10884,7 +10884,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 208,
+          "line": 191,
           "text": "Docker is running",
           "polarity": "pass",
           "normalized_id": "docker.is.running",
@@ -10892,7 +10892,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 226,
+          "line": 209,
           "text": "Pre-cleanup complete",
           "polarity": "pass",
           "normalized_id": "pre.cleanup.complete",
@@ -10900,7 +10900,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 284,
+          "line": 267,
           "text": "Slack network policy pre-merged into base policy",
           "polarity": "pass",
           "normalized_id": "slack.network.policy.pre.merged.into.base.policy",
@@ -10908,7 +10908,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 289,
+          "line": 272,
           "text": "Cannot pre-merge Slack policy: missing base policy or preset file",
           "polarity": "fail",
           "normalized_id": "cannot.pre.merge.slack.policy.missing.base.policy.or.preset.file",
@@ -10916,7 +10916,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 319,
+          "line": 302,
           "text": "Install completed",
           "polarity": "pass",
           "normalized_id": "install.completed",
@@ -10924,7 +10924,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 321,
+          "line": 304,
           "text": "install.sh failed (exit $install_exit)",
           "polarity": "fail",
           "normalized_id": "install.sh.failed.exit.install.exit",
@@ -10932,7 +10932,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 329,
+          "line": 312,
           "text": "Sandbox '$SANDBOX_NAME' is Ready",
           "polarity": "pass",
           "normalized_id": "sandbox.sandbox.name.is.ready",
@@ -10940,7 +10940,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 331,
+          "line": 314,
           "text": "Sandbox '$SANDBOX_NAME' not Ready (list: ${sandbox_list:0:300})",
           "polarity": "fail",
           "normalized_id": "sandbox.sandbox.name.not.ready.list.sandbox.list.0.300",
@@ -10948,7 +10948,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 337,
+          "line": 320,
           "text": "Slack bot/app providers exist in OpenShell",
           "polarity": "pass",
           "normalized_id": "slack.bot.app.providers.exist.in.openshell",
@@ -10956,7 +10956,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 339,
+          "line": 322,
           "text": "Slack bot/app providers missing in OpenShell",
           "polarity": "fail",
           "normalized_id": "slack.bot.app.providers.missing.in.openshell",
@@ -10964,7 +10964,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 350,
+          "line": 333,
           "text": "Connect-shell OpenClaw env resolves to /sandbox/.openclaw",
           "polarity": "pass",
           "normalized_id": "connect.shell.openclaw.env.resolves.to.sandbox.openclaw",
@@ -10972,7 +10972,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 352,
+          "line": 335,
           "text": "Connect-shell OpenClaw env does not resolve to the shared state root",
           "polarity": "fail",
           "normalized_id": "connect.shell.openclaw.env.does.not.resolve.to.the.shared.state.root",
@@ -10980,7 +10980,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 358,
+          "line": 341,
           "text": "openclaw pairing list slack works in connect shell",
           "polarity": "pass",
           "normalized_id": "openclaw.pairing.list.slack.works.in.connect.shell",
@@ -10988,7 +10988,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 360,
+          "line": 343,
           "text": "openclaw pairing list slack failed before request creation: ${pairing_list_empty:0:300}",
           "polarity": "fail",
           "normalized_id": "openclaw.pairing.list.slack.failed.before.request.creation.pairing.list.empty.0.300",
@@ -10996,7 +10996,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 366,
+          "line": 349,
           "text": "Hermetic fake Slack API started on host port ${FAKE_SLACK_API_PORT}",
           "polarity": "pass",
           "normalized_id": "hermetic.fake.slack.api.started.on.host.port.fake.slack.api.port",
@@ -11004,7 +11004,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 368,
+          "line": 351,
           "text": "Failed to start hermetic fake Slack API",
           "polarity": "fail",
           "normalized_id": "failed.to.start.hermetic.fake.slack.api",
@@ -11012,7 +11012,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 373,
+          "line": 356,
           "text": "Applied REST policy for fake Slack chat.postMessage",
           "polarity": "pass",
           "normalized_id": "applied.rest.policy.for.fake.slack.chat.postmessage",
@@ -11020,7 +11020,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 375,
+          "line": 358,
           "text": "Failed to apply fake Slack REST policy: $(tail -20 /tmp/nemoclaw-fake-slack-pairing-rest-policy.log 2>/dev/null | tr '\\n' ' ' | cut -c1-300)",
           "polarity": "fail",
           "normalized_id": "failed.to.apply.fake.slack.rest.policy.tail.20.tmp.nemoclaw.fake.slack.pairing.rest.policy.log.2.dev.null.tr.n.cut.c1.300",
@@ -11028,7 +11028,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 379,
+          "line": 362,
           "text": "Applied websocket policy for fake Slack Socket Mode",
           "polarity": "pass",
           "normalized_id": "applied.websocket.policy.for.fake.slack.socket.mode",
@@ -11036,7 +11036,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 381,
+          "line": 364,
           "text": "Failed to apply fake Slack websocket policy: $(tail -20 /tmp/nemoclaw-fake-slack-pairing-ws-policy.log 2>/dev/null | tr '\\n' ' ' | cut -c1-300)",
           "polarity": "fail",
           "normalized_id": "failed.to.apply.fake.slack.websocket.policy.tail.20.tmp.nemoclaw.fake.slack.pairing.ws.policy.log.2.dev.null.tr.n.cut.c1.300",
@@ -11044,7 +11044,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 646,
+          "line": 639,
           "text": "Gateway-context Slack Socket Mode handler created a pairing request",
           "polarity": "pass",
           "normalized_id": "gateway.context.slack.socket.mode.handler.created.a.pairing.request",
@@ -11052,7 +11052,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 648,
+          "line": 641,
           "text": "Gateway-context pairing request creation failed",
           "polarity": "fail",
           "normalized_id": "gateway.context.pairing.request.creation.failed",
@@ -11060,7 +11060,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 655,
+          "line": 648,
           "text": "Pairing code extracted from fake Slack reply path",
           "polarity": "pass",
           "normalized_id": "pairing.code.extracted.from.fake.slack.reply.path",
@@ -11068,7 +11068,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 657,
+          "line": 650,
           "text": "Failed to extract pairing code",
           "polarity": "fail",
           "normalized_id": "failed.to.extract.pairing.code",
@@ -11076,7 +11076,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 663,
+          "line": 656,
           "text": "Fake Slack saw rewritten xapp websocket frame and xoxb chat.postMessage",
           "polarity": "pass",
           "normalized_id": "fake.slack.saw.rewritten.xapp.websocket.frame.and.xoxb.chat.postmessage",
@@ -11084,7 +11084,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 665,
+          "line": 658,
           "text": "Fake Slack capture did not prove Slack token rewriting: ${capture_check:0:300}",
           "polarity": "fail",
           "normalized_id": "fake.slack.capture.did.not.prove.slack.token.rewriting.capture.check.0.300",
@@ -11092,7 +11092,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 673,
+          "line": 666,
           "text": "Gateway-created Slack pending request is in the shared OpenClaw state root",
           "polarity": "pass",
           "normalized_id": "gateway.created.slack.pending.request.is.in.the.shared.openclaw.state.root",
@@ -11100,7 +11100,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 675,
+          "line": 668,
           "text": "Slack pending request missing from /sandbox/.openclaw/credentials/slack-pairing.json",
           "polarity": "fail",
           "normalized_id": "slack.pending.request.missing.from.sandbox.openclaw.credentials.slack.pairing.json",
@@ -11108,7 +11108,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 682,
+          "line": 675,
           "text": "Connect-shell openclaw pairing list sees gateway-created Slack request",
           "polarity": "pass",
           "normalized_id": "connect.shell.openclaw.pairing.list.sees.gateway.created.slack.request",
@@ -11116,7 +11116,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 684,
+          "line": 677,
           "text": "Connect-shell openclaw pairing list does not see the Slack request",
           "polarity": "fail",
           "normalized_id": "connect.shell.openclaw.pairing.list.does.not.see.the.slack.request",
@@ -11124,7 +11124,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 691,
+          "line": 684,
           "text": "Connect-shell openclaw pairing approve approved the Slack request",
           "polarity": "pass",
           "normalized_id": "connect.shell.openclaw.pairing.approve.approved.the.slack.request",
@@ -11132,7 +11132,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 693,
+          "line": 686,
           "text": "Connect-shell openclaw pairing approve failed: ${approve_output:0:500}",
           "polarity": "fail",
           "normalized_id": "connect.shell.openclaw.pairing.approve.failed.approve.output.0.500",
@@ -11140,7 +11140,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 698,
+          "line": 691,
           "text": "Approved Slack pairing code is still pending",
           "polarity": "fail",
           "normalized_id": "approved.slack.pairing.code.is.still.pending",
@@ -11148,7 +11148,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 700,
+          "line": 693,
           "text": "Approved Slack pairing code was consumed",
           "polarity": "pass",
           "normalized_id": "approved.slack.pairing.code.was.consumed",
@@ -11156,7 +11156,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 705,
+          "line": 698,
           "text": "Slack allowFrom store contains the approved user",
           "polarity": "pass",
           "normalized_id": "slack.allowfrom.store.contains.the.approved.user",
@@ -11164,7 +11164,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 707,
+          "line": 700,
           "text": "Slack allowFrom store missing approved user",
           "polarity": "fail",
           "normalized_id": "slack.allowfrom.store.missing.approved.user",
@@ -11172,7 +11172,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 712,
+          "line": 705,
           "text": "Second approval fails closed after request consumption",
           "polarity": "pass",
           "normalized_id": "second.approval.fails.closed.after.request.consumption",
@@ -11180,7 +11180,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 714,
+          "line": 707,
           "text": "Second approval did not report missing pending request: ${repeat_approve:0:300}",
           "polarity": "fail",
           "normalized_id": "second.approval.did.not.report.missing.pending.request.repeat.approve.0.300",
@@ -11188,7 +11188,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 727,
+          "line": 720,
           "text": "Cleanup: Sandbox '$SANDBOX_NAME' intentionally kept",
           "polarity": "pass",
           "normalized_id": "cleanup.sandbox.sandbox.name.intentionally.kept",
@@ -11196,7 +11196,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 729,
+          "line": 722,
           "text": "Cleanup: Sandbox '$SANDBOX_NAME' still present after cleanup",
           "polarity": "fail",
           "normalized_id": "cleanup.sandbox.sandbox.name.still.present.after.cleanup",
@@ -11204,7 +11204,7 @@
         },
         {
           "script": "test/e2e/test-openclaw-slack-pairing.sh",
-          "line": 731,
+          "line": 724,
           "text": "Cleanup: Sandbox '$SANDBOX_NAME' removed",
           "polarity": "pass",
           "normalized_id": "cleanup.sandbox.sandbox.name.removed",
