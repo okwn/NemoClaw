@@ -119,6 +119,23 @@ sandbox_exec() {
   echo "$result"
 }
 
+quote_for_remote_sh() {
+  local value="${1:-}"
+  printf "'%s'" "$(printf '%s' "$value" | sed "s/'/'\\\\''/g")"
+}
+
+sandbox_exec_sh_script() {
+  local script="$1"
+  shift
+  local encoded remote_cmd arg
+  encoded="$(printf '%s' "$script" | base64 | tr -d '\n')"
+  remote_cmd="tmp=\$(mktemp); trap 'rm -f \"\$tmp\"' EXIT; printf %s $(quote_for_remote_sh "$encoded") | base64 -d > \"\$tmp\"; sh \"\$tmp\""
+  for arg in "$@"; do
+    remote_cmd+=" $(quote_for_remote_sh "$arg")"
+  done
+  openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd"
+}
+
 # shellcheck source=test/e2e/lib/sandbox-teardown.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/sandbox-teardown.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
@@ -372,6 +389,7 @@ gateway_issue_script=$(
     fake_slack_api_port="$1"
     slack_pairing_user="$2"
     fake_slack_api_host="$3"
+    pairing_e2e_mode="$4"
     : "${OPENCLAW_HOME:?OPENCLAW_HOME missing from runtime shell env}"
     : "${OPENCLAW_STATE_DIR:?OPENCLAW_STATE_DIR missing from runtime shell env}"
     : "${OPENCLAW_CONFIG_PATH:?OPENCLAW_CONFIG_PATH missing from runtime shell env}"
@@ -393,6 +411,7 @@ gateway_issue_script=$(
       FAKE_SLACK_API_HOST="$fake_slack_api_host" \
       FAKE_SLACK_API_PORT="$fake_slack_api_port" \
       SLACK_PAIRING_USER="$slack_pairing_user" \
+      PAIRING_E2E_MODE="$pairing_e2e_mode" \
       node --input-type=module <<'NODE'
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -630,7 +649,21 @@ const {
   upsertChannelPairingRequest,
 } = await loadConversationRuntime();
 
-const envelope = await receiveSlackSocketEvent();
+const mode = process.env.PAIRING_E2E_MODE || "full";
+const directGateway = mode === "direct-gateway";
+const socketProbeOnly = mode === "socket-probe";
+const envelope = directGateway
+  ? {
+      payload: {
+        team_id: "T3730E2E",
+        event: {
+          type: "message",
+          channel: "D3730E2E",
+          user: process.env.SLACK_PAIRING_USER,
+        },
+      },
+    }
+  : await receiveSlackSocketEvent();
 const event = envelope?.payload?.event;
 if (!event || event.type !== "message" || !event.user || !event.channel) {
   throw new Error(`unexpected fake Slack envelope: ${JSON.stringify(envelope).slice(0, 400)}`);
@@ -639,6 +672,16 @@ if (event.user !== process.env.SLACK_PAIRING_USER) {
   throw new Error(`unexpected fake Slack user: ${event.user}`);
 }
 
+if (socketProbeOnly) {
+  await postPairingReply("Slack pairing E2E websocket probe", event.channel);
+  console.log(`SLACK_SOCKET_PROBE_RESULT ${JSON.stringify({
+    senderId: event.user,
+    channelId: event.channel,
+  })}`);
+  process.exit(0);
+}
+
+let replyText = "";
 const result = await issuePairingChallenge({
   channel: "slack",
   senderId: event.user,
@@ -655,7 +698,11 @@ const result = await issuePairingChallenge({
     meta,
   }),
   sendPairingReply: async (text) => {
-    await postPairingReply(text, event.channel);
+    if (directGateway) {
+      replyText = text;
+    } else {
+      await postPairingReply(text, event.channel);
+    }
   },
 });
 
@@ -667,10 +714,20 @@ console.log(`PAIRING_E2E_RESULT ${JSON.stringify({
   code: result.code,
   senderId: event.user,
   channelId: event.channel,
+  replyText,
 })}`);
 NODE
 SCRIPT
 )
+socket_probe_output=$(sandbox_exec_sh_script "$gateway_issue_script" "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" "$FAKE_SLACK_API_HOST" socket-probe 2>&1)
+socket_probe_status=$?
+info "Slack Socket Mode probe output: ${socket_probe_output:0:600}"
+if [ $socket_probe_status -eq 0 ] && echo "$socket_probe_output" | grep -q '^SLACK_SOCKET_PROBE_RESULT '; then
+  pass "Tracked sandbox Slack Socket Mode probe reached fake Slack through OpenShell"
+else
+  fail "Tracked sandbox Slack Socket Mode probe failed"
+fi
+
 sandbox_container_id=$(docker ps --quiet \
   --filter "label=openshell.ai/managed-by=openshell" \
   --filter "label=openshell.ai/sandbox-name=${SANDBOX_NAME}" \
@@ -679,7 +736,7 @@ gateway_issue_output="OpenShell-managed Docker container not found for ${SANDBOX
 gateway_issue_status=1
 if [ -n "$sandbox_container_id" ]; then
   info "Using Docker exec for gateway-context helper (${sandbox_container_id:0:12})"
-  gateway_issue_output=$(run_with_timeout 90 docker exec -i --user gateway:sandbox "$sandbox_container_id" sh -s -- "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" "$FAKE_SLACK_API_HOST" <<<"$gateway_issue_script" 2>&1)
+  gateway_issue_output=$(run_with_timeout 90 docker exec -i --user gateway:sandbox "$sandbox_container_id" sh -s -- "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" "$FAKE_SLACK_API_HOST" direct-gateway <<<"$gateway_issue_script" 2>&1)
   gateway_issue_status=$?
 fi
 info "Gateway pairing issue output: ${gateway_issue_output:0:600}"
