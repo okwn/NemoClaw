@@ -681,7 +681,7 @@ def _start_browser_use_cdp_tunnel(cdp_url):
         )
         port = proc.stdout.readline().strip() if proc.stdout else ""
         if not port.isdigit():
-            proc.terminate()
+            _reap_browser_use_cdp_tunnel(proc)
             return cdp_url
     except Exception:
         return cdp_url
