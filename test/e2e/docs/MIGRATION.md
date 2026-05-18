@@ -39,28 +39,6 @@ About **25% LOC reduction** net after legacy retirement. The larger win
 is drift reduction: when `--yes-i-accept-third-party-software` renames
 again, it's a 1-file change instead of a 24-file change.
 
-## Layered scenario model
-
-The E2E source of truth is now layered:
-
-```text
-base environment → onboarding profile → test plan → onboarding assertions → expected state → post-onboard suites
-```
-
-- **Base environment**: platform + install + runtime before user onboarding choices. Examples: `ubuntu-repo-docker`, `gpu-repo-docker-cdi`.
-- **Onboarding profile**: user decisions during onboarding: agent, provider, endpoint route, policy/messaging/lifecycle metadata. Examples: `cloud-nvidia-openclaw`, `local-ollama-openclaw`.
-- **Test plan**: executable combination of one base, one onboarding profile, one expected state, onboarding assertion IDs, and post-onboard suite IDs. Existing scenario IDs remain as aliases during migration.
-- **Onboarding assertions**: setup-stage checks that run after install/onboard and before expected-state validation, such as CLI installed, preflight passed, gateway created, provider configured, and credential placement.
-- **Expected state**: structural contract for the completed environment.
-- **Post-onboard feature suites**: behavior checks that consume `$E2E_CONTEXT_DIR/context.env`; suites must not install or onboard.
-
-Plan-only resolution accepts either an alias or a test plan ID:
-
-```bash
-bash test/e2e/runtime/run-scenario.sh ubuntu-repo-cloud-openclaw --plan-only
-bash test/e2e/runtime/run-scenario.sh ubuntu-repo-docker__cloud-nvidia-openclaw --plan-only
-```
-
 ## Status summary
 
 | Bucket | Legacy LOC | Status |
