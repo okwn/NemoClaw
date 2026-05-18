@@ -124,7 +124,7 @@ DISCORD_TOKEN="${DISCORD_BOT_TOKEN:-test-fake-discord-token-e2e}"
 SLACK_TOKEN="${SLACK_BOT_TOKEN:-xoxb-fake-slack-token-e2e}"
 SLACK_APP="${SLACK_APP_TOKEN:-xapp-fake-slack-app-token-e2e}"
 TELEGRAM_IDS="${TELEGRAM_ALLOWED_IDS:-123456789,987654321}"
-SLACK_IDS="${SLACK_ALLOWED_USERS:-U0AR85ATALW,U09E2ESLACK}"
+SLACK_IDS="${SLACK_ALLOWED_USERS-U0AR85ATALW,U09E2ESLACK}"
 # WeChat: pre-seeding WECHAT_BOT_TOKEN + the per-account metadata env vars lets
 # the non-interactive onboard path (src/lib/onboard.ts:8433) treat wechat as
 # "already configured" and skip the host-qr handler entirely. Fake values are
@@ -217,7 +217,15 @@ info "Telegram token: ${TELEGRAM_TOKEN:0:10}... (${#TELEGRAM_TOKEN} chars)"
 info "Discord token: ${DISCORD_TOKEN:0:10}... (${#DISCORD_TOKEN} chars)"
 info "Slack bot token: configured (${#SLACK_TOKEN} chars)"
 info "Slack app token: configured (${#SLACK_APP} chars)"
-info "Slack allowed users: $SLACK_IDS"
+slack_allowed_user_count=0
+if [ -n "$SLACK_IDS" ]; then
+  IFS=',' read -ra _slack_allowed_ids <<<"$SLACK_IDS"
+  for _sid in "${_slack_allowed_ids[@]}"; do
+    _sid="${_sid//[[:space:]]/}"
+    [ -n "$_sid" ] && ((slack_allowed_user_count++))
+  done
+fi
+info "Slack allowed users configured: ${slack_allowed_user_count} ID(s)"
 info "WeChat token: configured (${#WECHAT_TOKEN} chars), account=${WECHAT_ACCOUNT}"
 info "Sandbox name: $SANDBOX_NAME"
 
@@ -908,27 +916,39 @@ if wildcard.get('enabled') is not True:
 elif wildcard.get('requireMention') is not True:
     print('BAD_REQUIRE_MENTION')
 else:
-    print(','.join(str(i) for i in wildcard.get('users', [])))
+    users = wildcard.get('users', [])
+    if not isinstance(users, list):
+        print('BAD_USERS_TYPE')
+    elif len(users) == 0:
+        print('EMPTY_USERS')
+    else:
+        print(','.join(str(i) for i in users))
 " 2>/dev/null || true)
     if [ "$sl_channel_users" = "BAD_ENABLED" ]; then
       fail "M11h: Slack wildcard channel config is not enabled"
     elif [ "$sl_channel_users" = "BAD_REQUIRE_MENTION" ]; then
       fail "M11h: Slack wildcard channel config does not require mention"
+    elif [ "$sl_channel_users" = "BAD_USERS_TYPE" ]; then
+      fail "M11h: Slack wildcard channel users is not a list"
+    elif [ "$sl_channel_users" = "EMPTY_USERS" ]; then
+      fail "M11h: Slack wildcard channel users is empty"
     elif [ -n "$sl_channel_users" ]; then
       IFS=',' read -ra expected_slack_ids <<<"$SLACK_IDS"
       missing_slack_ids=()
+      expected_slack_id_count=0
       sl_channel_users_csv=",${sl_channel_users//[[:space:]]/},"
       for sid in "${expected_slack_ids[@]}"; do
         sid="${sid//[[:space:]]/}"
         [ -z "$sid" ] && continue
+        ((expected_slack_id_count++))
         if [[ "$sl_channel_users_csv" != *",$sid,"* ]]; then
           missing_slack_ids+=("$sid")
         fi
       done
       if [ ${#missing_slack_ids[@]} -eq 0 ]; then
-        pass "M11h: Slack wildcard channel @mention allowlist contains expected users: $sl_channel_users"
+        pass "M11h: Slack wildcard channel @mention allowlist contains expected user count (${expected_slack_id_count})"
       else
-        fail "M11h: Slack wildcard channel users ($sl_channel_users) missing IDs: ${missing_slack_ids[*]}"
+        fail "M11h: Slack wildcard channel users missing ${#missing_slack_ids[@]} expected ID(s)"
       fi
     else
       skip "M11h: Slack wildcard channel users not set"

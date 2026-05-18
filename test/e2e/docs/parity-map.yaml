@@ -5093,12 +5093,22 @@ scripts:
       reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
       owner: e2e-maintainers
       secret_requirement: Slack test credentials
-    - legacy: 'M11h: Slack wildcard channel @mention allowlist contains expected users: $sl_channel_users'
+    - legacy: 'M11h: Slack wildcard channel users is not a list'
       status: deferred
       reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
       owner: e2e-maintainers
       secret_requirement: Slack test credentials
-    - legacy: 'M11h: Slack wildcard channel users ($sl_channel_users) missing IDs: ${missing_slack_ids[*]}'
+    - legacy: 'M11h: Slack wildcard channel users is empty'
+      status: deferred
+      reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
+      owner: e2e-maintainers
+      secret_requirement: Slack test credentials
+    - legacy: 'M11h: Slack wildcard channel @mention allowlist contains expected user count (${expected_slack_id_count})'
+      status: deferred
+      reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
+      owner: e2e-maintainers
+      secret_requirement: Slack test credentials
+    - legacy: 'M11h: Slack wildcard channel users missing ${#missing_slack_ids[@]} expected ID(s)'
       status: deferred
       reason: live legacy behavior requires non-deterministic infrastructure; retained for bucket parity tracking
       owner: e2e-maintainers

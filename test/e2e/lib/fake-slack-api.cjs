@@ -102,7 +102,7 @@ const server = http.createServer((req, res) => {
     });
 
     if (pathname === "/api/chat.postMessage") {
-      res.writeHead(authAccepted ? 200 : 401, {
+      res.writeHead(200, {
         "content-type": "application/json",
       });
       res.end(

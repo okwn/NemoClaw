@@ -251,8 +251,12 @@ function createOpenClawSlackProofRoot(openclawRoot) {
 }
 
 function resolveSlackTestApiImport(testApiSource, exportName) {
-  const pattern = new RegExp(`import \\\\{[^}]*\\\\bas\\\\s+${exportName}\\\\b[^}]*\\\\}\\\\s+from\\\\s+["']([^"']+)["']`);
-  const match = testApiSource.match(pattern);
+  const escapedExportName = exportName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = [
+    new RegExp(`import\\s+\\{[^}]*\\bas\\s+${escapedExportName}\\b[^}]*\\}\\s+from\\s+["']([^"']+)["']`),
+    new RegExp(`import\\s+\\{[^}]*\\b${escapedExportName}\\b[^}]*\\}\\s+from\\s+["']([^"']+)["']`),
+  ];
+  const match = patterns.map((pattern) => testApiSource.match(pattern)).find(Boolean);
   if (!match) fail(`OpenClaw Slack test API does not expose ${exportName}`);
   return match[1];
 }

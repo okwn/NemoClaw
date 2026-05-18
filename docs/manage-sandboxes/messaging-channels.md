@@ -46,7 +46,7 @@ For details, refer to [Commands](../reference/commands.md).
 |---------|-----------------|-------------------|
 | Telegram | `TELEGRAM_BOT_TOKEN` | `TELEGRAM_ALLOWED_IDS` for DM allowlisting, `TELEGRAM_REQUIRE_MENTION` for group-chat replies |
 | Discord | `DISCORD_BOT_TOKEN` | `DISCORD_SERVER_ID`, `DISCORD_USER_ID`, `DISCORD_REQUIRE_MENTION` |
-| Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | None |
+| Slack | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN` | `SLACK_ALLOWED_USERS` for DM and channel `@mention` user allowlisting |
 
 Telegram uses a bot token from [BotFather](https://t.me/BotFather).
 Open Telegram, send `/newbot` to [@BotFather](https://t.me/BotFather), follow the prompts, and copy the token.
