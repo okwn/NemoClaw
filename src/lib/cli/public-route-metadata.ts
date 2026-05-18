@@ -14,7 +14,13 @@ const GLOBAL_ROUTE_ALIASES: Record<string, readonly (readonly string[])[]> = {
   "root:version": [["version"], ["--version"], ["-v"]],
 };
 
-const SANDBOX_ROUTE_OVERRIDES: Record<string, readonly string[]> = {
+// These are public-grammar compatibility spellings, not oclif aliases. A
+// hidden oclif alias can model native topic syntax like
+// `nemoclaw sandbox policy-add <name>`, but not NemoClaw's product grammar
+// `nemoclaw <name> policy-add` where the sandbox name precedes the action.
+// Keep this set small and limited to public spellings that cannot be derived
+// mechanically from oclif command IDs.
+export const SANDBOX_ROUTE_OVERRIDES: Record<string, readonly string[]> = {
   "sandbox:gateway:token": ["gateway-token"],
   "sandbox:hosts:add": ["hosts-add"],
   "sandbox:hosts:list": ["hosts-list"],

@@ -11,6 +11,7 @@ import {
   resolveGlobalOclifDispatch,
   resolveLegacySandboxDispatch,
 } from "./oclif-dispatch";
+import { SANDBOX_ROUTE_OVERRIDES, sandboxRouteTokens } from "./public-route-metadata";
 
 describe("public route/display separation", () => {
   it("keeps dispatch token selection independent from public display usage text", () => {
@@ -20,6 +21,20 @@ describe("public route/display separation", () => {
     expect(dispatchSource).not.toMatch(/TokensFromUsage|literalTokensFromUsage/);
     expect(dispatchSource).not.toMatch(/legacyTokens:\s*.*\.usage/);
     expect(registrySource).not.toMatch(/rest\s*=\s*cmd\.usage/);
+  });
+
+  it("keeps explicit compatibility route overrides limited to non-derivable public spellings", () => {
+    expect(Object.keys(SANDBOX_ROUTE_OVERRIDES).sort()).toEqual([
+      "sandbox:gateway:token",
+      "sandbox:hosts:add",
+      "sandbox:hosts:list",
+      "sandbox:hosts:remove",
+      "sandbox:policy:add",
+      "sandbox:policy:list",
+      "sandbox:policy:remove",
+    ]);
+    expect(sandboxRouteTokens("sandbox:gateway:token")).toEqual(["gateway-token"]);
+    expect(sandboxRouteTokens("sandbox:config:rotate-token")).toEqual(["config", "rotate-token"]);
   });
 });
 
