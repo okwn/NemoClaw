@@ -20,7 +20,7 @@ const {
   globalCommandTokens,
   sandboxActionTokens,
 } = require("./command-registry");
-import { normalizeArgv, suggestCommand } from "./argv-normalizer";
+import { normalizeArgv, suggestCommand, type NormalizedSandboxArgv } from "./argv-normalizer";
 import { renderPublicOclifHelp } from "./public-oclif-help";
 import {
   translatePublicGlobalArgv,
@@ -176,6 +176,23 @@ async function recoverRequestedSandboxIfNeeded(
   process.exit(1);
 }
 
+function handlePublicConnectHelp(normalized: NormalizedSandboxArgv): boolean {
+  if (!normalized.connectHelpRequested) return false;
+  validateName(normalized.sandboxName, "sandbox name");
+  sandboxConnect().printSandboxConnectHelp(normalized.sandboxName);
+  return true;
+}
+
+function validatePublicConnectArgs(
+  sandboxName: string,
+  action: string,
+  actionArgs: string[],
+): void {
+  if (action === "connect") {
+    sandboxConnect().parseSandboxConnectArgs(sandboxName, actionArgs);
+  }
+}
+
 function renderDispatchHelp(result: HelpDispatch): void {
   if (result.message) console.error(`  ${result.message}`);
   renderPublicOclifHelp(result.commandId, result.publicUsage, {
@@ -242,11 +259,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
   const rawArgsAfterCmd = argv.slice(1);
   const requestedSandboxAction = normalized.action;
   const requestedSandboxActionArgs = normalized.actionArgs;
-  if (normalized.connectHelpRequested) {
-    validateName(cmd, "sandbox name");
-    sandboxConnect().printSandboxConnectHelp(cmd);
-    return;
-  }
+  if (handlePublicConnectHelp(normalized)) return;
 
   // Help is parser metadata, not sandbox runtime behavior. Render sandbox-scoped
   // legacy help before registry recovery so `nemoclaw missing channels start --help`
@@ -284,9 +297,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
     validateName(cmd, "sandbox name");
     const action = requestedSandboxAction;
     const actionArgs = requestedSandboxActionArgs;
-    if (action === "connect") {
-      sandboxConnect().parseSandboxConnectArgs(cmd, actionArgs);
-    }
+    validatePublicConnectArgs(cmd, action, actionArgs);
     await runDispatchResult(translatePublicSandboxArgv(cmd, action, actionArgs), {
       sandboxName: cmd,
     });
