@@ -371,6 +371,7 @@ gateway_issue_script=$(
     set +a
     fake_slack_api_port="$1"
     slack_pairing_user="$2"
+    fake_slack_api_host="$3"
     : "${OPENCLAW_HOME:?OPENCLAW_HOME missing from runtime shell env}"
     : "${OPENCLAW_STATE_DIR:?OPENCLAW_STATE_DIR missing from runtime shell env}"
     : "${OPENCLAW_CONFIG_PATH:?OPENCLAW_CONFIG_PATH missing from runtime shell env}"
@@ -389,7 +390,7 @@ gateway_issue_script=$(
       NO_PROXY="${NO_PROXY:-}" \
       no_proxy="${no_proxy:-}" \
       NODE_OPTIONS="${NODE_OPTIONS:-}" \
-      FAKE_SLACK_API_HOST=host.openshell.internal \
+      FAKE_SLACK_API_HOST="$fake_slack_api_host" \
       FAKE_SLACK_API_PORT="$fake_slack_api_port" \
       SLACK_PAIRING_USER="$slack_pairing_user" \
       node --input-type=module <<'NODE'
@@ -678,7 +679,7 @@ gateway_issue_output="OpenShell-managed Docker container not found for ${SANDBOX
 gateway_issue_status=1
 if [ -n "$sandbox_container_id" ]; then
   info "Using Docker exec for gateway-context helper (${sandbox_container_id:0:12})"
-  gateway_issue_output=$(run_with_timeout 90 docker exec -i --user gateway:sandbox "$sandbox_container_id" sh -s -- "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" <<<"$gateway_issue_script" 2>&1)
+  gateway_issue_output=$(run_with_timeout 90 docker exec -i --user gateway:sandbox "$sandbox_container_id" sh -s -- "$FAKE_SLACK_API_PORT" "$SLACK_PAIRING_USER" "$FAKE_SLACK_API_HOST" <<<"$gateway_issue_script" 2>&1)
   gateway_issue_status=$?
 fi
 info "Gateway pairing issue output: ${gateway_issue_output:0:600}"
