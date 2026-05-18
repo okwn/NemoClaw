@@ -114,10 +114,32 @@ function validSandboxActionsText(): string {
   return sandboxActionList().filter(Boolean).join(", ");
 }
 
+// Direct command-ID execution is a bounded compatibility fallback for simple
+// global commands. With oclif flexible taxonomy enabled, native argv like
+// `status bogus` can be interpreted as command ID `status:bogus` instead of
+// command `status` with unexpected positional arg `bogus`.
+const DIRECT_COMMAND_ID_COMPATIBILITY_COMMANDS = new Set([
+  "backup-all",
+  "debug",
+  "deploy",
+  "gc",
+  "list",
+  "onboard",
+  "setup",
+  "setup-spark",
+  "start",
+  "status",
+  "stop",
+  "uninstall",
+  "update",
+  "upgrade-sandboxes",
+]);
+
 function shouldExecuteViaNativeArgv(result: Extract<PublicTranslationResult, { kind: "nativeArgv" }>): boolean {
   if (hasHelpFlag(result.args)) return false;
-  if (result.commandId.startsWith("sandbox:")) return true;
-  return result.commandId.includes(":") && !result.commandId.startsWith("root:");
+  if (DIRECT_COMMAND_ID_COMPATIBILITY_COMMANDS.has(result.commandId)) return false;
+  if (result.commandId.startsWith("root:")) return false;
+  return true;
 }
 function printDispatchUsageError(
   result: Extract<PublicTranslationResult, { kind: "publicUsageError" }>,
