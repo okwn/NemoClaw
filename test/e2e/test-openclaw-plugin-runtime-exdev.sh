@@ -117,15 +117,19 @@ else
 fi
 
 section "Filesystem layout evidence"
-openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc 'df -PT / /tmp /sandbox /sandbox/.openclaw/plugin-runtime-deps 2>&1' \
+openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc 'df -PT / /tmp /dev/shm /sandbox /sandbox/.openclaw/plugin-runtime-deps 2>&1' \
   >"$DF_LOG" 2>&1 || true
 redact_file "$DF_LOG"
 info "Filesystem layout captured in ${DF_LOG}"
 
-section "First OpenClaw agent bootstrap"
+section "First OpenClaw agent bootstrap with cross-device staging"
 agent_rc=0
 session_id="plugin-exdev-$(date +%s)"
-remote_cmd="rm -f /sandbox/.openclaw/agents/main/sessions/${session_id}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${session_id}.trajectory.jsonl 2>/dev/null || true; openclaw agent --agent main --json --session-id '${session_id}' -m 'Reply with exactly one word: PONG'"
+# Force OpenClaw's bundled runtime-deps staging dir onto /dev/shm (tmpfs) and
+# clear any deps preinstalled by gateway startup. On unfixed OpenClaw builds,
+# the installer attempts fs.rename(stagedDir, targetDir), which fails with
+# EXDEV when stagedDir is on /dev/shm and targetDir is under /sandbox.
+remote_cmd="rm -rf /sandbox/.openclaw/plugin-runtime-deps/openclaw-* 2>/dev/null || true; rm -f /sandbox/.openclaw/agents/main/sessions/${session_id}.jsonl.lock /sandbox/.openclaw/agents/main/sessions/${session_id}.trajectory.jsonl 2>/dev/null || true; TMPDIR=/dev/shm openclaw agent --agent main --json --session-id '${session_id}' -m 'Reply with exactly one word: PONG'"
 "$TIMEOUT_CMD" 420 openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd" \
   >"$AGENT_LOG" 2>&1 || agent_rc=$?
 redact_file "$AGENT_LOG"
@@ -142,7 +146,7 @@ if [ "$agent_rc" -ne 0 ]; then
 fi
 
 if grep -qi 'PONG' "$AGENT_LOG"; then
-  pass "openclaw agent completed without plugin runtime-deps EXDEV and returned a response"
+  pass "openclaw agent completed without plugin runtime-deps EXDEV despite cross-device staging"
 else
   fail "openclaw agent exited 0 but expected response token was missing; see ${AGENT_LOG}"
   exit 1
