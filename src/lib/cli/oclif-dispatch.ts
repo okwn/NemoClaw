@@ -9,10 +9,11 @@ import {
 } from "./oclif-metadata";
 import { globalRouteTokenVariants, sandboxRouteTokens } from "./public-route-metadata";
 
-export type OclifDispatch = {
-  kind: "oclif";
+export type NativeArgvDispatch = {
+  kind: "nativeArgv";
   commandId: string;
   args: string[];
+  argv: string[];
 };
 
 export type HelpDispatch = {
@@ -34,7 +35,7 @@ export type UnknownActionDispatch = {
 };
 
 export type DispatchResult =
-  | OclifDispatch
+  | NativeArgvDispatch
   | HelpDispatch
   | UsageErrorDispatch
   | UnknownActionDispatch;
@@ -172,23 +173,15 @@ function startsWithTokens(tokens: readonly string[], prefix: readonly string[]):
   return prefix.every((token, index) => tokens[index] === token);
 }
 
-function routeToOclif(route: LegacyRoute, sandboxName: string, args: string[]): DispatchResult {
+function routeToNativeArgv(route: LegacyRoute, sandboxName: string, args: string[]): DispatchResult {
   if (hasHelpFlag(args)) {
     return { kind: "help", commandId: route.commandId, publicUsage: route.publicUsage };
   }
-  return {
-    kind: "oclif",
-    commandId: route.commandId,
-    args: [sandboxName, ...args],
-  };
+  return nativeArgv(route.commandId, [sandboxName, ...args]);
 }
 
-function oclif(commandId: string, args: string[]): OclifDispatch {
-  return { kind: "oclif", commandId, args };
-}
-
-export function nativeArgvForOclifDispatch(result: OclifDispatch): string[] {
-  return [...result.commandId.split(":"), ...result.args];
+function nativeArgv(commandId: string, args: string[]): NativeArgvDispatch {
+  return { kind: "nativeArgv", commandId, args, argv: [...commandId.split(":"), ...args] };
 }
 
 function globalParentHelp(topic: string, message?: string): HelpDispatch {
@@ -205,7 +198,7 @@ export function resolveGlobalOclifDispatch(cmd: string, args: string[]): Dispatc
   const inputTokens = [cmd, ...args];
   for (const route of globalRoutes()) {
     if (!startsWithTokens(inputTokens, route.tokens)) continue;
-    return oclif(route.commandId, inputTokens.slice(route.tokens.length));
+    return nativeArgv(route.commandId, inputTokens.slice(route.tokens.length));
   }
 
   if (cmd === "tunnel" || cmd === "inference" || cmd === "credentials") {
@@ -248,22 +241,22 @@ export function resolveLegacySandboxDispatch(
   actionArgs: string[],
 ): DispatchResult {
   if (action === "connect") {
-    return { kind: "oclif", commandId: "sandbox:connect", args: [sandboxName, ...actionArgs] };
+    return nativeArgv("sandbox:connect", [sandboxName, ...actionArgs]);
   }
 
   if (action === "channels" && actionArgs.length === 0) {
-    return { kind: "oclif", commandId: "sandbox:channels:list", args: [sandboxName] };
+    return nativeArgv("sandbox:channels:list", [sandboxName]);
   }
 
   if (action === "skill" && actionArgs[0] === "install" && hasHelpFlag(actionArgs.slice(1))) {
-    return { kind: "oclif", commandId: "sandbox:skill", args: [sandboxName, ...actionArgs] };
+    return nativeArgv("sandbox:skill", [sandboxName, ...actionArgs]);
   }
 
   const inputTokens = [action, ...actionArgs];
   for (const route of legacyRoutes()) {
     if (!startsWithTokens(inputTokens, route.legacyTokens)) continue;
     const remainingArgs = inputTokens.slice(route.legacyTokens.length);
-    return routeToOclif(route, sandboxName, remainingArgs);
+    return routeToNativeArgv(route, sandboxName, remainingArgs);
   }
 
   if (action === "channels") {
@@ -288,11 +281,7 @@ export function resolveLegacySandboxDispatch(
   }
 
   if (hasRegisteredOclifParentCommand(action)) {
-    return {
-      kind: "oclif",
-      commandId: `sandbox:${action}`,
-      args: [sandboxName, ...(hasHelpFlag(actionArgs) ? [] : actionArgs)],
-    };
+    return nativeArgv(`sandbox:${action}`, [sandboxName, ...(hasHelpFlag(actionArgs) ? [] : actionArgs)]);
   }
 
   return { kind: "unknownAction", action };

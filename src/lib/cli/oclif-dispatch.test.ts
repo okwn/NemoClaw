@@ -4,11 +4,25 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  nativeArgvForOclifDispatch,
   resolveGlobalOclifDispatch,
   resolveLegacySandboxDispatch,
+  type DispatchResult,
 } from "./oclif-dispatch";
 import { SANDBOX_ROUTE_OVERRIDES, sandboxRouteTokens } from "./public-route-metadata";
+
+function expectNative(
+  result: DispatchResult,
+  commandId: string,
+  args: string[],
+  argv = [...commandId.split(":"), ...args],
+): void {
+  expect(result).toEqual({
+    kind: "nativeArgv",
+    commandId,
+    args,
+    argv,
+  });
+}
 
 describe("public route/display separation", () => {
   afterEach(() => {
@@ -46,20 +60,16 @@ describe("public route/display separation", () => {
     const dispatch = await import("./oclif-dispatch");
     const registry = await import("./command-registry");
 
-    expect(dispatch.resolveGlobalOclifDispatch("list", [])).toEqual({
-      kind: "oclif",
-      commandId: "list",
-      args: [],
-    });
+    expectNative(dispatch.resolveGlobalOclifDispatch("list", []), "list", []);
     expect(dispatch.resolveGlobalOclifDispatch("renamed-list", [])).toEqual({
       kind: "usageError",
       lines: [],
     });
-    expect(dispatch.resolveLegacySandboxDispatch("alpha", "status", [])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:status",
-      args: ["alpha"],
-    });
+    expectNative(
+      dispatch.resolveLegacySandboxDispatch("alpha", "status", []),
+      "sandbox:status",
+      ["alpha"],
+    );
     expect(dispatch.resolveLegacySandboxDispatch("alpha", "renamed-status", [])).toEqual({
       kind: "unknownAction",
       action: "renamed-status",
@@ -86,62 +96,19 @@ describe("public route/display separation", () => {
   });
 });
 
-describe("nativeArgvForOclifDispatch", () => {
-  it("translates resolved command IDs and parser args to native oclif argv", () => {
-    expect(
-      nativeArgvForOclifDispatch({
-        kind: "oclif",
-        commandId: "sandbox:config:set",
-        args: ["alpha", "--key", "model", "--value", "nvidia/nemotron"],
-      }),
-    ).toEqual(["sandbox", "config", "set", "alpha", "--key", "model", "--value", "nvidia/nemotron"]);
-    expect(
-      nativeArgvForOclifDispatch({
-        kind: "oclif",
-        commandId: "inference:get",
-        args: ["--json"],
-      }),
-    ).toEqual(["inference", "get", "--json"]);
-  });
-});
-
 describe("resolveGlobalOclifDispatch", () => {
-  it("routes simple and nested global commands through oclif", () => {
-    expect(resolveGlobalOclifDispatch("list", ["--json"])).toEqual({
-      kind: "oclif",
-      commandId: "list",
-      args: ["--json"],
-    });
-    expect(resolveGlobalOclifDispatch("update", ["--check"])).toEqual({
-      kind: "oclif",
-      commandId: "update",
-      args: ["--check"],
-    });
-    expect(resolveGlobalOclifDispatch("tunnel", ["start"])).toEqual({
-      kind: "oclif",
-      commandId: "tunnel:start",
-      args: [],
-    });
-    expect(resolveGlobalOclifDispatch("inference", ["set", "--provider", "nvidia-prod"])).toEqual({
-      kind: "oclif",
-      commandId: "inference:set",
-      args: ["--provider", "nvidia-prod"],
-    });
-    expect(resolveGlobalOclifDispatch("inference", ["get", "--json"])).toEqual({
-      kind: "oclif",
-      commandId: "inference:get",
-      args: ["--json"],
-    });
-    expect(resolveGlobalOclifDispatch("--version", [])).toEqual({
-      kind: "oclif",
-      commandId: "root:version",
-      args: [],
-    });
-    expect(resolveGlobalOclifDispatch("version", [])).toEqual({
-      kind: "oclif",
-      commandId: "root:version",
-      args: [],
-    });
+  it("translates simple and nested global commands to native oclif argv", () => {
+    expectNative(resolveGlobalOclifDispatch("list", ["--json"]), "list", ["--json"]);
+    expectNative(resolveGlobalOclifDispatch("update", ["--check"]), "update", ["--check"]);
+    expectNative(resolveGlobalOclifDispatch("tunnel", ["start"]), "tunnel:start", []);
+    expectNative(
+      resolveGlobalOclifDispatch("inference", ["set", "--provider", "nvidia-prod"]),
+      "inference:set",
+      ["--provider", "nvidia-prod"],
+    );
+    expectNative(resolveGlobalOclifDispatch("inference", ["get", "--json"]), "inference:get", ["--json"]);
+    expectNative(resolveGlobalOclifDispatch("--version", []), "root:version", []);
+    expectNative(resolveGlobalOclifDispatch("version", []), "root:version", []);
   });
 
   it("returns metadata-derived parent help for unsupported global forms", () => {
@@ -174,30 +141,26 @@ describe("resolveGlobalOclifDispatch", () => {
 });
 
 describe("resolveLegacySandboxDispatch", () => {
-  it("rewrites simple legacy sandbox actions to oclif command dispatches", () => {
-    expect(resolveLegacySandboxDispatch("alpha", "status", [])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:status",
-      args: ["alpha"],
-    });
-    expect(resolveLegacySandboxDispatch("alpha", "doctor", ["--json"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:doctor",
-      args: ["alpha", "--json"],
-    });
+  it("translates simple legacy sandbox actions to native oclif argv", () => {
+    expectNative(resolveLegacySandboxDispatch("alpha", "status", []), "sandbox:status", ["alpha"]);
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "doctor", ["--json"]),
+      "sandbox:doctor",
+      ["alpha", "--json"],
+    );
   });
 
-  it("rewrites legacy hyphenated actions to oclif-native command ids", () => {
-    expect(resolveLegacySandboxDispatch("alpha", "policy-add", ["--from-file"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:policy:add",
-      args: ["alpha", "--from-file"],
-    });
-    expect(resolveLegacySandboxDispatch("alpha", "gateway-token", ["--quiet"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:gateway:token",
-      args: ["alpha", "--quiet"],
-    });
+  it("translates legacy hyphenated actions to native oclif argv", () => {
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "policy-add", ["--from-file"]),
+      "sandbox:policy:add",
+      ["alpha", "--from-file"],
+    );
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "gateway-token", ["--quiet"]),
+      "sandbox:gateway:token",
+      ["alpha", "--quiet"],
+    );
   });
 
   it("keeps legacy public help usage for sandbox-scoped commands", () => {
@@ -213,12 +176,8 @@ describe("resolveLegacySandboxDispatch", () => {
     });
   });
 
-  it("rewrites sandbox recover through metadata-derived dispatch", () => {
-    expect(resolveLegacySandboxDispatch("alpha", "recover", [])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:recover",
-      args: ["alpha"],
-    });
+  it("translates sandbox recover through metadata-derived dispatch", () => {
+    expectNative(resolveLegacySandboxDispatch("alpha", "recover", []), "sandbox:recover", ["alpha"]);
     expect(resolveLegacySandboxDispatch("alpha", "recover", ["--help"])).toEqual({
       kind: "help",
       commandId: "sandbox:recover",
@@ -226,8 +185,8 @@ describe("resolveLegacySandboxDispatch", () => {
     });
   });
 
-  it("rewrites config actions through command-id-derived dispatch", () => {
-    expect(
+  it("translates config actions through command-id-derived dispatch", () => {
+    expectNative(
       resolveLegacySandboxDispatch("alpha", "config", [
         "set",
         "--key",
@@ -236,10 +195,8 @@ describe("resolveLegacySandboxDispatch", () => {
         "HTTP://93.184.216.34/v1",
         "--config-accept-new-path",
       ]),
-    ).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:config:set",
-      args: [
+      "sandbox:config:set",
+      [
         "alpha",
         "--key",
         "inference.endpoints",
@@ -247,32 +204,26 @@ describe("resolveLegacySandboxDispatch", () => {
         "HTTP://93.184.216.34/v1",
         "--config-accept-new-path",
       ],
-    });
-    expect(
+    );
+    expectNative(
       resolveLegacySandboxDispatch("alpha", "config", ["rotate-token", "--from-env", "TOKEN"]),
-    ).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:config:rotate-token",
-      args: ["alpha", "--from-env", "TOKEN"],
-    });
+      "sandbox:config:rotate-token",
+      ["alpha", "--from-env", "TOKEN"],
+    );
   });
 
-  it("rewrites nested sandbox subcommands and defaults", () => {
-    expect(resolveLegacySandboxDispatch("alpha", "channels", [])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:channels:list",
-      args: ["alpha"],
-    });
-    expect(resolveLegacySandboxDispatch("alpha", "channels", ["add", "slack"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:channels:add",
-      args: ["alpha", "slack"],
-    });
-    expect(resolveLegacySandboxDispatch("alpha", "snapshot", ["restore", "latest"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:snapshot:restore",
-      args: ["alpha", "latest"],
-    });
+  it("translates nested sandbox subcommands and defaults", () => {
+    expectNative(resolveLegacySandboxDispatch("alpha", "channels", []), "sandbox:channels:list", ["alpha"]);
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "channels", ["add", "slack"]),
+      "sandbox:channels:add",
+      ["alpha", "slack"],
+    );
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "snapshot", ["restore", "latest"]),
+      "sandbox:snapshot:restore",
+      ["alpha", "latest"],
+    );
   });
 
   it("keeps share parent help public", () => {
@@ -284,21 +235,21 @@ describe("resolveLegacySandboxDispatch", () => {
   });
 
   it("falls back to parent commands that intentionally own unknown subcommands and custom help", () => {
-    expect(resolveLegacySandboxDispatch("alpha", "skill", ["install", "--help"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:skill",
-      args: ["alpha", "install", "--help"],
-    });
-    expect(resolveLegacySandboxDispatch("alpha", "skill", ["bogus"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:skill",
-      args: ["alpha", "bogus"],
-    });
-    expect(resolveLegacySandboxDispatch("alpha", "snapshot", ["bogus"])).toEqual({
-      kind: "oclif",
-      commandId: "sandbox:snapshot",
-      args: ["alpha", "bogus"],
-    });
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "skill", ["install", "--help"]),
+      "sandbox:skill",
+      ["alpha", "install", "--help"],
+    );
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "skill", ["bogus"]),
+      "sandbox:skill",
+      ["alpha", "bogus"],
+    );
+    expectNative(
+      resolveLegacySandboxDispatch("alpha", "snapshot", ["bogus"]),
+      "sandbox:snapshot",
+      ["alpha", "bogus"],
+    );
   });
 
   it("returns metadata-derived parent help for config and shields groups", () => {

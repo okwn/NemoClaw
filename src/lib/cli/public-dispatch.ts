@@ -23,7 +23,6 @@ const {
 import { normalizeArgv, suggestCommand } from "./argv-normalizer";
 import { renderPublicOclifHelp } from "./public-oclif-help";
 import {
-  nativeArgvForOclifDispatch,
   resolveGlobalOclifDispatch,
   resolveLegacySandboxDispatch,
   type DispatchResult,
@@ -115,7 +114,7 @@ function validSandboxActionsText(): string {
   return sandboxActionList().filter(Boolean).join(", ");
 }
 
-function shouldExecuteViaNativeArgv(result: Extract<DispatchResult, { kind: "oclif" }>): boolean {
+function shouldExecuteViaNativeArgv(result: Extract<DispatchResult, { kind: "nativeArgv" }>): boolean {
   return result.commandId.startsWith("sandbox:") && !hasHelpFlag(result.args);
 }
 
@@ -188,9 +187,9 @@ async function runDispatchResult(
   opts: { sandboxName?: string } = {},
 ): Promise<void> {
   switch (result.kind) {
-    case "oclif":
+    case "nativeArgv":
       if (shouldExecuteViaNativeArgv(result)) {
-        await runNativeOclifArgv(nativeArgvForOclifDispatch(result));
+        await runNativeOclifArgv(result.argv);
       } else {
         await runOclif(result.commandId, result.args);
       }
