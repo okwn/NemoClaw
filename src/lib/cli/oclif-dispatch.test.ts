@@ -126,7 +126,7 @@ describe("resolveLegacySandboxDispatch", () => {
     });
   });
 
-  it("rewrites config set through metadata-derived dispatch", () => {
+  it("rewrites config actions through command-id-derived dispatch", () => {
     expect(
       resolveLegacySandboxDispatch("alpha", "config", [
         "set",
@@ -147,6 +147,13 @@ describe("resolveLegacySandboxDispatch", () => {
         "HTTP://93.184.216.34/v1",
         "--config-accept-new-path",
       ],
+    });
+    expect(
+      resolveLegacySandboxDispatch("alpha", "config", ["rotate-token", "--from-env", "TOKEN"]),
+    ).toEqual({
+      kind: "oclif",
+      commandId: "sandbox:config:rotate-token",
+      args: ["alpha", "--from-env", "TOKEN"],
     });
   });
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { globalCommands, sandboxCommands } from "./command-registry";
+import { globalRouteTokenVariants, sandboxRouteTokens } from "./public-route-metadata";
 
 export type OclifDispatch = {
   kind: "oclif";
@@ -48,28 +49,6 @@ function hasHelpFlag(args: readonly string[]): boolean {
   return args.includes("--help") || args.includes("-h");
 }
 
-function literalTokensFromUsage(usage: string, prefixPattern: RegExp): string[] {
-  const rest = usage.replace(prefixPattern, "");
-  const tokens: string[] = [];
-  for (const token of rest.split(/\s+/)) {
-    if (!token || token.startsWith("[") || token.startsWith("<") || token.startsWith("(")) break;
-    if (token.startsWith("-")) {
-      if (tokens.length === 0) tokens.push(token);
-      break;
-    }
-    tokens.push(token);
-  }
-  return tokens;
-}
-
-function legacyTokensFromUsage(usage: string): string[] {
-  return literalTokensFromUsage(usage, /^nemoclaw\s+<name>\s*/);
-}
-
-function globalTokensFromUsage(usage: string): string[] {
-  return literalTokensFromUsage(usage, /^nemoclaw\s+/);
-}
-
 function publicUsageFromCommand(
   command: ReturnType<typeof sandboxCommands>[number] | ReturnType<typeof globalCommands>[number],
 ): string {
@@ -81,7 +60,7 @@ function legacyRoutes(): LegacyRoute[] {
   return sandboxCommands()
     .map((command) => ({
       commandId: command.commandId,
-      legacyTokens: legacyTokensFromUsage(command.usage),
+      legacyTokens: sandboxRouteTokens(command.commandId) ?? [],
       publicUsage: publicUsageFromCommand(command),
     }))
     .filter((route) => route.legacyTokens.length > 0)
@@ -97,19 +76,28 @@ function parentPublicUsage(action: string): string[] {
 
 function globalRoutes(): GlobalRoute[] {
   return globalCommands()
-    .map((command) => ({
-      commandId: command.commandId,
-      tokens: globalTokensFromUsage(command.usage),
-    }))
+    .flatMap((command) =>
+      globalRouteTokenVariants(command.commandId).map((tokens) => ({
+        commandId: command.commandId,
+        tokens,
+      })),
+    )
     .filter((route) => route.tokens.length > 0)
     .sort((a, b) => b.tokens.length - a.tokens.length);
 }
 
 function globalParentPublicUsage(topic: string): string[] {
-  const lines = globalCommands()
-    .filter((command) => globalTokensFromUsage(command.usage)[0] === topic)
-    .map((command) => publicUsageFromCommand(command));
-  return [...new Set(lines)];
+  const lines = globalRoutes()
+    .filter((route) => route.tokens[0] === topic)
+    .map((route) => route.commandId);
+  const commandIds = new Set(lines);
+  return [
+    ...new Set(
+      globalCommands()
+        .filter((command) => commandIds.has(command.commandId))
+        .map((command) => publicUsageFromCommand(command)),
+    ),
+  ];
 }
 
 function startsWithTokens(tokens: readonly string[], prefix: readonly string[]): boolean {
@@ -211,7 +199,11 @@ export function resolveLegacySandboxDispatch(
   }
 
   if (action === "share" && hasHelpFlag(actionArgs)) {
-    return { kind: "help", commandId: "sandbox:share", publicUsage: "<name> share <mount|unmount|status>" };
+    return {
+      kind: "help",
+      commandId: "sandbox:share",
+      publicUsage: "<name> share <mount|unmount|status>",
+    };
   }
 
   if (PARENT_ACTIONS.has(action)) {

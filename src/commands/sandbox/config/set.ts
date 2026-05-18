@@ -33,14 +33,6 @@ export default class SandboxConfigSetCommand extends NemoClawCommand {
       scope: "sandbox",
       order: 29,
     },
-    {
-      usage: "nemoclaw <name> config rotate-token",
-      description: "Rotate sandbox provider credentials",
-      group: "Sandbox Management",
-      hidden: true,
-      scope: "sandbox",
-      order: 30,
-    },
   ];
   static args = {
     sandboxName: sandboxNameArg,

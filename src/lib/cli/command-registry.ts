@@ -17,6 +17,7 @@
 import { CLI_DISPLAY_NAME, CLI_NAME } from "./branding";
 import type { CommandGroup, PublicCommandDisplayEntry } from "./command-display";
 import { getRegisteredOclifCommandsMetadata } from "./oclif-metadata";
+import { globalRouteTokenVariants, sandboxRouteTokens } from "./public-route-metadata";
 
 export type { CommandGroup } from "./command-display";
 
@@ -125,9 +126,10 @@ export function canonicalUsageList(): string[] {
 export function globalCommandTokens(): Set<string> {
   const tokens = new Set<string>();
   for (const cmd of globalCommands()) {
-    const rest = cmd.usage.replace(/^nemoclaw\s+/, "");
-    const token = rest.split(/\s+/)[0];
-    tokens.add(token);
+    for (const routeTokens of globalRouteTokenVariants(cmd.commandId)) {
+      const [token] = routeTokens;
+      if (token) tokens.add(token);
+    }
   }
   return tokens;
 }
@@ -135,16 +137,16 @@ export function globalCommandTokens(): Set<string> {
 /**
  * Action tokens for sandbox commands.
  *
- * For "nemoclaw <name> connect", extracts "connect".
- * Includes empty string for default connect behavior.
+ * The tokens are derived from oclif command IDs and explicit compatibility
+ * route overrides, not from public help text. Includes empty string for the
+ * default connect behavior.
  */
 export function sandboxActionTokens(): string[] {
   const seen = new Set<string>();
   const tokens: string[] = [];
   for (const cmd of sandboxCommands()) {
-    const rest = cmd.usage.replace(/^nemoclaw\s+<name>\s*/, "");
-    const token = rest.split(/\s+/)[0];
-    if (!seen.has(token)) {
+    const [token] = sandboxRouteTokens(cmd.commandId) ?? [];
+    if (token && !seen.has(token)) {
       seen.add(token);
       tokens.push(token);
     }

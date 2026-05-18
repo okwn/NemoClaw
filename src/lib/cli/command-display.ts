@@ -16,13 +16,14 @@ export type CommandGroup =
   | "Cleanup";
 
 /**
- * Public compatibility display metadata for root help, docs checks, and
- * legacy `nemoclaw <sandbox-name> <action>` routing.
+ * Public compatibility display metadata for root help and docs checks.
  *
  * Keep oclif-native parser metadata (`summary`, `description`, `usage`,
  * `flags`, `args`) on the command class itself. Use `static publicDisplay`
  * only when the public NemoClaw grammar differs from the oclif-native command
- * shape or when a command needs root-help grouping/order metadata.
+ * shape or when a command needs root-help grouping/order metadata. Runtime
+ * routing must use machine-readable public route metadata, not these display
+ * strings.
  */
 export interface PublicCommandDisplayEntry {
   /** Canonical public command signature, e.g. "nemoclaw <name> snapshot create" */
