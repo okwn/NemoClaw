@@ -14,7 +14,7 @@
 const { ROOT, validateName } = require("../runner");
 const { CLI_NAME } = require("./branding");
 const { help } = require("../actions/root-help");
-const { runOclifArgv, runRegisteredOclifCommand } = require("./oclif-runner");
+const { runOclifArgv, runCompatibilityOclifCommandById } = require("./oclif-runner");
 const {
   canonicalUsageList,
   globalCommandTokens,
@@ -70,8 +70,8 @@ function oclifRunOptions() {
   };
 }
 
-async function runOclif(commandId: string, args: string[] = []): Promise<void> {
-  await runRegisteredOclifCommand(commandId, args, oclifRunOptions());
+async function runCompatibilityOclifCommand(commandId: string, args: string[] = []): Promise<void> {
+  await runCompatibilityOclifCommandById(commandId, args, oclifRunOptions());
 }
 
 async function runNativeOclifArgv(args: string[]): Promise<void> {
@@ -193,7 +193,7 @@ async function runDispatchResult(
       if (shouldExecuteViaNativeArgv(result)) {
         await runNativeOclifArgv(result.argv);
       } else {
-        await runOclif(result.commandId, result.args);
+        await runCompatibilityOclifCommand(result.commandId, result.args);
       }
       return;
     case "help":
@@ -224,7 +224,7 @@ export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promi
   });
 
   if (normalized.kind === "rootHelp") {
-    await runOclif("root:help", []);
+    await runCompatibilityOclifCommand("root:help", []);
     return;
   }
 

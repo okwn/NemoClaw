@@ -127,7 +127,7 @@ describe("oclif compatibility dispatch", () => {
     const priorDisableAutoDispatch = process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH;
 
     const runOclifArgv = vi.fn(async () => undefined);
-    const runRegisteredOclifCommand = vi.fn(async () => undefined);
+    const runCompatibilityOclifCommandById = vi.fn(async () => undefined);
     const validateName = vi.fn();
 
     process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH = "1";
@@ -163,7 +163,7 @@ describe("oclif compatibility dispatch", () => {
       id: oclifRunnerPath,
       filename: oclifRunnerPath,
       loaded: true,
-      exports: { runOclifArgv, runRegisteredOclifCommand },
+      exports: { runOclifArgv, runCompatibilityOclifCommandById },
     } as any;
 
     requireCache[sandboxConnectPath] = {
@@ -189,7 +189,7 @@ describe("oclif compatibility dispatch", () => {
         ["sandbox", "status", "alpha"],
         expect.objectContaining({ rootDir: process.cwd() }),
       );
-      expect(runRegisteredOclifCommand).not.toHaveBeenCalled();
+      expect(runCompatibilityOclifCommandById).not.toHaveBeenCalled();
     } finally {
       if (priorDisableAutoDispatch === undefined) {
         delete process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH;
@@ -220,7 +220,7 @@ describe("oclif compatibility dispatch", () => {
     const priorDisableAutoDispatch = process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH;
 
     const runOclifArgv = vi.fn(async () => undefined);
-    const runRegisteredOclifCommand = vi.fn(async () => undefined);
+    const runCompatibilityOclifCommandById = vi.fn(async () => undefined);
 
     process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH = "1";
     requireCache[runnerPath] = {
@@ -233,7 +233,7 @@ describe("oclif compatibility dispatch", () => {
       id: oclifRunnerPath,
       filename: oclifRunnerPath,
       loaded: true,
-      exports: { runOclifArgv, runRegisteredOclifCommand },
+      exports: { runOclifArgv, runCompatibilityOclifCommandById },
     } as any;
 
     try {
@@ -243,7 +243,7 @@ describe("oclif compatibility dispatch", () => {
 
       await dispatchCli(["status", "bogus"]);
 
-      expect(runRegisteredOclifCommand).toHaveBeenCalledWith(
+      expect(runCompatibilityOclifCommandById).toHaveBeenCalledWith(
         "status",
         ["bogus"],
         expect.objectContaining({ rootDir: process.cwd() }),

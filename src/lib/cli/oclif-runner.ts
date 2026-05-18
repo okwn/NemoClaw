@@ -73,7 +73,10 @@ function applyBrandedBin(config: OclifConfig): void {
   }
 }
 
-export async function runRegisteredOclifCommand(
+// Compatibility escape hatch for public routes that cannot safely go through
+// oclif's flexible-taxonomy argv resolver. Prefer runOclifArgv() for normal
+// execution so oclif owns command lookup, parsing, help, and error handling.
+export async function runCompatibilityOclifCommandById(
   commandId: string,
   args: string[],
   opts: OclifCommandRunOptions,
