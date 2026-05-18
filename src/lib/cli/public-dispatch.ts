@@ -23,6 +23,7 @@ const {
 import { normalizeArgv, suggestCommand } from "./argv-normalizer";
 import { renderPublicOclifHelp } from "./public-oclif-help";
 import {
+  nativeArgvForOclifDispatch,
   resolveGlobalOclifDispatch,
   resolveLegacySandboxDispatch,
   type DispatchResult,
@@ -62,12 +63,20 @@ function isPublicSandboxConnectFlag(arg: string | undefined): boolean {
 
 // ── Commands ─────────────────────────────────────────────────────
 
-async function runOclif(commandId: string, args: string[] = []): Promise<void> {
-  await runRegisteredOclifCommand(commandId, args, {
+function oclifRunOptions() {
+  return {
     rootDir: ROOT,
     error: console.error,
     exit: (code: number) => process.exit(code),
-  });
+  };
+}
+
+async function runOclif(commandId: string, args: string[] = []): Promise<void> {
+  await runRegisteredOclifCommand(commandId, args, oclifRunOptions());
+}
+
+async function runNativeOclifArgv(args: string[]): Promise<void> {
+  await runOclifArgv(args, oclifRunOptions());
 }
 
 // ── Dispatch helpers ─────────────────────────────────────────────
@@ -94,15 +103,20 @@ function printConnectOrderHint(candidate: string | null): void {
   }
 }
 
-const VALID_SANDBOX_ACTIONS =
-  "connect, status, doctor, logs, policy-add, policy-remove, policy-list, hosts-add, hosts-list, hosts-remove, skill, snapshot, share, rebuild, recover, shields, config, channels, gateway-token, destroy";
-
 function sandboxActionList(): string[] {
   return sandboxActionTokens();
 }
 
 function isKnownSandboxAction(action: string): boolean {
   return sandboxActionList().includes(action);
+}
+
+function validSandboxActionsText(): string {
+  return sandboxActionList().filter(Boolean).join(", ");
+}
+
+function shouldExecuteViaNativeArgv(result: Extract<DispatchResult, { kind: "oclif" }>): boolean {
+  return result.commandId.startsWith("sandbox:") && !hasHelpFlag(result.args);
 }
 
 function printDispatchUsageError(
@@ -175,7 +189,11 @@ async function runDispatchResult(
 ): Promise<void> {
   switch (result.kind) {
     case "oclif":
-      await runOclif(result.commandId, result.args);
+      if (shouldExecuteViaNativeArgv(result)) {
+        await runNativeOclifArgv(nativeArgvForOclifDispatch(result));
+      } else {
+        await runOclif(result.commandId, result.args);
+      }
       return;
     case "help":
       renderDispatchHelp(result);
@@ -185,7 +203,7 @@ async function runDispatchResult(
       return;
     case "unknownAction":
       console.error(`  Unknown action: ${result.action}`);
-      console.error(`  Valid actions: ${VALID_SANDBOX_ACTIONS}`);
+      console.error(`  Valid actions: ${validSandboxActionsText()}`);
       process.exit(1);
   }
 }
@@ -195,11 +213,7 @@ async function runDispatchResult(
 // eslint-disable-next-line complexity
 export async function dispatchCli(argv: string[] = process.argv.slice(2)): Promise<void> {
   if (argv[0] === "internal" || argv[0] === "sandbox") {
-    await runOclifArgv(argv, {
-      rootDir: ROOT,
-      error: console.error,
-      exit: (code: number) => process.exit(code),
-    });
+    await runNativeOclifArgv(argv);
     return;
   }
 

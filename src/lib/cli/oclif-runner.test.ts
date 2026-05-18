@@ -3,17 +3,20 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { executeMock, loadMock, runCommandMock } = vi.hoisted(() => ({
-  executeMock: vi.fn(),
+const { loadMock, runCommandMock, runMainMock } = vi.hoisted(() => ({
   loadMock: vi.fn(),
   runCommandMock: vi.fn(),
+  runMainMock: vi.fn(),
 }));
 
 vi.mock("@oclif/core", () => ({
   Config: {
     load: loadMock,
   },
-  execute: executeMock,
+}));
+
+vi.mock("@oclif/core/run", () => ({
+  run: runMainMock,
 }));
 
 import { runOclifArgv, runRegisteredOclifCommand } from "./oclif-runner";
@@ -46,17 +49,14 @@ describe("runOclifArgv", () => {
   it("executes native oclif argv with branded package metadata", async () => {
     const config = makeConfig();
     loadMock.mockResolvedValue(config);
-    executeMock.mockResolvedValue(undefined);
+    runMainMock.mockResolvedValue(undefined);
 
     await runOclifArgv(["sandbox", "channels", "start", "--help"], { rootDir: "/repo" });
 
     expect(loadMock).toHaveBeenCalledWith("/repo");
-    expect(executeMock).toHaveBeenCalledWith({
-      args: ["sandbox", "channels", "start", "--help"],
-      loadOptions: {
-        root: "/repo",
-        pjson: config.pjson,
-      },
+    expect(runMainMock).toHaveBeenCalledWith(["sandbox", "channels", "start", "--help"], {
+      root: "/repo",
+      pjson: config.pjson,
     });
     expect(config.pjson.oclif.bin).toBe("nemoclaw");
     expect(config.options.pjson.oclif.bin).toBe("nemoclaw");
@@ -66,7 +66,7 @@ describe("runOclifArgv", () => {
 
 describe("runRegisteredOclifCommand", () => {
   beforeEach(() => {
-    executeMock.mockReset();
+    runMainMock.mockReset();
     runCommandMock.mockReset();
     loadMock.mockReset();
     loadMock.mockResolvedValue(makeConfig());

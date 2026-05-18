@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Config as OclifConfig, execute as executeOclif } from "@oclif/core";
+import { Config as OclifConfig } from "@oclif/core";
+import { run as runOclifMain } from "@oclif/core/run";
 
 import { CLI_NAME } from "./branding";
 
@@ -124,11 +125,34 @@ export async function runRegisteredOclifCommand(
 export async function runOclifArgv(args: string[], opts: OclifCommandRunOptions): Promise<void> {
   const config = await OclifConfig.load(opts.rootDir);
   applyBrandedBin(config);
-  await executeOclif({
-    args,
-    loadOptions: {
+  const errorLine = opts.error ?? console.error;
+  const exit = opts.exit ?? ((code: number) => process.exit(code));
+
+  try {
+    await runOclifMain(args, {
       root: opts.rootDir,
       pjson: config.pjson,
-    },
-  });
+    });
+  } catch (error) {
+    const exitCode = getOclifExitCode(error);
+    if (exitCode === 0) {
+      if (!isOclifExitError(error)) {
+        const message = formatOclifError(error) || "Command exited with no output.";
+        errorLine(`  ${message}`);
+      }
+      process.exitCode = 0;
+      return;
+    }
+
+    if (isOclifParseError(error)) {
+      errorLine(`  ${formatOclifError(error)}`);
+      exit(exitCode ?? 1);
+    }
+
+    if (isOclifExitError(error) && typeof exitCode === "number") {
+      exit(exitCode);
+    }
+
+    throw error;
+  }
 }

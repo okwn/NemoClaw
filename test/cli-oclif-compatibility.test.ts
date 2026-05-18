@@ -108,6 +108,105 @@ describe("oclif compatibility dispatch", () => {
     }
   });
 
+  it("hands public sandbox execution to oclif as native argv", async () => {
+    const cliPath = require.resolve("../dist/nemoclaw.js");
+    const registryPath = require.resolve("../dist/lib/state/registry.js");
+    const registryRecoveryPath = require.resolve("../dist/lib/registry-recovery-action.js");
+    const runnerPath = require.resolve("../dist/lib/runner.js");
+    const publicDispatchPath = require.resolve("../dist/lib/cli/public-dispatch.js");
+    const oclifRunnerPath = require.resolve("../dist/lib/cli/oclif-runner.js");
+    const sandboxConnectPath = require.resolve("../dist/lib/actions/sandbox/connect.js");
+
+    const priorCli = require.cache[cliPath];
+    const priorRegistry = require.cache[registryPath];
+    const priorRegistryRecovery = require.cache[registryRecoveryPath];
+    const priorRunner = require.cache[runnerPath];
+    const priorPublicDispatch = require.cache[publicDispatchPath];
+    const priorOclifRunner = require.cache[oclifRunnerPath];
+    const priorSandboxConnect = require.cache[sandboxConnectPath];
+    const priorDisableAutoDispatch = process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH;
+
+    const runOclifArgv = vi.fn(async () => undefined);
+    const runRegisteredOclifCommand = vi.fn(async () => undefined);
+    const validateName = vi.fn();
+
+    process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH = "1";
+
+    requireCache[runnerPath] = {
+      id: runnerPath,
+      filename: runnerPath,
+      loaded: true,
+      exports: {
+        ROOT: process.cwd(),
+        validateName,
+      },
+    } as any;
+
+    requireCache[registryPath] = {
+      id: registryPath,
+      filename: registryPath,
+      loaded: true,
+      exports: {
+        getSandbox: vi.fn((name: string) => (name === "alpha" ? { name: "alpha" } : null)),
+        listSandboxes: vi.fn(() => ({ sandboxes: [{ name: "alpha" }] })),
+      },
+    } as any;
+
+    requireCache[registryRecoveryPath] = {
+      id: registryRecoveryPath,
+      filename: registryRecoveryPath,
+      loaded: true,
+      exports: { recoverRegistryEntries: vi.fn(async () => undefined) },
+    } as any;
+
+    requireCache[oclifRunnerPath] = {
+      id: oclifRunnerPath,
+      filename: oclifRunnerPath,
+      loaded: true,
+      exports: { runOclifArgv, runRegisteredOclifCommand },
+    } as any;
+
+    requireCache[sandboxConnectPath] = {
+      id: sandboxConnectPath,
+      filename: sandboxConnectPath,
+      loaded: true,
+      exports: {
+        isSandboxConnectFlag: vi.fn(() => false),
+        parseSandboxConnectArgs: vi.fn(),
+        printSandboxConnectHelp: vi.fn(),
+      },
+    } as any;
+
+    try {
+      delete require.cache[cliPath];
+      delete require.cache[publicDispatchPath];
+      const { dispatchCli } = require(cliPath);
+
+      await dispatchCli(["alpha", "status"]);
+
+      expect(validateName).toHaveBeenCalledWith("alpha", "sandbox name");
+      expect(runOclifArgv).toHaveBeenCalledWith(
+        ["sandbox", "status", "alpha"],
+        expect.objectContaining({ rootDir: process.cwd() }),
+      );
+      expect(runRegisteredOclifCommand).not.toHaveBeenCalled();
+    } finally {
+      if (priorDisableAutoDispatch === undefined) {
+        delete process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH;
+      } else {
+        process.env.NEMOCLAW_DISABLE_AUTO_DISPATCH = priorDisableAutoDispatch;
+      }
+
+      restoreCache(cliPath, priorCli);
+      restoreCache(registryPath, priorRegistry);
+      restoreCache(registryRecoveryPath, priorRegistryRecovery);
+      restoreCache(runnerPath, priorRunner);
+      restoreCache(publicDispatchPath, priorPublicDispatch);
+      restoreCache(oclifRunnerPath, priorOclifRunner);
+      restoreCache(sandboxConnectPath, priorSandboxConnect);
+    }
+  });
+
   it("keeps oclif flexible taxonomy enabled for space-separated native commands", () => {
     const packageJson = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
       oclif?: { flexibleTaxonomy?: boolean; topicSeparator?: string };
