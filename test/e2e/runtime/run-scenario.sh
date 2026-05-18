@@ -238,6 +238,7 @@ fi
 DOCKER_OPTIONAL_UNAVAILABLE=0
 if [[ "${RUNTIME_CONTAINER_DAEMON}" == "optional" ]] && ! docker info >/dev/null 2>&1; then
   DOCKER_OPTIONAL_UNAVAILABLE=1
+  echo "::notice title=E2E skipped capabilities::${SCENARIO_ID}: Docker unavailable for optional runtime ${RUNTIME_ID}; gateway/sandbox/inference coverage skipped"
   echo "SKIP: scenario.${SCENARIO_ID}.docker-dependent-suites Docker unavailable for optional runtime ${RUNTIME_ID}; gateway/sandbox/inference coverage skipped"
   echo "run-scenario: Docker unavailable for optional runtime ${RUNTIME_ID}; scaling back to platform-only suites"
 else
@@ -312,6 +313,7 @@ if [[ "${DOCKER_OPTIONAL_UNAVAILABLE}" -eq 1 ]]; then
   for suite_id in "${SUITE_IDS[@]}"; do
     case "${suite_id}" in
       smoke|inference|credentials|hermes-specific|local-ollama-inference|ollama-proxy)
+        echo "::notice title=E2E suite skipped::${suite_id} skipped because optional Docker runtime ${RUNTIME_ID} is unavailable"
         echo "SKIP: suite.${suite_id} skipped because optional Docker runtime ${RUNTIME_ID} is unavailable"
         ;;
       *)

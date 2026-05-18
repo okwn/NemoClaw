@@ -88,8 +88,13 @@ jobs:
         run: |
           mkdir -p .e2e
           bash test/e2e/runtime/coverage-report.sh > .e2e/coverage.md
-          echo '## E2E scenario coverage' >> "$GITHUB_STEP_SUMMARY"
-          cat .e2e/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '# E2E Scenario Report'
+            echo ''
+            echo '**Scenario:** `${{ github.event.inputs.scenario }}`'
+            echo ''
+            cat .e2e/coverage.md
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Run scenario
         if: ${{ !startsWith(github.event.inputs.scenario, 'wsl-') }}
@@ -98,6 +103,18 @@ jobs:
           E2E_SUITE_FILTER: ${{ github.event.inputs.suite_filter }}
         run: |
           bash test/e2e/runtime/run-scenario.sh "${{ github.event.inputs.scenario }}"
+          {
+            echo ''
+            echo '## Scenario execution result'
+            echo ''
+            echo '- Scenario `${{ github.event.inputs.scenario }}` completed successfully.'
+            if grep -R '^SKIP:' .e2e test/e2e/logs >/tmp/e2e-skips.txt 2>/dev/null; then
+              echo ''
+              echo '### Runtime skips observed'
+              echo ''
+              sed 's/^/- `/' /tmp/e2e-skips.txt | sed 's/$/`/'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Resolve workspace paths for WSL
         if: startsWith(github.event.inputs.scenario, 'wsl-')
