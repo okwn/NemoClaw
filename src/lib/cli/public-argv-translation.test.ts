@@ -7,7 +7,7 @@ import {
   translatePublicGlobalArgv,
   translatePublicSandboxArgv,
   type DispatchResult,
-} from "./oclif-dispatch";
+} from "./public-argv-translation";
 import { SANDBOX_ROUTE_OVERRIDES, sandboxRouteTokens } from "./public-route-metadata";
 
 function expectNative(
@@ -57,7 +57,7 @@ describe("public route/display separation", () => {
       };
     });
 
-    const dispatch = await import("./oclif-dispatch");
+    const dispatch = await import("./public-argv-translation");
     const registry = await import("./command-registry");
 
     expectNative(dispatch.translatePublicGlobalArgv("list", []), "list", []);

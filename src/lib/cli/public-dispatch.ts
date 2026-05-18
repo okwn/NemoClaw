@@ -27,7 +27,7 @@ import {
   translatePublicSandboxArgv,
   type DispatchResult,
   type HelpDispatch,
-} from "./oclif-dispatch";
+} from "./public-argv-translation";
 
 // ── Global commands (derived from command registry) ──────────────
 
