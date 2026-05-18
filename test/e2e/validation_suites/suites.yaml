@@ -49,8 +49,7 @@ suites:
       script: inference/ollama-auth-proxy/00-proxy-reachable.sh
   platform-macos:
     requires_state:
-      gateway.health: healthy
-      sandbox.status: running
+      cli.installed: true
     steps:
     - id: macos-smoke
       script: platform/macos/00-macos-smoke.sh
