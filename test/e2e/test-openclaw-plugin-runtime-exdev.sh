@@ -129,7 +129,7 @@ agent_rc=0
 # contents into a staging dir adjacent to the source and then renameSyncs that
 # staged node_modules dir into the final plugin-runtime-deps target. When source
 # is on tmpfs (/dev/shm) and target is under /sandbox, unfixed code throws EXDEV.
-remote_cmd=$(cat <<'REMOTE'
+remote_script_b64=$(cat <<'REMOTE' | base64 | tr -d '\n'
 set -eu
 rm -rf /sandbox/.openclaw/plugin-runtime-deps/exdev-guard 2>/dev/null || true
 rm -rf /dev/shm/nemoclaw-exdev-source 2>/dev/null || true
@@ -156,6 +156,7 @@ console.log('runtime deps replacement completed');
 NODE
 REMOTE
 )
+remote_cmd="printf '%s' '${remote_script_b64}' | base64 -d > /tmp/nemoclaw-exdev-guard.sh && sh /tmp/nemoclaw-exdev-guard.sh"
 "$TIMEOUT_CMD" 60 openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc "$remote_cmd" \
   >"$AGENT_LOG" 2>&1 || agent_rc=$?
 redact_file "$AGENT_LOG"
