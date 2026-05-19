@@ -179,7 +179,12 @@ describe("PR review advisor", () => {
       with: { repository: "NVIDIA/NemoClaw", ref: "main", path: "advisor", "persist-credentials": false },
     });
     expect(prCheckout).toMatchObject({ with: { path: "pr-workdir", "persist-credentials": false } });
+    const commentStep = steps.find((step: { name?: string }) => step.name === "Post PR review advisor comment");
+
     expect(installStep.run.includes("--ignore-scripts")).toBe(true);
     expect(analyzeStep.run.includes("$ADVISOR_DIR/tools/pr-review-advisor/analyze.mts")).toBe(true);
+    expect(analyzeStep.run).toContain("trusted main checkout does not yet contain analyze.mts");
+    expect(analyzeStep.run).toContain("pr-review-advisor-final-result.json");
+    expect(commentStep.run).toContain("trusted main checkout does not yet contain comment.mts");
   });
 });
