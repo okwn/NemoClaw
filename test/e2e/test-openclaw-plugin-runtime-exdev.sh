@@ -97,15 +97,29 @@ section "Fresh sandbox onboard"
 rm -f "$HOME/.nemoclaw/onboard.lock" 2>/dev/null || true
 nemoclaw "$SANDBOX_NAME" destroy --yes >/dev/null 2>&1 || true
 
+
+OPENCLAW_POLICY_SRC="${REPO}/agents/openclaw/policy-permissive.yaml"
+EXDEV_POLICY="/tmp/nemoclaw-e2e-openclaw-plugin-exdev-policy.yaml"
+python3 - "$OPENCLAW_POLICY_SRC" "$EXDEV_POLICY" <<'PY'
+import sys
+from pathlib import Path
+src, dst = map(Path, sys.argv[1:])
+text = src.read_text()
+needle = "  read_write:\n    - /tmp\n"
+if needle not in text:
+    raise SystemExit("could not find read_write /tmp anchor in OpenClaw policy")
+text = text.replace(needle, "  read_write:\n    - /tmp\n    - /dev/shm\n", 1)
+dst.write_text(text)
+PY
 env \
   NEMOCLAW_PROVIDER_KEY="$NVIDIA_API_KEY" \
   NEMOCLAW_SANDBOX_NAME="$SANDBOX_NAME" \
   NEMOCLAW_NON_INTERACTIVE=1 \
   NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 \
-  NEMOCLAW_POLICY_TIER="open" \
+  NEMOCLAW_POLICY_MODE="skip" \
   NEMOCLAW_PROVIDER="build" \
   NVIDIA_API_KEY="$NVIDIA_API_KEY" \
-  "$TIMEOUT_CMD" 1500 nemoclaw onboard --fresh --non-interactive --yes-i-accept-third-party-software \
+  "$TIMEOUT_CMD" 1500 nemoclaw onboard --fresh --non-interactive --yes-i-accept-third-party-software --agent openclaw --from "$REPO/Dockerfile" \
   >"$ONBOARD_LOG" 2>&1
 onboard_rc=$?
 redact_file "$ONBOARD_LOG"
@@ -121,6 +135,14 @@ openshell sandbox exec --name "$SANDBOX_NAME" -- sh -lc 'df -PT / /tmp /dev/shm 
   >"$DF_LOG" 2>&1 || true
 redact_file "$DF_LOG"
 info "Filesystem layout captured in ${DF_LOG}"
+
+section "Apply EXDEV filesystem policy"
+if openshell policy set --policy "$EXDEV_POLICY" --wait "$SANDBOX_NAME" >>"$ONBOARD_LOG" 2>&1; then
+  pass "sandbox policy permits /dev/shm writes for EXDEV fixture"
+else
+  fail "failed to apply EXDEV filesystem policy; see ${ONBOARD_LOG}"
+  exit 1
+fi
 
 section "Bundled plugin runtime-deps cross-device replacement"
 agent_rc=0
