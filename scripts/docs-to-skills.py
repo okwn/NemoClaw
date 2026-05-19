@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Convert documentation files into Agent Skills (agentskills.io spec).
 
-Reads a directory of Markdown or Fern MDX documentation, parses YAML frontmatter
+Reads a directory of Markdown, Fern MDX, or Sphinx RST documentation, parses metadata
 and content structure, groups related pages into coherent skill units, and
 generates SKILL.md files following the Agent Skills specification:
 https://agentskills.io/specification
@@ -15,7 +15,7 @@ python3 scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user -
 ```
 
 What it does:
-  1. Scans a docs directory for Markdown or Fern MDX files with YAML frontmatter.
+  1. Scans a docs directory for Markdown, Fern MDX, or Sphinx RST files with metadata.
   2. Classifies each page by content type (how_to, concept, reference,
      get_started) using the frontmatter `content.type` field.
   3. Groups pages into skills using one of three strategies:
@@ -51,6 +51,7 @@ Usage:
     python3 scripts/docs-to-skills.py docs/ .agents/skills/ --strategy individual --prefix nemoclaw-user --doc-platform fern-mdx
     python3 scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user --name-map about=overview --doc-platform fern-mdx
     python3 scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user --exclude "release-notes.mdx" --doc-platform fern-mdx
+    python3 scripts/docs-to-skills.py gpu-operator/ .agents/skills/ --prefix gpu-operator --doc-platform sphinx-rst
 """
 
 from __future__ import annotations
@@ -152,10 +153,11 @@ def space_anchor_headings(text: str) -> str:
 # Frontmatter / doc parsing
 # ---------------------------------------------------------------------------
 
-DOC_PLATFORMS = ("myst-md", "fern-mdx")
+DOC_PLATFORMS = ("myst-md", "fern-mdx", "sphinx-rst")
 DOC_EXTENSIONS = {
     "myst-md": ".md",
     "fern-mdx": ".mdx",
+    "sphinx-rst": ".rst",
 }
 
 
@@ -199,6 +201,72 @@ def parse_yaml_frontmatter(text: str) -> tuple[dict, str]:
     body = text[end + 4 :].strip()
     fm = _parse_simple_yaml(fm_text)
     return fm, body
+
+
+def parse_sphinx_meta(text: str) -> tuple[dict, str]:
+    """Extract Sphinx ``.. meta::`` fields from an RST document."""
+    lines = text.splitlines()
+    body_lines: list[str] = []
+    fm: dict = {}
+    i = 0
+
+    while i < len(lines):
+        if lines[i].strip() != ".. meta::":
+            body_lines.append(lines[i])
+            i += 1
+            continue
+
+        i += 1
+        while i < len(lines):
+            line = lines[i]
+            if line and not line.startswith((" ", "\t")):
+                break
+            stripped = line.strip()
+            match = re.match(r"^:([A-Za-z0-9_.-]+):\s*(.*)$", stripped)
+            if match:
+                key = match.group(1).replace("-", "_").replace(".", "_")
+                fm[key] = match.group(2).strip()
+            i += 1
+
+    body = strip_leading_rst_frontmatter("\n".join(body_lines))
+    return fm, body.strip()
+
+
+def strip_leading_rst_frontmatter(text: str) -> str:
+    """Remove non-meta RST header directives/comments before page content.
+
+    GPU Operator RST pages can start with license headers, author/date
+    comments, heading-style notes, and labels. Only ``.. meta::`` is source
+    metadata for skill generation; the rest should not enter SKILL.md.
+    """
+    lines = text.splitlines()
+    i = 0
+
+    def _is_label(line: str) -> bool:
+        stripped = line.strip()
+        return re.match(r"^\.\.\s+_[^:]+:\s*", stripped) is not None
+
+    def _is_comment(line: str) -> bool:
+        stripped = line.strip()
+        return (stripped == ".." or stripped.startswith(".. ")) and "::" not in stripped
+
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped or stripped.startswith(".. headings") or _is_label(lines[i]):
+            i += 1
+            continue
+        if re.match(r"^\.\.\s+\|[^|]+\|\s+\S+::", stripped):
+            i = _strip_rst_directive_block(lines, i)
+            continue
+        if re.match(r"^\.\.\s+\S+::", stripped):
+            i = _strip_rst_directive_block(lines, i)
+            continue
+        if _is_comment(lines[i]):
+            i = _strip_rst_directive_block(lines, i)
+            continue
+        break
+
+    return "\n".join(lines[i:])
 
 
 def _parse_simple_yaml(text: str) -> dict:
@@ -390,10 +458,37 @@ def _populate_fern_mdx_fields(page: DocPage, fm: dict, body: str) -> None:
         page.skill_priority = _parse_skill_priority(fm.get("skill_priority"), page.path)
 
 
+def _populate_sphinx_rst_fields(page: DocPage, fm: dict, body: str) -> None:
+    """Populate DocPage fields from Sphinx RST ``.. meta::`` fields."""
+    page.title = _as_string(fm.get("title"))
+    if not page.title:
+        page.title = _title_from_body(body, page.path.stem)
+
+    agent_description = _as_string(
+        fm.get("description_agent") or fm.get("description-agent")
+    )
+    if agent_description:
+        page.description = agent_description
+        page.description_is_agent = True
+    else:
+        page.description = _as_string(fm.get("description"))
+
+    page.keywords = _as_list(fm.get("keywords", []))
+    page.tags = _as_list(fm.get("tags", []))
+    page.content_type = _as_string(fm.get("content_type"))
+    page.difficulty = _as_string(fm.get("difficulty"))
+    page.audience = _as_list(fm.get("audience", []))
+    page.skill_priority = _parse_skill_priority(fm.get("skill_priority"), page.path)
+
+
 def parse_doc(path: Path, doc_platform: str = "myst-md") -> DocPage:
     """Parse a documentation file into a DocPage."""
     raw = path.read_text(encoding="utf-8")
-    fm, body = parse_yaml_frontmatter(raw)
+    if doc_platform == "sphinx-rst":
+        fm, body = parse_sphinx_meta(raw)
+        body = rst_to_markdown(body)
+    else:
+        fm, body = parse_yaml_frontmatter(raw)
     body = strip_commented_out_blocks(body)
 
     page = DocPage(path=path, raw=raw, frontmatter=fm, body=body)
@@ -402,6 +497,8 @@ def parse_doc(path: Path, doc_platform: str = "myst-md") -> DocPage:
         _populate_myst_markdown_fields(page, fm, body)
     elif doc_platform == "fern-mdx":
         _populate_fern_mdx_fields(page, fm, body)
+    elif doc_platform == "sphinx-rst":
+        _populate_sphinx_rst_fields(page, fm, body)
     else:
         raise ValueError(f"unsupported doc platform: {doc_platform}")
 
@@ -682,6 +779,333 @@ def clean_fern_mdx(text: str) -> str:
     return text.strip()
 
 
+def _strip_rst_directive_block(lines: list[str], start: int) -> int:
+    """Return the line index after an indented RST directive block."""
+    i = start + 1
+    while i < len(lines):
+        if lines[i].strip() == "":
+            i += 1
+            continue
+        if lines[i].startswith((" ", "\t")):
+            i += 1
+            continue
+        break
+    return i
+
+
+def _rst_heading_level(
+    style: tuple[bool, str], style_levels: dict[tuple[bool, str], int]
+) -> int:
+    """Map the first RST heading style encountered to H1, next to H2, etc."""
+    if style not in style_levels:
+        style_levels[style] = min(len(style_levels) + 1, 6)
+    return style_levels[style]
+
+
+def _is_rst_adornment(line: str) -> bool:
+    stripped = line.strip()
+    return len(stripped) >= 3 and len(set(stripped)) == 1 and stripped[0] in "#*=-^\""
+
+
+def clean_rst_inline(text: str) -> str:
+    """Convert common RST inline markup to portable Markdown-ish text."""
+    text = re.sub(r"^(\s*)#\.\s+", r"\g<1>1. ", text)
+    text = re.sub(r"``([^`]+)``", r"`\1`", text)
+    text = re.sub(r"`([^`<]+?)\s*<([^`>]+)>`__", r"[\1](\2)", text)
+    text = re.sub(r"`([^`<]+?)\s*<([^`>]+)>`_", r"[\1](\2)", text)
+    text = re.sub(r":doc:`([^`<]+?)\s*<([^`>]+)>`", r"[\1](\2.rst)", text)
+    text = re.sub(r":[A-Za-z0-9_+.-]+:`([^`<]+?)\s*<([^`>]+)>`", r"\1", text)
+    text = re.sub(r":[A-Za-z0-9_+.-]+:`([^`]+)`", r"\1", text)
+    text = re.sub(r"`([^`]+)`_", r"\1", text)
+    text = re.sub(r"\|([^|]+)\|", r"\1", text)
+    return text
+
+
+def _line_indent(line: str) -> int:
+    """Return the leading-space indentation for an RST line."""
+    return len(line) - len(line.lstrip(" "))
+
+
+def _consume_rst_indented_block(
+    lines: list[str], start: int, parent_indent: int = 0
+) -> tuple[list[str], int]:
+    """Consume an RST directive body and remove its shared indentation."""
+    raw_block: list[str] = []
+    i = start
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() == "":
+            raw_block.append("")
+            i += 1
+            continue
+        if _line_indent(line) <= parent_indent:
+            break
+        raw_block.append(line)
+        i += 1
+    content_indents = [_line_indent(line) for line in raw_block if line.strip()]
+    content_indent = min(content_indents) if content_indents else parent_indent
+    block = [
+        line[content_indent:] if line.strip() else ""
+        for line in raw_block
+    ]
+    while block and not block[0].strip():
+        block.pop(0)
+    while block and not block[-1].strip():
+        block.pop()
+    return block, i
+
+
+def _split_rst_options(block: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Split directive option lines from directive content."""
+    options: dict[str, str] = {}
+    content: list[str] = []
+    in_options = True
+    for line in block:
+        stripped = line.strip()
+        match = re.match(r"^:([A-Za-z0-9_.+-]+):\s*(.*)$", stripped)
+        if in_options and match:
+            options[match.group(1)] = match.group(2).strip()
+            continue
+        if stripped:
+            in_options = False
+        if not in_options:
+            content.append(line)
+    while content and not content[0].strip():
+        content.pop(0)
+    while content and not content[-1].strip():
+        content.pop()
+    return options, content
+
+
+def _format_rst_list_table(block: list[str]) -> str:
+    """Convert an RST ``list-table`` block into a Markdown table."""
+    options, content = _split_rst_options(block)
+    header_rows = 1
+    if options.get("header-rows"):
+        try:
+            header_rows = int(options["header-rows"])
+        except ValueError:
+            header_rows = 1
+
+    rows: list[list[str]] = []
+    current_row: list[str] | None = None
+    current_cell = -1
+    for line in content:
+        stripped = clean_rst_inline(line.strip())
+        if stripped.startswith("| "):
+            stripped = stripped[2:].strip()
+        if not stripped:
+            continue
+        if stripped.startswith("* - "):
+            cell = stripped[4:].strip()
+            if cell.startswith("| "):
+                cell = cell[2:].strip()
+            current_row = [cell]
+            rows.append(current_row)
+            current_cell = 0
+        elif stripped.startswith("- ") and current_row is not None:
+            cell = stripped[2:].strip()
+            if cell.startswith("| "):
+                cell = cell[2:].strip()
+            current_row.append(cell)
+            current_cell = len(current_row) - 1
+        elif current_row is not None and current_cell >= 0:
+            current_row[current_cell] = (
+                f"{current_row[current_cell]} {stripped}".strip()
+            )
+
+    return _format_markdown_table(rows, header_rows=header_rows)
+
+
+def _clean_directive_title(text: str) -> str:
+    """Remove Sphinx role noise from directive titles."""
+    text = re.sub(r":[A-Za-z0-9_+.-]+:`([^`]+)`", "", text)
+    return clean_rst_inline(text).strip()
+
+
+def _convert_rst_directive(lines: list[str], i: int) -> tuple[list[str], int] | None:
+    """Convert common block RST directives to Markdown."""
+    stripped = lines[i].strip()
+    match = re.match(r"^\.\.\s+([A-Za-z0-9_-]+)::\s*(.*)$", stripped)
+    if not match:
+        return None
+
+    name = match.group(1)
+    arg = match.group(2).strip()
+    directive_indent = _line_indent(lines[i])
+    markdown_indent = " " * directive_indent
+
+    def _indent_block(text: str) -> list[str]:
+        return [
+            f"{markdown_indent}{line}" if line else ""
+            for line in text.split("\n")
+        ]
+
+    if name in {"toctree", "contents", "license-header", "meta"}:
+        return [], _strip_rst_directive_block(lines, i)
+
+    if name == "include":
+        return [f"> *Content included from {arg} — see the original doc for full text.*"], _strip_rst_directive_block(lines, i)
+
+    block, next_i = _consume_rst_indented_block(lines, i + 1, directive_indent)
+    options, content_block = _split_rst_options(block)
+    if name == "code-block":
+        lang = arg or options.get("language") or "text"
+        return [
+            f"{markdown_indent}```{lang}",
+            *(f"{markdown_indent}{line}" if line else "" for line in content_block),
+            f"{markdown_indent}```",
+            "",
+        ], next_i
+    if name == "literalinclude":
+        return [
+            f"{markdown_indent}> *Content included from {arg} "
+            "— see the original doc for full text.*",
+            "",
+        ], next_i
+    if name == "mermaid":
+        return [
+            f"{markdown_indent}```mermaid",
+            *(f"{markdown_indent}{line}" if line else "" for line in content_block),
+            f"{markdown_indent}```",
+            "",
+        ], next_i
+    if name == "image":
+        alt = ""
+        for line in block:
+            if line.strip().startswith(":alt:"):
+                alt = line.strip()[len(":alt:") :].strip()
+                break
+        return [f"![{alt}]({arg})"], next_i
+    if name == "rubric":
+        return _indent_block(f"### {_clean_directive_title(arg)}"), next_i
+    if name in {"admonition", "note", "tip", "warning", "caution"}:
+        title = arg or name.capitalize()
+        content = [
+            clean_rst_inline(line)
+            for line in content_block
+            if not re.match(r"^\s*:[A-Za-z0-9_-]+:", line)
+        ]
+        nested = rst_to_markdown("\n".join(content)) if content else ""
+        return _indent_block(_format_admonition(title, nested)), next_i
+    if name in {"list-table", "flat-table"}:
+        return _indent_block(_format_rst_list_table(block)), next_i
+    if name in {"tab-set", "grid"}:
+        nested = rst_to_markdown("\n".join(content_block))
+        return _indent_block(nested), next_i
+    if name in {"tab-item", "grid-item-card"}:
+        title = _clean_directive_title(arg)
+        nested = rst_to_markdown("\n".join(content_block))
+        parts = [f"### {title}"] if title else []
+        if nested:
+            parts.extend(["", nested])
+        return _indent_block("\n".join(parts)), next_i
+
+    return _indent_block(
+        "\n".join(clean_rst_inline(line) for line in content_block)
+    ), next_i
+
+
+def rst_to_markdown(text: str) -> str:
+    """Convert the Sphinx RST subset used by docs into Markdown for skills."""
+    lines = text.splitlines()
+    output: list[str] = []
+    style_levels: dict[tuple[bool, str], int] = {}
+    i = 0
+
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if stripped.startswith(".. headings"):
+            i += 1
+            continue
+        if re.match(r"^\.\.\s+\|[^|]+\|\s+\S+::", stripped):
+            i = _strip_rst_directive_block(lines, i)
+            continue
+        if (stripped == ".." or stripped.startswith(".. ")) and "::" not in stripped:
+            i = _strip_rst_directive_block(lines, i)
+            continue
+        if stripped.startswith(".. _") and stripped.endswith(":"):
+            anchor = stripped[3:-1].strip()
+            output.append(f'<a id="{anchor}"></a>')
+            i += 1
+            continue
+
+        directive = _convert_rst_directive(lines, i)
+        if directive is not None:
+            converted, i = directive
+            output.extend(converted)
+            continue
+
+        if (
+            i + 2 < len(lines)
+            and _is_rst_adornment(lines[i])
+            and lines[i + 1].strip()
+            and _is_rst_adornment(lines[i + 2])
+        ):
+            char = lines[i].strip()[0]
+            level = _rst_heading_level((True, char), style_levels)
+            output.append("#" * level + " " + clean_rst_inline(lines[i + 1].strip()))
+            i += 3
+            continue
+
+        if i + 1 < len(lines) and stripped and _is_rst_adornment(lines[i + 1]):
+            char = lines[i + 1].strip()[0]
+            level = _rst_heading_level((False, char), style_levels)
+            output.append("#" * level + " " + clean_rst_inline(stripped))
+            i += 2
+            continue
+
+        output.append(clean_rst_inline(line))
+        i += 1
+
+    result = "\n".join(output)
+    result = re.sub(r"\n{3,}", "\n\n", result)
+    return result.strip()
+
+
+def clean_sphinx_rst(text: str) -> str:
+    """Clean Sphinx RST content after it has been converted to Markdown."""
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def normalize_markdown_spacing(text: str) -> str:
+    """Remove whitespace-only blanks and space fenced blocks cleanly."""
+    output: list[str] = []
+    in_fence = False
+    just_closed_fence = False
+
+    for line in text.split("\n"):
+        line = line.rstrip()
+        stripped = line.strip()
+
+        if not in_fence and not stripped:
+            if output and output[-1] != "":
+                output.append("")
+            just_closed_fence = False
+            continue
+
+        is_fence = stripped.startswith("```")
+        if not in_fence and just_closed_fence and not is_fence:
+            if output and output[-1] != "":
+                output.append("")
+            just_closed_fence = False
+
+        if is_fence:
+            if not in_fence and output and output[-1] != "":
+                output.append("")
+            output.append(line)
+            in_fence = not in_fence
+            just_closed_fence = not in_fence
+            continue
+
+        output.append(line)
+
+    return "\n".join(output).strip()
+
+
 def resolve_includes(text: str, source_dir: Path) -> str:
     """Resolve MyST {include} directives by inlining referenced file content.
 
@@ -798,7 +1222,9 @@ def rewrite_doc_paths(
             ]
 
         suffix = Path(path_no_frag).suffix
-        if suffix not in {".md", ".mdx", ".html", ".png", ".jpg", ".jpeg", ".svg"}:
+        doc_suffixes = {".md", ".mdx", ".rst", ".html"}
+        media_suffixes = {".png", ".jpg", ".jpeg", ".svg"}
+        if suffix not in doc_suffixes | media_suffixes:
             return []
 
         resolved = (source_dir / path_no_frag).resolve()
@@ -1235,8 +1661,10 @@ def generate_skill_name(
             else:
                 cleaned.append(name_parts[i])
                 i += 1
-        name = "-".join(cleaned) if cleaned else name
-        name = f"{clean_prefix}-{name}"
+        if cleaned:
+            name = f"{clean_prefix}-{'-'.join(cleaned)}"
+        else:
+            name = clean_prefix
 
     return name
 
@@ -1466,6 +1894,8 @@ def generate_skill(
         """Apply directive cleanup and path rewriting for a source page."""
         if doc_platform == "fern-mdx":
             result = clean_fern_mdx(text)
+        elif doc_platform == "sphinx-rst":
+            result = clean_sphinx_rst(text)
         else:
             result = clean_myst_directives(text)
         if docs_dir and doc_to_skill is not None:
@@ -1501,16 +1931,17 @@ def generate_skill(
     lines.append(markdown_spdx_header().rstrip("\n"))
     lines.append("")
 
-    # Title — prefer the lead page's frontmatter `title.page` (or H1)
-    # verbatim so the SKILL.md heading matches the source doc instead of
-    # echoing the auto-generated, prefix-laden skill name.
     lead_page = procedures[0] if procedures else pages[0] if pages else None
-    if lead_page and lead_page.title:
-        skill_title = lead_page.title
-    else:
-        skill_title = _brand_case(name.replace("-", " ").title())
-    lines.append(f"# {skill_title}")
-    lines.append("")
+    if doc_platform == "fern-mdx" or not procedures:
+        # Fern MDX sources rely on frontmatter for the canonical page title.
+        # MyST Markdown and Sphinx RST procedure pages already carry their H1
+        # in the body, so emitting one here would duplicate or override it.
+        if doc_platform == "fern-mdx" and lead_page and lead_page.title:
+            skill_title = lead_page.title
+        else:
+            skill_title = _brand_case(name.replace("-", " ").title())
+        lines.append(f"# {skill_title}")
+        lines.append("")
 
     # Gotchas — surface :::{warning} admonitions from the source procedure
     # pages at the top so the agent sees non-obvious corrections before it
@@ -1553,6 +1984,12 @@ def generate_skill(
     # Procedural steps from how_to and get_started pages
     step_num = 0
     skip_sections = {"prerequisites", "before you begin", "troubleshooting"}
+    non_step_sections = {
+        "about",
+        "overview",
+        "introduction",
+        "background",
+    }
     related_sections = {"related topics", "next steps"}
     collected_related: list[str] = []  # raw content from related sections
     for idx, pp in enumerate(procedures):
@@ -1567,9 +2004,17 @@ def generate_skill(
             if heading.lower() in related_sections:
                 collected_related.append(_clean(content, pp))
                 continue
+            if any(heading.lower().startswith(prefix) for prefix in non_step_sections):
+                cleaned_content = _clean(content, pp)
+                lines.append(f"## {heading}")
+                lines.append("")
+                lines.append(cleaned_content)
+                lines.append("")
+                continue
             if not heading:
                 cleaned = _clean(content, pp)
-                cleaned = re.sub(r"^#\s+.+\n+", "", cleaned)
+                if doc_platform == "fern-mdx":
+                    cleaned = re.sub(r"^#\s+.+\n+", "", cleaned)
                 if cleaned.strip():
                     lines.append(cleaned)
                     lines.append("")
@@ -1637,18 +2082,16 @@ def generate_skill(
             lines.append(entry)
         lines.append("")
 
-    skill_md = normalize_heading_levels("\n".join(lines))
+    skill_md = normalize_markdown_spacing(normalize_heading_levels("\n".join(lines)))
 
     # --- Build reference files ---
     ref_files: dict[str, str] = {}
     for rp in deferred_procedures + reference_pages + context_pages:
         ref_name = rp.path.stem + ".md"
         body = _clean(rp.body, rp)
-        if doc_platform == "myst-md" and rp.title:
-            body = canonicalize_leading_h1(body, rp.title)
-        elif doc_platform == "fern-mdx" and rp.title and not body.startswith("# "):
+        if doc_platform == "fern-mdx" and rp.title and not body.startswith("# "):
             body = f"# {rp.title}\n\n{body}".rstrip()
-        body = normalize_heading_levels(body)
+        body = normalize_markdown_spacing(normalize_heading_levels(body))
         ref_files[ref_name] = body
 
     # --- Write output ---
@@ -1700,8 +2143,25 @@ def group_by_directory(pages: list[DocPage]) -> dict[str, list[DocPage]]:
 
 
 def group_individual(pages: list[DocPage]) -> dict[str, list[DocPage]]:
-    """Each page becomes its own skill."""
-    return {page.path.stem: [page] for page in pages}
+    """Each procedure-like page becomes a skill; context/reference pages share one.
+
+    Concept and reference pages are progressive-disclosure material by design.
+    Keeping them under one ``<prefix>-references`` skill avoids tiny context-only
+    skills while preserving the SKILL.md list of files an agent can load on demand.
+    """
+    groups: dict[str, list[DocPage]] = {}
+    reference_pages: list[DocPage] = []
+
+    for page in pages:
+        if CONTENT_TYPE_ROLE.get(page.content_type) in {"context", "reference"}:
+            reference_pages.append(page)
+        else:
+            groups[page.path.stem] = [page]
+
+    if reference_pages:
+        groups["references"] = sorted(reference_pages, key=lambda p: str(p.path))
+
+    return groups
 
 
 def group_by_content_type(pages: list[DocPage]) -> dict[str, list[DocPage]]:
@@ -1803,7 +2263,8 @@ def main():
         epilog=textwrap.dedent("""\
             Strategies:
               grouped     Group docs by parent directory
-              individual  Each doc page becomes its own skill
+              individual  Each procedure-like doc page becomes its own skill;
+                          concept and reference pages are grouped into one references skill
               smart       Group by directory, inline the lowest-priority procedure,
                           defer siblings
 
@@ -1812,6 +2273,7 @@ def main():
               %(prog)s docs/ .agents/skills/ --strategy individual --prefix nemoclaw-user --doc-platform fern-mdx
               %(prog)s docs/ .agents/skills/ --prefix nemoclaw-user --name-map about=overview --doc-platform fern-mdx
               %(prog)s docs/ .agents/skills/ --prefix nemoclaw-user --doc-platform fern-mdx --dry-run
+              %(prog)s gpu-operator/ .agents/skills/ --prefix gpu-operator --doc-platform sphinx-rst --dry-run
         """),
     )
     parser.add_argument(
