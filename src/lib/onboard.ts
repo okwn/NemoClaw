@@ -7292,7 +7292,7 @@ async function setupNim(
       } else if (selected.key === "install-vllm") {
         if (!vllmProfile) {
           console.error("  No vLLM install profile available for this host.");
-          if (isNonInteractive()) process.exit(1);
+          if (isNonInteractive() || requestedProvider === "install-vllm") process.exit(1);
           continue selectionLoop;
         }
         const result = await installVllm(vllmProfile, {

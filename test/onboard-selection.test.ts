@@ -469,6 +469,74 @@ const { setupNim } = require(${onboardPath});
     assert.doesNotMatch(result.stderr, /INSTALL_VLLM_CALLED/);
   });
 
+  it("fails fast when interactive NEMOCLAW_PROVIDER=install-vllm has no vLLM profile", () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-install-vllm-interactive-no-profile-"));
+    const scriptPath = path.join(tmpDir, "install-vllm-interactive-no-profile-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "onboard.js"));
+    const credentialsPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "credentials", "store.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "runner.js"));
+    const vllmPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "inference", "vllm.js"));
+
+    const script = String.raw`
+const credentials = require(${credentialsPath});
+const runner = require(${runnerPath});
+const vllm = require(${vllmPath});
+
+credentials.prompt = async () => {
+  throw new Error("Unexpected prompt for explicit install-vllm pin");
+};
+credentials.ensureApiKey = async () => {
+  throw new Error("Unexpected ensureApiKey call");
+};
+vllm.installVllm = async () => {
+  console.error("INSTALL_VLLM_CALLED");
+  return { ok: false };
+};
+runner.runCapture = (command) => {
+  const cmd = Array.isArray(command) ? command.join(" ") : command;
+  if (cmd.includes("command -v ollama")) return "";
+  if (cmd.includes("127.0.0.1:11434/api/tags")) return "";
+  if (cmd.includes("127.0.0.1:8000/v1/models")) return "";
+  if (cmd.includes("docker images")) return "";
+  return "";
+};
+
+const { setupNim } = require(${onboardPath});
+
+(async () => {
+  await setupNim(null, null);
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 5_000,
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        NEMOCLAW_NON_INTERACTIVE: "",
+        NEMOCLAW_PROVIDER: "install-vllm",
+        NEMOCLAW_EXPERIMENTAL: "1",
+      },
+    });
+
+    assert.equal(result.error, undefined, String(result.error));
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /No vLLM install profile available for this host\./);
+    assert.equal(
+      (result.stderr.match(/No vLLM install profile available for this host\./g) || []).length,
+      1,
+    );
+    assert.doesNotMatch(result.stderr, /INSTALL_VLLM_CALLED/);
+    assert.doesNotMatch(result.stderr, /Unexpected prompt/);
+  });
+
   it("logs a note when NEMOCLAW_PROVIDER=install-vllm is overridden by a running vLLM server (#3765)", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-install-vllm-running-"));
