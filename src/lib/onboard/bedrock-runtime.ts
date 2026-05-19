@@ -149,6 +149,9 @@ export async function setupBedrockRuntimeInference(options: {
     if (options.isNonInteractive()) process.exit(providerResult.status || 1);
     return { handled: true, result: { retry: "selection" } };
   }
+  console.log(
+    `  Bedrock Runtime adapter ready: region ${adapter.region}, sandbox route ${adapter.baseUrl}`,
+  );
 
   const applyResult = options.runOpenshell(
     [

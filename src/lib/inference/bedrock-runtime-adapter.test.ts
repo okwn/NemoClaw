@@ -244,6 +244,24 @@ describe("Bedrock Runtime OpenAI adapter", () => {
     expect(body.error.message).toContain("Unsupported OpenAI chat field");
   });
 
+  it("tolerates OpenAI stream_options metadata from compatible clients", async () => {
+    const response = await createOpenAiChatCompletion(
+      {
+        model: "anthropic.claude-3-5-sonnet-20240620-v1:0",
+        messages: [{ role: "user", content: "hello" }],
+        stream_options: { include_usage: true },
+      },
+      {
+        send: vi.fn(async () => ({
+          output: { message: { content: [{ text: "OK" }] } },
+          stopReason: "end_turn",
+        })),
+      },
+    );
+
+    expect(response.choices[0].message.content).toBe("OK");
+  });
+
   it("exposes loopback health without leaking or requiring the adapter bearer token", async () => {
     const server = createBedrockRuntimeAdapterServer({
       token: "local-token",

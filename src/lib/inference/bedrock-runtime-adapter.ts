@@ -420,7 +420,6 @@ const UNSUPPORTED_OPENAI_FIELDS = [
   "seed",
   "service_tier",
   "store",
-  "stream_options",
   "top_logprobs",
   "user",
   "web_search_options",
