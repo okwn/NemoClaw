@@ -21,11 +21,31 @@ export function warnIfHostProxyMissesLoopback(
   const noProxyEnv = env.NO_PROXY || env.no_proxy || "";
   if (/(^|,)\s*(localhost|127\.0\.0\.1)\s*(,|$)/.test(noProxyEnv)) return false;
   warn("  ⚠ HTTP_PROXY/http_proxy is set without NO_PROXY=localhost,127.0.0.1.");
-  warn(`    Detected proxy: ${proxyEnv}`);
+  warn(`    Detected proxy: ${redactProxyCredentials(proxyEnv)}`);
   warn("    NemoClaw injects NO_PROXY for its own subprocess spawns, but any tool you run");
   warn("    that respects HTTP_PROXY (curl, Node fetch, Python requests) will still tunnel");
   warn("    localhost traffic through your host proxy. To bypass loopback (see #2616):");
   warn("      export NO_PROXY=localhost,127.0.0.1");
   warn("      export no_proxy=localhost,127.0.0.1");
   return true;
+}
+
+/**
+ * Redact basic-auth credentials from a proxy URL before logging. HTTP_PROXY
+ * vars sometimes carry `http://user:password@proxy:3128`; logging that raw
+ * leaks secrets into terminal scrollback, screenshots, and support tickets.
+ */
+export function redactProxyCredentials(raw: string): string {
+  try {
+    const u = new URL(raw);
+    if (u.username || u.password) {
+      u.username = "****";
+      u.password = "";
+      return u.toString();
+    }
+    return raw;
+  } catch {
+    // Not a parseable URL — fall back to regex over the userinfo segment.
+    return raw.replace(/(\/\/)[^/@]+@/, "$1****@");
+  }
 }
