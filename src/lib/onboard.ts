@@ -3399,7 +3399,7 @@ async function preflight(
     process.exit(1);
   }
   console.log("  ✓ Docker is running");
-
+  require("./onboard/http-proxy-preflight").warnIfHostProxyMissesLoopback();
   const optedOutGpuPassthrough =
     preflightOpts.optedOutGpuPassthrough === true || preflightOpts.noGpu === true;
   assertCdiNvidiaGpuSpecPresent(host, optedOutGpuPassthrough);
