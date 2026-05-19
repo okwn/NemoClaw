@@ -44,18 +44,6 @@ section() {
 }
 info() { printf '\033[1;34m  [info]\033[0m %s\n' "$1"; }
 
-run_with_timeout() {
-  local seconds="$1"
-  shift
-  if command -v timeout >/dev/null 2>&1; then
-    timeout "$seconds" "$@"
-  elif command -v gtimeout >/dev/null 2>&1; then
-    gtimeout "$seconds" "$@"
-  else
-    "$@"
-  fi
-}
-
 parse_chat_content() {
   python3 -c "
 import json, sys
@@ -254,24 +242,28 @@ print(json.dumps({
 }
 
 check_openclaw_agent_turn() {
-  local ssh_config session_id raw rc reply
+  local ssh_config session_id raw rc reply stderr
   ssh_config="$(mktemp)"
   if ! openshell sandbox ssh-config "$SANDBOX_NAME" >"$ssh_config" 2>/dev/null; then
     rm -f "$ssh_config"
     fail "Could not get SSH config for OpenClaw agent turn"
+    openclaw_diag_capture_snapshot "inference-switch-ssh-config-failed" "$SANDBOX_NAME" || true
     return
   fi
 
   session_id="e2e-inference-switch-openclaw-$(date +%s)-$$"
   rc=0
-  raw=$(run_with_timeout 120 ssh -F "$ssh_config" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=10 \
-    -o LogLevel=ERROR \
-    "openshell-${SANDBOX_NAME}" \
-    "nemoclaw-start openclaw agent --agent main --json --thinking off --session-id '${session_id}' -m 'What is 6 multiplied by 7? Reply with only the integer, no extra words.'" \
-    2>/dev/null) || rc=$?
+  openclaw_diag_capture_snapshot "inference-switch-before-agent" "$SANDBOX_NAME" || true
+  openclaw_diag_run_agent_turn \
+    "$SANDBOX_NAME" \
+    "$ssh_config" \
+    120 \
+    "$session_id" \
+    "What is 6 multiplied by 7? Reply with only the integer, no extra words." \
+    "inference-switch-openclaw-agent" \
+    --thinking off || rc=$?
+  raw="${OPENCLAW_DIAG_LAST_STDOUT:-}"
+  stderr="${OPENCLAW_DIAG_LAST_STDERR:-}"
   rm -f "$ssh_config"
 
   reply=$(printf '%s' "$raw" | python3 -c '
@@ -292,7 +284,7 @@ print("\n".join(parts))
   if [ "$rc" -eq 0 ] && grep -qE '(^|[^0-9])42([^0-9]|$)' <<<"$reply"; then
     pass "OpenClaw agent answered through the switched inference route"
   else
-    fail "OpenClaw agent turn failed after switch (exit ${rc}); reply='${reply:0:200}', raw='${raw:0:200}'"
+    fail "OpenClaw agent turn failed after switch (exit ${rc}); reply='${reply:0:200}', raw='${raw:0:200}', stderr='${stderr:0:200}'"
   fi
 }
 
@@ -315,7 +307,10 @@ INSTALL_LOG="/tmp/nemoclaw-e2e-openclaw-inference-switch-install.log"
 . "${E2E_DIR}/lib/sandbox-teardown.sh"
 # shellcheck source=test/e2e/lib/install-path-refresh.sh
 . "${E2E_DIR}/lib/install-path-refresh.sh"
+# shellcheck source=test/e2e/lib/openclaw-diagnostics.sh
+. "${E2E_DIR}/lib/openclaw-diagnostics.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
+openclaw_diag_init "$SANDBOX_NAME" "openclaw-inference-switch-e2e"
 
 section "Phase 0: Pre-cleanup"
 if command -v nemoclaw >/dev/null 2>&1; then

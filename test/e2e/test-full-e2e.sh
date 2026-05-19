@@ -83,7 +83,10 @@ SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-e2e-nightly}"
 
 # shellcheck source=test/e2e/lib/sandbox-teardown.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/sandbox-teardown.sh"
+# shellcheck source=test/e2e/lib/openclaw-diagnostics.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/openclaw-diagnostics.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
+openclaw_diag_init "$SANDBOX_NAME" "cloud-e2e"
 
 # ══════════════════════════════════════════════════════════════════
 # Phase 0: Pre-cleanup
@@ -379,20 +382,25 @@ fi
 info "[LIVE] openclaw agent → openclaw HTTP client → inference.local..."
 ssh_config="$(mktemp)"
 agent_response=""
+agent_rc=0
 
 if openshell sandbox ssh-config "$SANDBOX_NAME" >"$ssh_config" 2>/dev/null; then
   agent_session_id="e2e-live-$(date +%s)-$$"
-  # 2>/dev/null discards stderr (progress + log lines) so stdout is JSON-only.
-  agent_response=$($TIMEOUT_CMD ssh -F "$ssh_config" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=10 \
-    -o LogLevel=ERROR \
-    "openshell-${SANDBOX_NAME}" \
-    "nemoclaw-start openclaw agent --agent main --json --session-id '${agent_session_id}' -m 'What is 6 multiplied by 7? Reply with only the integer, no extra words.'" \
-    2>/dev/null) || true
+  openclaw_diag_capture_snapshot "cloud-before-agent" "$SANDBOX_NAME" || true
+  openclaw_diag_run_agent_turn \
+    "$SANDBOX_NAME" \
+    "$ssh_config" \
+    90 \
+    "$agent_session_id" \
+    "What is 6 multiplied by 7? Reply with only the integer, no extra words." \
+    "cloud-openclaw-agent" || agent_rc=$?
+  agent_response="${OPENCLAW_DIAG_LAST_STDOUT:-}"
+else
+  agent_rc=255
+  openclaw_diag_capture_snapshot "cloud-ssh-config-failed" "$SANDBOX_NAME" || true
 fi
 rm -f "$ssh_config"
+agent_stderr="${OPENCLAW_DIAG_LAST_STDERR:-}"
 
 agent_reply=$(echo "$agent_response" | python3 -c "
 import json, sys
@@ -411,7 +419,7 @@ print('\n'.join(parts))
 if grep -qE "(^|[^0-9])42([^0-9]|$)" <<<"$agent_reply"; then
   pass "[LIVE] openclaw agent: model answered 6×7=42 through openclaw → inference.local"
 else
-  fail "[LIVE] openclaw agent: expected '42' in agent reply, got: ${agent_reply:0:200}"
+  fail "[LIVE] openclaw agent: expected '42' in agent reply, got: ${agent_reply:0:200}; exit=${agent_rc}; stderr='${agent_stderr:0:200}'"
 fi
 
 # ══════════════════════════════════════════════════════════════════

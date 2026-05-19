@@ -492,13 +492,14 @@ print(json.dumps({
 # on NemoClaw 0.0.24 (issue #2490). curl (used in C5) bypasses Node's
 # http.request entirely and cannot catch this class of regression.
 check_openclaw_agent_turn() {
-  local session_id raw ssh_cfg reply rc=0
+  local session_id raw ssh_cfg reply stderr rc=0
   session_id="e2e-compat-agent-$(date +%s)-$$"
   ssh_cfg="$(mktemp)"
 
   if ! openshell sandbox ssh-config "$SANDBOX_NAME" >"$ssh_cfg" 2>/dev/null; then
     rm -f "$ssh_cfg"
     fail "C8: openclaw agent turn — could not get SSH config"
+    openclaw_diag_capture_snapshot "messaging-compat-ssh-config-failed" "$SANDBOX_NAME" || true
     return
   fi
 
@@ -507,15 +508,17 @@ check_openclaw_agent_turn() {
   local hop_count_before
   hop_count_before=$(grep -c "proxy_hop_headers=" "$COMPAT_MOCK_LOG" 2>/dev/null) || hop_count_before=0
 
-  # 2>/dev/null drops openclaw progress/log lines so stdout is JSON-only.
-  raw=$(run_with_timeout 90 ssh -F "$ssh_cfg" \
-    -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=10 \
-    -o LogLevel=ERROR \
-    "openshell-${SANDBOX_NAME}" \
-    "nemoclaw-start openclaw agent --agent main --json --session-id '${session_id}' -m 'Reply with only: PONG'" \
-    2>/dev/null) || rc=$?
+  openclaw_diag_capture_snapshot "messaging-compat-before-agent" "$SANDBOX_NAME" || true
+  openclaw_diag_run_agent_turn \
+    "$SANDBOX_NAME" \
+    "$ssh_cfg" \
+    90 \
+    "$session_id" \
+    "Reply with only: PONG" \
+    "messaging-compat-openclaw-agent" || rc=$?
+  raw="${OPENCLAW_DIAG_LAST_STDOUT:-}"
+  stderr="${OPENCLAW_DIAG_LAST_STDERR:-}"
+  cp "$COMPAT_MOCK_LOG" "${OPENCLAW_DIAG_DIR}/compatible-endpoint-mock.log" 2>/dev/null || true
   rm -f "$ssh_cfg"
 
   # Fail closed on provider/transport errors so a coincidental PONG in a
@@ -542,7 +545,7 @@ print('\n'.join(parts))
   if [ "$rc" -eq 0 ] && printf '%s' "$reply" | grep -qi "PONG"; then
     pass "C8: openclaw agent completed turn via compatible endpoint (http-proxy-fix.js FORWARD-mode path exercised)"
   else
-    fail "C8: openclaw agent turn failed (exit ${rc}); reply='${reply:0:200}', raw='${raw:0:200}'"
+    fail "C8: openclaw agent turn failed (exit ${rc}); reply='${reply:0:200}', raw='${raw:0:200}', stderr='${stderr:0:200}'"
   fi
 
   # C9: Verify http-proxy-fix.js stripped proxy hop headers — they must not
@@ -597,6 +600,10 @@ TELEGRAM_IDS="${TELEGRAM_ALLOWED_IDS:-123456789}"
 COMPAT_MOCK_LOG="$(mktemp)"
 COMPAT_MOCK_PID=""
 ONBOARD_LOG="/tmp/nemoclaw-e2e-messaging-compatible-endpoint-install.log"
+
+# shellcheck source=test/e2e/lib/openclaw-diagnostics.sh
+. "${SCRIPT_DIR}/lib/openclaw-diagnostics.sh"
+openclaw_diag_init "$SANDBOX_NAME" "messaging-compatible-endpoint-e2e"
 
 trap cleanup EXIT
 

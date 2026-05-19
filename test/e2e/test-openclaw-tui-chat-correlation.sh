@@ -67,7 +67,10 @@ INSTALL_LOG="/tmp/nemoclaw-e2e-openclaw-tui-correlation-install.log"
 . "${E2E_DIR}/lib/sandbox-teardown.sh"
 # shellcheck source=test/e2e/lib/install-path-refresh.sh
 . "${E2E_DIR}/lib/install-path-refresh.sh"
+# shellcheck source=test/e2e/lib/openclaw-diagnostics.sh
+. "${E2E_DIR}/lib/openclaw-diagnostics.sh"
 register_sandbox_for_teardown "$SANDBOX_NAME"
+openclaw_diag_init "$SANDBOX_NAME" "openclaw-tui-chat-correlation-e2e"
 
 section "Phase 0: Pre-cleanup"
 if command -v nemoclaw >/dev/null 2>&1; then
@@ -185,8 +188,10 @@ else
 fi
 
 section "Phase 5: Live NemoClaw connect + OpenClaw TUI proof"
+openclaw_diag_capture_snapshot "tui-before" "$SANDBOX_NAME" || true
 python3 test/e2e/lib/openclaw_tui_issue3145_repro.py "$SANDBOX_NAME"
 correlation_rc=$?
+openclaw_diag_capture_snapshot "tui-after" "$SANDBOX_NAME" || true
 if [ "$correlation_rc" -eq 0 ]; then
   pass "OpenClaw TUI rendered sequential messages once and in order"
 else

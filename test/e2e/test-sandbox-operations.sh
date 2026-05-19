@@ -30,6 +30,10 @@ SANDBOX_A="test-sbx-a"
 SANDBOX_B="test-sbx-b"
 LOG_FILE="test-sandbox-operations-$(date +%Y%m%d-%H%M%S).log"
 
+# shellcheck source=test/e2e/lib/openclaw-diagnostics.sh
+source "${SCRIPT_DIR_TIMEOUT}/lib/openclaw-diagnostics.sh"
+openclaw_diag_init "$SANDBOX_A" "sandbox-operations-e2e"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -362,7 +366,7 @@ test_sbx_02_connect_chat() {
   require_sandbox "$SANDBOX_A" "TC-SBX-02" || return
 
   log "  Sending one-shot message to agent via SSH (openclaw agent --json)..."
-  local session_id raw ssh_cfg
+  local session_id raw ssh_cfg rc stderr
   session_id="e2e-sbx-02-$(date +%s)-$$"
   # Use a direct ssh invocation rather than sandbox_exec(): sandbox_exec_for
   # merges stderr into stdout via 2>&1 so it can log non-zero exits, which
@@ -373,14 +377,21 @@ test_sbx_02_connect_chat() {
   if ! openshell sandbox ssh-config "$SANDBOX_A" >"$ssh_cfg" 2>/dev/null; then
     rm -f "$ssh_cfg"
     fail "TC-SBX-02: Connect & Chat" "Failed to fetch SSH config for '$SANDBOX_A'"
+    openclaw_diag_capture_snapshot "sandbox-operations-ssh-config-failed" "$SANDBOX_A" || true
     return
   fi
-  raw=$(run_with_timeout 90 ssh -F "$ssh_cfg" \
-    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    -o ConnectTimeout=10 -o LogLevel=ERROR \
-    "openshell-${SANDBOX_A}" \
-    "nemoclaw-start openclaw agent --agent main --json --thinking off --session-id '${session_id}' -m 'What is 6 multiplied by 7? Reply with only the integer, no extra words.'" \
-    2>/dev/null) || true
+  rc=0
+  openclaw_diag_capture_snapshot "sandbox-operations-before-agent" "$SANDBOX_A" || true
+  openclaw_diag_run_agent_turn \
+    "$SANDBOX_A" \
+    "$ssh_cfg" \
+    90 \
+    "$session_id" \
+    "What is 6 multiplied by 7? Reply with only the integer, no extra words." \
+    "sandbox-operations-openclaw-agent" \
+    --thinking off || rc=$?
+  raw="${OPENCLAW_DIAG_LAST_STDOUT:-}"
+  stderr="${OPENCLAW_DIAG_LAST_STDERR:-}"
   rm -f "$ssh_cfg"
 
   local reply
@@ -401,7 +412,7 @@ print('\n'.join(parts))
   if [[ -n "$reply" ]] && echo "$reply" | grep -qE "(^|[^0-9])42([^0-9]|$)"; then
     pass "TC-SBX-02: Agent computed 6×7=42 through openclaw → inference.local"
   else
-    fail "TC-SBX-02: Connect & Chat" "Expected '42' in agent reply; reply='${reply:0:200}'; raw stdout='${raw:0:200}'"
+    fail "TC-SBX-02: Connect & Chat" "Expected '42' in agent reply; reply='${reply:0:200}'; exit=${rc}; raw stdout='${raw:0:200}'; stderr='${stderr:0:200}'"
   fi
 }
 

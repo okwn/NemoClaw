@@ -27,6 +27,8 @@ ROWS = 80
 COLS = 180
 RAW_LOG = "/tmp/nemoclaw-issue3145-tui-raw.log"
 SCREEN_LOG = "/tmp/nemoclaw-issue3145-tui-screen.log"
+ANALYSIS_LOG = "/tmp/nemoclaw-issue3145-tui-analysis.json"
+INTERESTING_LOG = "/tmp/nemoclaw-issue3145-tui-interesting.log"
 
 
 @dataclass(frozen=True)
@@ -298,6 +300,32 @@ def analyze_visible_screen(screen_text: str) -> dict[str, object]:
     }
 
 
+def extract_interesting_lines(raw_plain: str) -> list[str]:
+    patterns = (
+        "P3145",
+        "R3145",
+        "history failed",
+        "gateway request timeout",
+        "send failed",
+        "gateway closed",
+        "connected |",
+        "sending",
+        "streaming",
+        "openclaw tui",
+        "openclaw-tui",
+        "inference/",
+    )
+    interesting: list[str] = []
+    for line in raw_plain.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(pattern.lower() in lowered for pattern in patterns):
+            interesting.append(text[:1200])
+    return interesting[-700:]
+
+
 def run(sandbox_name: str) -> int:
     env = os.environ.copy()
     env.update(
@@ -360,6 +388,11 @@ def run(sandbox_name: str) -> int:
         )
         analysis = analyze_visible_screen(analysis_text)
         analysis["analysisSource"] = "screen" if analysis_text == screen_text else "raw-terminal-stream"
+        raw_token_positions: dict[str, list[int]] = {}
+        for spec in MESSAGES:
+            raw_token_positions[spec.prompt_token] = token_positions(raw_plain, spec.prompt_token)
+            raw_token_positions[spec.reply_token] = token_positions(raw_plain, spec.reply_token)
+        analysis["rawTokenPositions"] = raw_token_positions
         failures = analysis["failures"]
         if isinstance(failures, list):
             lowered = raw_plain.lower()
@@ -371,10 +404,18 @@ def run(sandbox_name: str) -> int:
             ):
                 if marker in lowered:
                     failures.append(f"TUI reported {marker.rstrip(':')}")
+        with open(ANALYSIS_LOG, "w", encoding="utf-8") as handle:
+            json.dump(analysis, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        with open(INTERESTING_LOG, "w", encoding="utf-8") as handle:
+            for line in extract_interesting_lines(raw_plain):
+                handle.write(line + "\n")
         print("ISSUE3145_TUI_RESULT " + json.dumps(analysis, sort_keys=True))
         if analysis["failures"]:
             print(f"Captured TUI screen: {SCREEN_LOG}", file=sys.stderr)
             print(f"Captured raw PTY log: {RAW_LOG}", file=sys.stderr)
+            print(f"Captured TUI analysis: {ANALYSIS_LOG}", file=sys.stderr)
+            print(f"Captured TUI interesting lines: {INTERESTING_LOG}", file=sys.stderr)
             for failure in analysis["failures"]:
                 print(f"FAIL: {failure}", file=sys.stderr)
             return 1

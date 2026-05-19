@@ -152,7 +152,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: install-log
-          path: /tmp/nemoclaw-e2e-install.log
+          path: |
+            /tmp/nemoclaw-e2e-install.log
+            /tmp/nemoclaw-openclaw-diagnostics-*
           if-no-files-found: ignore
 
   # ── Cloud Onboard E2E ──────────────────────────────────────────
@@ -373,7 +375,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: install-log-messaging-compatible-endpoint
-          path: /tmp/nemoclaw-e2e-messaging-compatible-endpoint-install.log
+          path: |
+            /tmp/nemoclaw-e2e-messaging-compatible-endpoint-install.log
+            /tmp/nemoclaw-openclaw-diagnostics-*
           if-no-files-found: ignore
 
   # ── Channels stop/start/remove lifecycle E2E (#3462, #3671) ─────────
@@ -1038,7 +1042,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sandbox-operations-test-log
-          path: test-sandbox-operations-*.log
+          path: |
+            test-sandbox-operations-*.log
+            /tmp/nemoclaw-openclaw-diagnostics-*
           if-no-files-found: ignore
 
   # ── Inference routing (credential isolation + error classification) ──
@@ -1108,7 +1114,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openclaw-inference-switch-install-log
-          path: /tmp/nemoclaw-e2e-openclaw-inference-switch-install.log
+          path: |
+            /tmp/nemoclaw-e2e-openclaw-inference-switch-install.log
+            /tmp/nemoclaw-openclaw-diagnostics-*
           if-no-files-found: ignore
 
   # ── OpenClaw TUI chat correlation E2E ───────────────────────
@@ -1148,6 +1156,9 @@ jobs:
             /tmp/nemoclaw-e2e-openclaw-tui-correlation-install.log
             /tmp/nemoclaw-issue3145-tui-screen.log
             /tmp/nemoclaw-issue3145-tui-raw.log
+            /tmp/nemoclaw-issue3145-tui-analysis.json
+            /tmp/nemoclaw-issue3145-tui-interesting.log
+            /tmp/nemoclaw-openclaw-diagnostics-*
           if-no-files-found: ignore
 
   # ── Network policy E2E ───────────────────────────────────────
@@ -1943,7 +1954,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: launchable-smoke-test-log
-          path: /tmp/nemoclaw-launchable-test.log
+          path: |
+            /tmp/nemoclaw-launchable-test.log
+            /tmp/nemoclaw-openclaw-diagnostics-*
           if-no-files-found: ignore
 
   # ── GPU E2E (Ollama local inference) ──────────────────────────
