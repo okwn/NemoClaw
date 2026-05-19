@@ -392,11 +392,11 @@ function request(method, params = {}, timeoutMs = 30_000) {
   });
 }
 
-async function loadHistoryWithStartupRetry(sessionKey, limit) {
+async function loadHistoryWithStartupRetry(sessionKey, limit, requestTimeoutMs = 30_000) {
   const startedAt = Date.now();
   for (;;) {
     try {
-      return await request("chat.history", { sessionKey, limit });
+      return await request("chat.history", { sessionKey, limit }, requestTimeoutMs);
     } catch (error) {
       if (Date.now() - startedAt < STARTUP_CHAT_HISTORY_RETRY_TIMEOUT_MS && isRetryableStartupUnavailable(error, "chat.history")) {
         await sleep(resolveStartupRetryDelayMs(error));
@@ -474,8 +474,6 @@ ws.on("open", async () => {
       auth: { token },
     });
 
-    await loadHistoryWithStartupRetry(sessionKey, 20);
-
     const sentRuns = [];
     const messages = [
       ["A2603", "A2603-REPLY", "A2603: First task. Wait 8 seconds, then reply exactly A2603-REPLY and nothing else."],
@@ -502,13 +500,13 @@ ws.on("open", async () => {
       }
     }
 
-    const history = await loadHistoryWithStartupRetry(sessionKey, 50);
+    const history = await loadHistoryWithStartupRetry(sessionKey, 50, 60_000);
     console.log(` +
     "`ISSUE2603_RESULT ${JSON.stringify({ sessionKey, sentRuns, events, historyMessages: history.messages ?? [] })}`" +
     String.raw`);
   } catch (error) {
     console.log(` +
-    "`ISSUE2603_RESULT ${JSON.stringify({ error: String(error), events })}`" +
+    "`ISSUE2603_RESULT ${JSON.stringify({ error: String(error), sessionKey, events })}`" +
     String.raw`);
   } finally {
     ws.close();
@@ -528,7 +526,7 @@ function runLiveIssue2603Repro(sandboxName: string): LiveIssue2603Trace {
 
   execOpenShell(["sandbox", "upload", sandboxName, localScript, remoteScript], { timeout: 30_000 });
 
-  const sessionKey = `issue2603-${Date.now()}`;
+  const sessionKey = `agent:main:issue3145-${Date.now()}`;
   const tokenExpression =
     "JSON.parse(require('fs').readFileSync('/sandbox/.openclaw/openclaw.json','utf8')).gateway?.auth?.token||''";
   const output = execInSandbox(
@@ -585,7 +583,11 @@ describe("OpenClaw TUI chat correlation regression (#2603/#3145)", () => {
     () => {
       const sandboxName = resolveLiveSandboxName();
       const repro = runLiveIssue2603Repro(sandboxName);
-      if (repro.error) throw new Error(`live repro failed before assertions: ${repro.error}`);
+      if (repro.error) {
+        throw new Error(
+          `live repro failed before assertions: ${repro.error}; events=${JSON.stringify(repro.events ?? []).slice(0, 2000)}`,
+        );
+      }
 
       const analysis = analyzeIssue2603Trace(repro);
       const failureSummary = buildFailureSummary(analysis);
