@@ -8036,18 +8036,38 @@ function arePolicyPresetsApplied(sandboxName: string, selectedPresets: string[] 
  *
  * @returns {Promise<string>}
  */
+/**
+ * Resolve and validate NEMOCLAW_POLICY_TIER from the environment. Returns
+ * the normalized tier name (defaulting to "balanced" when unset). Exits
+ * with status 1 if the env var is set to an unknown value, listing the
+ * accepted options. Pure aside from process.exit — safe to call early in
+ * onboarding without side effects.
+ *
+ * Called both at the start of onboard() — so an invalid tier fails fast
+ * before preflight/gateway/inference run — and from selectPolicyTier() so
+ * the same contract holds for callers that bypass the early gate (e.g.
+ * future entry points). See #3741 and docs/reference/commands.md:
+ * "If the value does not match a known tier, onboarding exits with an
+ * error listing the valid options."
+ */
+function resolvePolicyTierFromEnv(): string {
+  const allTiers = tiers.listTiers();
+  const name = (process.env.NEMOCLAW_POLICY_TIER || "balanced").trim().toLowerCase();
+  if (!tiers.getTier(name)) {
+    console.error(
+      `  Unknown policy tier: ${name}. Valid: ${allTiers.map((t) => t.name).join(", ")}`,
+    );
+    process.exit(1);
+  }
+  return name;
+}
+
 async function selectPolicyTier(): Promise<string> {
   const allTiers = tiers.listTiers();
   const defaultTier = allTiers.find((t) => t.name === "balanced") || allTiers[1];
 
   if (isNonInteractive()) {
-    const name = (process.env.NEMOCLAW_POLICY_TIER || "balanced").trim().toLowerCase();
-    if (!tiers.getTier(name)) {
-      console.error(
-        `  Unknown policy tier: ${name}. Valid: ${allTiers.map((t) => t.name).join(", ")}`,
-      );
-      process.exit(1);
-    }
+    const name = resolvePolicyTierFromEnv();
     note(`  [non-interactive] Policy tier: ${name}`);
     return name;
   }
@@ -9302,6 +9322,18 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
   // misleading 'Docker is not reachable' error instead of the real
   // problem: an unsupported provider value.
   getRequestedProviderHint();
+  // Same fail-fast contract for NEMOCLAW_POLICY_TIER. The validation in
+  // selectPolicyTier() runs too late — it only fires at the policy-tier
+  // wizard step, well after preflight + gateway + inference setup have
+  // already had side effects. docs/reference/commands.md promises the
+  // failure is upfront: "If the value does not match a known tier,
+  // onboarding exits with an error listing the valid options." Honor
+  // that contract here. Only validate when the env var is explicitly
+  // set so the absence-of-env-var default still flows through to the
+  // interactive prompt. See #3741.
+  if (typeof process.env.NEMOCLAW_POLICY_TIER === "string" && process.env.NEMOCLAW_POLICY_TIER.trim() !== "") {
+    resolvePolicyTierFromEnv();
+  }
   const lockResult = onboardSession.acquireOnboardLock(
     `nemoclaw onboard${resume ? " --resume" : ""}${fresh ? " --fresh" : ""}${isNonInteractive() ? " --non-interactive" : ""}${requestedFromDockerfile ? ` --from ${requestedFromDockerfile}` : ""}`,
   );

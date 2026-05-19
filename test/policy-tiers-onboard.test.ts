@@ -115,6 +115,33 @@ console.log = () => {};
     assert.equal(payload.tier, "balanced");
   });
 
+  it("rejects unknown NEMOCLAW_POLICY_TIER with a clear error and non-zero exit (#3741)", () => {
+    const script =
+      buildPreamble({ tierEnv: "invalid_tier" }) +
+      String.raw`
+console.log = () => {};
+(async () => {
+  await selectPolicyTier();
+  process.stdout.write("UNEXPECTED_SUCCESS\n");
+})().catch((err) => { process.stderr.write(err.message + "\n"); process.exit(99); });
+`;
+    const result = runScript(script);
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 from process.exit, got ${result.status}\nstderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+    assert.match(
+      result.stderr,
+      /Unknown policy tier: invalid_tier\. Valid: restricted, balanced, open/,
+      `stderr must list the accepted tiers verbatim; got: ${result.stderr}`,
+    );
+    assert.ok(
+      !result.stdout.includes("UNEXPECTED_SUCCESS"),
+      "selectPolicyTier should have exited before returning",
+    );
+  });
+
   it("restricted tier produces an empty preset list", () => {
     const tiersPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "policy", "tiers.js"));
     const script =
