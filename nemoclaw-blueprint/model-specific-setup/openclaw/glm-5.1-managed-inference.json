@@ -1,0 +1,18 @@
+{
+  "$schema": "../schema.json",
+  "id": "glm-5.1-managed-inference",
+  "agent": "openclaw",
+  "description": "Preserves OpenClaw request compatibility for z-ai/glm-5.1 through NemoClaw managed inference.local chat completions. GLM-5.1 requires max_tokens (not max_completion_tokens) and string content (not content-part arrays).",
+  "match": {
+    "modelIds": ["z-ai/glm-5.1"],
+    "providerKey": "inference",
+    "inferenceApi": "openai-completions",
+    "baseUrl": "https://inference.local/v1"
+  },
+  "effects": {
+    "openclawCompat": {
+      "requiresStringContent": true,
+      "maxTokensField": "max_tokens"
+    }
+  }
+}

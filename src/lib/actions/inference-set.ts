@@ -9,6 +9,7 @@ import {
   getSandboxInferenceConfig,
   type SandboxInferenceConfig,
 } from "../inference/config";
+import { loadOpenClawModelCompat } from "../inference/model-specific-setup";
 import type { ConfigObject, ConfigValue } from "../security/credential-filter";
 import { isConfigObject, isConfigValue } from "../security/credential-filter";
 import {
@@ -237,6 +238,27 @@ function buildProviderConfig(
   };
 }
 
+function applyModelCompatToConfig(
+  config: ConfigObject,
+  providerKey: string,
+  modelCompat: Record<string, unknown>,
+): void {
+  const models = config.models;
+  if (!isConfigObject(models)) return;
+  const providers = models.providers;
+  if (!isConfigObject(providers)) return;
+  const prov = providers[providerKey];
+  if (!isConfigObject(prov)) return;
+  const modelsList = prov.models;
+  if (!Array.isArray(modelsList) || modelsList.length === 0) return;
+  const firstModel = modelsList[0];
+  if (!isConfigObject(firstModel)) return;
+  const existingCompat = isConfigObject(firstModel.compat)
+    ? { ...firstModel.compat }
+    : {};
+  firstModel.compat = { ...existingCompat, ...asConfigObject(modelCompat as Record<string, unknown>) };
+}
+
 export function patchOpenClawInferenceConfig(
   config: ConfigObject,
   provider: string,
@@ -369,6 +391,21 @@ export async function runInferenceSet(
     agentName === "hermes"
       ? patchHermesInferenceConfig(config, provider, model)
       : patchOpenClawInferenceConfig(config, provider, model, getPreferredInferenceApi(config));
+
+  // Apply model-specific compat from the blueprint registry so runtime
+  // switches receive the same flags that generate-openclaw-config.py
+  // applies at build time (e.g. maxTokensField for z-ai/glm-5.1).
+  if (agentName === "openclaw") {
+    const modelCompat = loadOpenClawModelCompat({
+      model,
+      providerKey: patched.route.providerKey,
+      inferenceApi: patched.route.inferenceApi,
+      baseUrl: patched.route.inferenceBaseUrl,
+    });
+    if (modelCompat) {
+      applyModelCompatToConfig(config, patched.route.providerKey, modelCompat);
+    }
+  }
 
   deps.log(
     agentName === "hermes"
