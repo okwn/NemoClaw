@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 
 import { getChangedFiles, getDiff } from "../advisors/git.mts";
 import { advisorArtifactPaths, parseArgs, parsePositiveInt, readJson, writeJson, type AdvisorArtifactPaths } from "../advisors/io.mts";
-import { dropUndefinedValues, extractJson, isRecord, recordItems, stringOrUndefined } from "../advisors/json.mts";
+import { dropUndefinedValues, extractJson, recordItems, stringOrUndefined } from "../advisors/json.mts";
 import { DEFAULT_ADVISOR_MODEL, DEFAULT_ADVISOR_PROVIDER, READ_ONLY_TOOLS, type RunAdvisorResult, runReadOnlyAdvisor } from "../advisors/session.mts";
 
 const root = process.cwd();

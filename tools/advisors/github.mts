@@ -49,6 +49,9 @@ export async function githubGraphql(token: string, query: string, variables: Rec
 }
 
 export async function githubApi<T>(apiPath: string, token: string, options: GitHubRequestOptions = {}): Promise<T> {
+  // lgtm[js/file-access-to-http] Advisor workflows intentionally send normalized
+  // artifact summaries and strictly validated dispatch inputs to GitHub APIs.
+  // Callers construct apiPath from fixed workflow/comment endpoints, not PR text.
   const response = await fetch(`https://api.github.com/${apiPath}`, {
     method: options.method || "GET",
     headers: {

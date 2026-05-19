@@ -54,6 +54,8 @@ export function readJson<T>(relativeOrAbsolutePath: string, root = process.cwd()
 }
 
 export function writeJson(filePath: string, value: unknown): void {
+  // lgtm[js/network-data-to-file] Advisor workflows intentionally persist
+  // normalized GitHub/advisor metadata as JSON artifacts for maintainer review.
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
