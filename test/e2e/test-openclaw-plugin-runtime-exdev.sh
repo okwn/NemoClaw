@@ -98,18 +98,26 @@ rm -f "$HOME/.nemoclaw/onboard.lock" 2>/dev/null || true
 nemoclaw "$SANDBOX_NAME" destroy --yes >/dev/null 2>&1 || true
 
 
-OPENCLAW_POLICY_SRC="${REPO}/agents/openclaw/policy-permissive.yaml"
-python3 - "$OPENCLAW_POLICY_SRC" <<'PY'
+python3 - "${REPO}" <<'PY'
 import sys
 from pathlib import Path
-path = Path(sys.argv[1])
-text = path.read_text()
-if "    - /dev/shm\n" not in text:
+repo = Path(sys.argv[1])
+policy_paths = [
+    repo / "agents/openclaw/policy-permissive.yaml",
+    repo / "nemoclaw-blueprint/policies/openclaw-sandbox.yaml",
+    repo / "nemoclaw-blueprint/policies/openclaw-sandbox-permissive.yaml",
+]
+for path in policy_paths:
+    text = path.read_text()
     needle = "  read_write:\n    - /tmp\n"
     if needle not in text:
-        raise SystemExit("could not find read_write /tmp anchor in OpenClaw policy")
-    text = text.replace(needle, "  read_write:\n    - /tmp\n    - /dev/shm\n", 1)
-    path.write_text(text)
+        raise SystemExit(f"could not find read_write /tmp anchor in {path}")
+    additions = ""
+    for entry in ["/dev", "/dev/shm"]:
+        if f"    - {entry}\n" not in text:
+            additions += f"    - {entry}\n"
+    if additions:
+        path.write_text(text.replace(needle, needle + additions, 1))
 PY
 env \
   NEMOCLAW_PROVIDER_KEY="$NVIDIA_API_KEY" \
