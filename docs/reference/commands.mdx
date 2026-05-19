@@ -1,8 +1,8 @@
 ---
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-title: "CLI Commands Reference"
-sidebar-title: "CLI Commands Reference"
+title: "NemoClaw CLI Commands Reference"
+sidebar-title: "Commands"
 description: "Full CLI reference for slash commands and standalone NemoClaw commands."
 description-agent: "Includes the full CLI reference for slash commands and standalone NemoClaw commands. Use when looking up a specific `nemoclaw` or `/nemoclaw` subcommand, flag, argument, or exit code."
 keywords: ["nemoclaw cli commands", "nemoclaw command reference"]
@@ -319,6 +319,26 @@ $ nemoclaw my-assistant connect [--probe-only]
 
 The `--probe-only` flag verifies the sandbox is reachable over SSH and exits without opening a shell.
 Use it for health checks and scripted readiness probes.
+
+### `nemoclaw <name> exec`
+
+Run a single command non-interactively in a running sandbox via the OpenShell exec endpoint.
+The command runs as the sandbox user with `HOME=/sandbox`, so in-sandbox tooling resolves NemoClaw-provisioned config under `/sandbox/.openclaw` the same way it does for `connect` and `openshell sandbox connect`.
+This is the supported substitute for `docker exec` on the sandbox container; raw `docker exec` runs as root and lands on `HOME=/root`, where the agent config is not present and `openclaw agent` falls back to its built-in defaults.
+
+```console
+$ nemoclaw my-assistant exec -- openclaw agent -m "What is 2+2?"
+$ nemoclaw my-assistant exec --workdir /sandbox/workspace -- ls -la
+```
+
+Everything after `--` is forwarded verbatim to the sandbox command, including flags the inner command needs.
+The exit code is the remote command's exit code.
+
+| Flag | Description |
+|------|-------------|
+| `--workdir <dir>` | Working directory inside the sandbox |
+| `--tty` / `--no-tty` | Allocate a pseudo-terminal; defaults to auto-detection (on when stdin and stdout are terminals) |
+| `--timeout <seconds>` | Timeout in seconds (`0` means no timeout) |
 
 ### `nemoclaw <name> recover`
 
@@ -784,7 +804,7 @@ Versions (`v1`, `v2`, ...) are computed on read from timestamp-ascending order, 
 $ nemoclaw my-assistant snapshot list
 ```
 
-### `nemoclaw <name> snapshot restore [selector] [--to <dst>]`
+### `nemoclaw <name> snapshot restore [selector] [--to <dst>] [--force] [--yes|-y]`
 
 Restore sandbox state from a snapshot.
 The sandbox must be running before you restore.
@@ -799,6 +819,11 @@ The selector accepts any of:
 
 Pass `--to <dst>` to restore the snapshot into a different sandbox instead of the source.
 When `dst` does not exist, it is auto-created by reusing the source sandbox's container image — no re-onboarding needed.
+When `dst` already exists, `snapshot restore --to <dst>` refuses by default to avoid silently mutating the destination's filesystem.
+To overwrite an existing destination, pass `--force`: the command deletes `dst`, then recreates it from the source's image and restores the snapshot into the fresh copy.
+The `--force` path prompts interactively to confirm the destination name before deleting.
+Pass `--yes` (or set `NEMOCLAW_NON_INTERACTIVE=1`) to skip the prompt.
+The snapshot selector and source pod image are both validated before any deletion, so a bad selector or unresolvable image cannot destroy `dst` and only fail afterwards.
 
 ```console
 # restore latest snapshot in-place
@@ -813,8 +838,11 @@ $ nemoclaw my-assistant snapshot restore before-upgrade
 # restore by exact timestamp
 $ nemoclaw my-assistant snapshot restore 2026-04-21T07-35-55-987Z
 
-# clone v3 into another sandbox
+# clone v3 into a new sandbox
 $ nemoclaw my-assistant snapshot restore v3 --to my-assistant-clone
+
+# overwrite an existing destination with v3, non-interactively
+$ nemoclaw my-assistant snapshot restore v3 --to my-assistant-clone --force --yes
 ```
 
 ### `nemoclaw <name> share mount`

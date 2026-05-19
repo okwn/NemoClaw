@@ -817,7 +817,7 @@ Versions (`v1`, `v2`, ...) are computed on read from timestamp-ascending order, 
 $ nemoclaw my-assistant snapshot list
 ```
 
-### `nemoclaw <name> snapshot restore [selector] [--to <dst>]`
+### `nemoclaw <name> snapshot restore [selector] [--to <dst>] [--force] [--yes|-y]`
 
 Restore sandbox state from a snapshot.
 The sandbox must be running before you restore.
@@ -832,6 +832,11 @@ The selector accepts any of:
 
 Pass `--to <dst>` to restore the snapshot into a different sandbox instead of the source.
 When `dst` does not exist, it is auto-created by reusing the source sandbox's container image — no re-onboarding needed.
+When `dst` already exists, `snapshot restore --to <dst>` refuses by default to avoid silently mutating the destination's filesystem.
+To overwrite an existing destination, pass `--force`: the command deletes `dst`, then recreates it from the source's image and restores the snapshot into the fresh copy.
+The `--force` path prompts interactively to confirm the destination name before deleting.
+Pass `--yes` (or set `NEMOCLAW_NON_INTERACTIVE=1`) to skip the prompt.
+The snapshot selector and source pod image are both validated before any deletion, so a bad selector or unresolvable image cannot destroy `dst` and only fail afterwards.
 
 ```console
 # restore latest snapshot in-place
@@ -846,8 +851,11 @@ $ nemoclaw my-assistant snapshot restore before-upgrade
 # restore by exact timestamp
 $ nemoclaw my-assistant snapshot restore 2026-04-21T07-35-55-987Z
 
-# clone v3 into another sandbox
+# clone v3 into a new sandbox
 $ nemoclaw my-assistant snapshot restore v3 --to my-assistant-clone
+
+# overwrite an existing destination with v3, non-interactively
+$ nemoclaw my-assistant snapshot restore v3 --to my-assistant-clone --force --yes
 ```
 
 ### `nemoclaw <name> share mount`

@@ -206,11 +206,30 @@ async function autoCreateSandboxFromSource(
 }
 
 // Delete an existing destination sandbox so `snapshot restore --to <dst> --force`
-// can recreate it from the source's image. Mirrors the delete sequence in
-// rebuild.ts (`openshell sandbox delete` + getSandboxDeleteOutcome + clear the
-// NemoClaw registry entry). Exits non-zero on failure so the caller does not
-// proceed into a partially-deleted target.
+// can recreate it from the source's image. Mirrors the rebuild.ts delete
+// sequence: stop the destination's NIM container (if any), run
+// `openshell sandbox delete`, then drop the NemoClaw registry entry. Exits
+// non-zero on failure so the caller does not proceed into a partially-deleted
+// target.
+//
+// Host-shared cleanups that destroy.ts performs \u2014 Ollama auth proxy
+// (`killStaleProxy`), host services (`cleanupSandboxServices`), gateway
+// teardown \u2014 are deliberately skipped here because they can also affect the
+// source sandbox we are about to clone from.
 function deleteSandboxForRestore(name: string): void {
+  const nim = require("../../inference/nim") as {
+    stopNimContainer: (sandboxName: string, opts?: { silent?: boolean }) => void;
+    stopNimContainerByName: (name: string) => void;
+  };
+  const sbMeta = registry.getSandbox(name);
+  if (sbMeta?.nimContainer) {
+    nim.stopNimContainerByName(sbMeta.nimContainer);
+  } else {
+    // Best-effort cleanup of convention-named NIM containers that may not be
+    // recorded in the registry (older sandboxes). Suppress output so the user
+    // does not see "No such container" noise when no NIM exists.
+    nim.stopNimContainer(name, { silent: true });
+  }
   console.log(`  Deleting existing destination '${name}' before restore...`);
   const deleteResult = runOpenshell(["sandbox", "delete", name], {
     ignoreError: true,
@@ -329,69 +348,14 @@ export async function runSandboxSnapshot(sandboxName: string, subArgs: string[])
       const liveNames = parseLiveSandboxNames(isLive.output || "");
       const isCrossSandboxRestore = targetSandbox !== sandboxName;
       const targetExists = liveNames.has(targetSandbox);
-      if (!isCrossSandboxRestore) {
-        // Self-restore: target is `sandboxName`. Cannot auto-create; the
-        // source pod is the target, so it must already be live.
-        if (!targetExists) {
-          console.error(`  Sandbox '${targetSandbox}' is not running. Cannot restore snapshot.`);
-          process.exit(1);
-        }
-      } else if (targetExists) {
-        // #3756: cross-sandbox restore into a destination that already exists
-        // used to overlay onto the live filesystem silently. Refuse by
-        // default; with --force, delete the destination and let the existing
-        // auto-create path recreate it cleanly. Confirm before deleting
-        // unless --yes (or NEMOCLAW_NON_INTERACTIVE=1) is set.
-        if (!parsed.force) {
-          console.error(`  Destination sandbox '${targetSandbox}' already exists.`);
-          console.error(
-            "  Restoring into an existing sandbox is unsupported because it would silently mutate its filesystem.",
-          );
-          console.error(
-            `  Re-run with --force to delete '${targetSandbox}' and recreate it from the snapshot, or pick a different name.`,
-          );
-          process.exit(1);
-        }
-        const nonInteractive = process.env.NEMOCLAW_NON_INTERACTIVE === "1";
-        if (!parsed.yes && !nonInteractive) {
-          const answer = (
-            await askPrompt(
-              `  This will DELETE sandbox '${targetSandbox}' and restore the snapshot into a fresh copy.\n` +
-                `  Type '${targetSandbox}' to confirm: `,
-            )
-          ).trim();
-          if (answer !== targetSandbox) {
-            console.error("  Confirmation did not match — aborting.");
-            process.exit(1);
-          }
-        }
-        if (!liveNames.has(sandboxName)) {
-          console.error(
-            `  Cannot recreate '${targetSandbox}' from snapshot: source '${sandboxName}' not found.`,
-          );
-          process.exit(1);
-        }
-        deleteSandboxForRestore(targetSandbox);
-        const srcEntry = registry.getSandbox(sandboxName) || { name: sandboxName };
-        await autoCreateSandboxFromSource(sandboxName, targetSandbox, srcEntry);
-      } else {
-        // Cross-sandbox restore into a destination that does not exist yet:
-        // auto-create by cloning the source's running pod image. The source
-        // must exist so we can probe its image; the registry entry is used
-        // to seed dst's agent/model/provider fields.
-        if (!liveNames.has(sandboxName)) {
-          console.error(
-            `  Cannot auto-create '${targetSandbox}': source '${sandboxName}' not found.`,
-          );
-          console.error(`  Create '${targetSandbox}' manually with '${CLI_NAME} onboard'.`);
-          process.exit(1);
-        }
-        const srcEntry = registry.getSandbox(sandboxName) || { name: sandboxName };
-        await autoCreateSandboxFromSource(sandboxName, targetSandbox, srcEntry);
-      }
+
+      // #3756 P1 preflight: resolve the snapshot selector AND the source pod
+      // image before any destructive action. A bad selector, missing snapshot,
+      // or unresolvable source image must not be allowed to delete the
+      // destination first and only fail afterwards.
       const selector = parsed.selector;
-      let backupPath;
-      let resolvedSnapshot = null;
+      let backupPath: string;
+      let resolvedSnapshot: ReturnType<typeof sandboxState.getLatestBackup>;
       if (selector) {
         const { match } = sandboxState.findBackup(sandboxName, selector);
         if (!match) {
@@ -416,6 +380,74 @@ export async function runSandboxSnapshot(sandboxName: string, subArgs: string[])
         const v = formatSnapshotVersion(latest);
         const nameSuffix = latest.name ? ` name=${latest.name}` : "";
         console.log(`  Using latest snapshot ${v}${nameSuffix} (${latest.timestamp})`);
+      }
+
+      if (!isCrossSandboxRestore) {
+        // Self-restore: target is `sandboxName`. Cannot auto-create; the
+        // source pod is the target, so it must already be live.
+        if (!targetExists) {
+          console.error(`  Sandbox '${targetSandbox}' is not running. Cannot restore snapshot.`);
+          process.exit(1);
+        }
+      } else {
+        // Cross-sandbox restore — whether dst exists (with --force) or not,
+        // we must be able to clone the source's running pod image. Resolve it
+        // upfront so a missing source / unresolvable image cannot delete the
+        // destination first (#3756 P1).
+        if (!liveNames.has(sandboxName)) {
+          if (targetExists) {
+            console.error(
+              `  Cannot recreate '${targetSandbox}' from snapshot: source '${sandboxName}' not found.`,
+            );
+          } else {
+            console.error(
+              `  Cannot auto-create '${targetSandbox}': source '${sandboxName}' not found.`,
+            );
+            console.error(`  Create '${targetSandbox}' manually with '${CLI_NAME} onboard'.`);
+          }
+          process.exit(1);
+        }
+        const srcEntry = registry.getSandbox(sandboxName) || { name: sandboxName };
+        const fromImage = resolveSrcPodImage(sandboxName, srcEntry);
+        if (!fromImage) {
+          console.error(
+            `  Cannot resolve image for source sandbox '${sandboxName}' — aborting before ` +
+              (targetExists ? `deleting '${targetSandbox}'.` : `creating '${targetSandbox}'.`),
+          );
+          process.exit(1);
+        }
+        if (targetExists) {
+          // #3756: cross-sandbox restore into a destination that already
+          // exists used to overlay onto the live filesystem silently. Refuse
+          // by default; with --force, delete the destination and let the
+          // existing auto-create path recreate it cleanly. Confirm before
+          // deleting unless --yes (or NEMOCLAW_NON_INTERACTIVE=1) is set.
+          if (!parsed.force) {
+            console.error(`  Destination sandbox '${targetSandbox}' already exists.`);
+            console.error(
+              "  Restoring into an existing sandbox is unsupported because it would silently mutate its filesystem.",
+            );
+            console.error(
+              `  Re-run with --force to delete '${targetSandbox}' and recreate it from the snapshot, or pick a different name.`,
+            );
+            process.exit(1);
+          }
+          const nonInteractive = process.env.NEMOCLAW_NON_INTERACTIVE === "1";
+          if (!parsed.yes && !nonInteractive) {
+            const answer = (
+              await askPrompt(
+                `  This will DELETE sandbox '${targetSandbox}' and restore the snapshot into a fresh copy.\n` +
+                  `  Type '${targetSandbox}' to confirm: `,
+              )
+            ).trim();
+            if (answer !== targetSandbox) {
+              console.error("  Confirmation did not match — aborting.");
+              process.exit(1);
+            }
+          }
+          deleteSandboxForRestore(targetSandbox);
+        }
+        await autoCreateSandboxFromSource(sandboxName, targetSandbox, srcEntry);
       }
       if (targetSandbox !== sandboxName) {
         console.log(`  Restoring snapshot from '${sandboxName}' into '${targetSandbox}'...`);

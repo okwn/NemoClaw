@@ -6,6 +6,11 @@
 // behaviour refuses by default and requires --force (with interactive confirm
 // or --yes / NEMOCLAW_NON_INTERACTIVE=1) to delete-and-recreate the
 // destination from the snapshot.
+//
+// The --force path preflights both the snapshot selector and the source pod
+// image *before* deleting anything (#3756 P1 Codex). A bad selector, a
+// missing snapshot, or an unresolvable source image must not be allowed to
+// delete `dst` and only fail afterwards.
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -45,21 +50,32 @@ function runCli(args: string, env: Record<string, string | undefined> = {}): Cli
   }
 }
 
+interface MakeEnvOptions {
+  /** When false, omit the snapshot manifest so getLatestBackup returns null. */
+  withSnapshot?: boolean;
+  /** When false, fake docker exec returns an empty image string. */
+  withSourceImage?: boolean;
+}
+
 /**
  * Build a temp HOME with:
  *  - registry containing `src` and `dst`
+ *  - snapshot manifest for `src` at ~/.nemoclaw/rebuild-backups/src/<ts>/rebuild-manifest.json (unless withSnapshot=false)
  *  - fake openshell that:
- *    - `sandbox list` reports BOTH `src` and `dst` as Ready
+ *    - `sandbox list` reports both `src` and `dst` as Ready
  *    - `status` reports the gateway as Connected
- *    - `sandbox delete` and `sandbox create` log every invocation to $OS_LOG
- *      so the test can assert what the action attempted
+ *    - `sandbox delete dst` exits 0 (and logs the call)
+ *    - `sandbox create` exits non-zero (intentional; the integration tests
+ *      only need to verify control flow reached/passed the delete step)
  *  - fake docker that:
  *    - `inspect ... State.Running` returns "true" (gateway up)
+ *    - `exec ... kubectl get pod src ...` returns an image string (or empty
+ *      when withSourceImage=false), exercising resolveSrcPodImage's preflight
  */
-function makeExistingDestEnv(prefix: string): {
-  env: Record<string, string>;
-  osLog: string;
-} {
+function makeExistingDestEnv(
+  prefix: string,
+  opts: MakeEnvOptions = {},
+): { env: Record<string, string>; osLog: string } {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   const localBin = path.join(home, "bin");
   fs.mkdirSync(localBin, { recursive: true });
@@ -90,8 +106,29 @@ function makeExistingDestEnv(prefix: string): {
     { mode: 0o600 },
   );
 
-  const osLog = path.join(home, "openshell.log");
+  if (opts.withSnapshot !== false) {
+    const timestamp = "2026-05-19T12-34-56-789Z";
+    const snapshotDir = path.join(registryDir, "rebuild-backups", "src", timestamp);
+    fs.mkdirSync(snapshotDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(snapshotDir, "rebuild-manifest.json"),
+      JSON.stringify({
+        version: 2,
+        sandboxName: "src",
+        timestamp,
+        agentType: "openclaw",
+        agentVersion: "2026.4.24",
+        expectedVersion: null,
+        stateDirs: [],
+        dir: snapshotDir,
+        backupPath: snapshotDir,
+        blueprintDigest: null,
+      }),
+      { mode: 0o600 },
+    );
+  }
 
+  const osLog = path.join(home, "openshell.log");
   fs.writeFileSync(
     path.join(localBin, "openshell"),
     [
@@ -119,6 +156,8 @@ function makeExistingDestEnv(prefix: string): {
     { mode: 0o755 },
   );
 
+  const sourceImageOutput =
+    opts.withSourceImage === false ? "" : "ghcr.io/nvidia/nemoclaw/sandbox-src:test";
   fs.writeFileSync(
     path.join(localBin, "docker"),
     [
@@ -127,18 +166,20 @@ function makeExistingDestEnv(prefix: string): {
       '  echo "true"',
       "  exit 0",
       "fi",
+      'if [ "$1" = "exec" ]; then',
+      // The action calls `docker exec <gateway> kubectl get pod <src> ...`.
+      // Return the configured image (or an empty string to simulate
+      // "image cannot be resolved", which #3756 P1 says must abort before
+      // we touch the destination).
+      `  printf '%s' ${JSON.stringify(sourceImageOutput)}`,
+      "  exit 0",
+      "fi",
       "exit 0",
     ].join("\n"),
     { mode: 0o755 },
   );
 
-  return {
-    env: {
-      HOME: home,
-      PATH: `${localBin}:${process.env.PATH ?? ""}`,
-    },
-    osLog,
-  };
+  return { env: { HOME: home, PATH: `${localBin}:${process.env.PATH ?? ""}` }, osLog };
 }
 
 describe("snapshot restore --to existing destination (#3756)", () => {
@@ -156,8 +197,9 @@ describe("snapshot restore --to existing destination (#3756)", () => {
   it("deletes the destination when --force --yes is set, then proceeds (#3756)", () => {
     const { env, osLog } = makeExistingDestEnv("nemoclaw-snap-restore-force-");
     const r = runCli("src snapshot restore --to dst --force --yes", env);
-    // Auto-create is intentionally mocked to fail end-to-end here; the test
-    // only proves the new --force branch ran through the delete step.
+    // Auto-create is intentionally mocked to fail end-to-end (the fake
+    // openshell exits non-zero on `sandbox create`); the test only proves the
+    // new --force branch ran through the delete step.
     expect(r.out).toMatch(/Deleting existing destination 'dst'/);
     const log = fs.existsSync(osLog) ? fs.readFileSync(osLog, "utf-8") : "";
     expect(log).toMatch(/sandbox delete dst/);
@@ -170,5 +212,41 @@ describe("snapshot restore --to existing destination (#3756)", () => {
     expect(r.out).toMatch(/Deleting existing destination 'dst'/);
     const log = fs.existsSync(base.osLog) ? fs.readFileSync(base.osLog, "utf-8") : "";
     expect(log).toMatch(/sandbox delete dst/);
+  });
+
+  // #3756 P1: preflight failures must not delete the destination.
+  it("does NOT delete the destination when no snapshot is found (--force --yes)", () => {
+    const { env, osLog } = makeExistingDestEnv("nemoclaw-snap-restore-no-snap-", {
+      withSnapshot: false,
+    });
+    const r = runCli("src snapshot restore --to dst --force --yes", env);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/No snapshots found for 'src'/);
+    expect(r.out).not.toMatch(/Deleting existing destination 'dst'/);
+    const log = fs.existsSync(osLog) ? fs.readFileSync(osLog, "utf-8") : "";
+    expect(log).not.toMatch(/sandbox delete dst/);
+  });
+
+  it("does NOT delete the destination when the selector resolves to nothing (--force --yes)", () => {
+    const { env, osLog } = makeExistingDestEnv("nemoclaw-snap-restore-bad-selector-");
+    const r = runCli("src snapshot restore not-a-real-snap --to dst --force --yes", env);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/No snapshot matching 'not-a-real-snap' found/);
+    expect(r.out).not.toMatch(/Deleting existing destination 'dst'/);
+    const log = fs.existsSync(osLog) ? fs.readFileSync(osLog, "utf-8") : "";
+    expect(log).not.toMatch(/sandbox delete dst/);
+  });
+
+  it("does NOT delete the destination when the source pod image cannot be resolved (--force --yes)", () => {
+    const { env, osLog } = makeExistingDestEnv("nemoclaw-snap-restore-no-image-", {
+      withSourceImage: false,
+    });
+    const r = runCli("src snapshot restore --to dst --force --yes", env);
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/Cannot resolve image for source sandbox 'src'/);
+    expect(r.out).toMatch(/aborting before deleting 'dst'/);
+    expect(r.out).not.toMatch(/Deleting existing destination 'dst'/);
+    const log = fs.existsSync(osLog) ? fs.readFileSync(osLog, "utf-8") : "";
+    expect(log).not.toMatch(/sandbox delete dst/);
   });
 });
