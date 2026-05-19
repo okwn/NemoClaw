@@ -82,6 +82,9 @@ const {
 const {
   setupSelectedMessagingChannels,
 } = require("./onboard/messaging-channel-setup") as typeof import("./onboard/messaging-channel-setup");
+const {
+  prepareModelRouterVenv,
+}: typeof import("./onboard/model-router-python") = require("./onboard/model-router-python");
 const crypto = require("node:crypto");
 const fs = require("fs");
 const os = require("os");
@@ -955,24 +958,16 @@ function installModelRouterCommand(routerDir = modelRouterPackageDir()): string 
     );
   }
 
-  if (!resolveHostCommandPath("python3")) {
-    throw new Error("python3 is required to prepare Model Router.");
-  }
-
   const venvDir = modelRouterVenvDir();
-  const venvPython = path.join(venvDir, "bin", "python");
   const routerCommand = modelRouterCommandPath(venvDir);
   const sourceFingerprint = getModelRouterSourceFingerprint(routerDir);
-
-  fs.mkdirSync(path.dirname(venvDir), { recursive: true });
-  console.log(`  Preparing Model Router environment: ${venvDir}`);
-  const venvResult = run(["python3", "-m", "venv", venvDir], {
-    ignoreError: true,
-    timeout: 120_000,
+  const allowReplaceExistingVenv =
+    path.resolve(venvDir) === path.resolve(MODEL_ROUTER_VENV_DIR) ||
+    readModelRouterInstalledFingerprint(venvDir) !== null;
+  const venvPython = prepareModelRouterVenv({
+    venvDir,
+    allowReplaceExisting: allowReplaceExistingVenv,
   });
-  if (venvResult.status !== 0 || !fs.existsSync(venvPython)) {
-    throw new Error("Failed to create Model Router virtual environment.");
-  }
 
   const installResult = run(
     [venvPython, "-m", "pip", "install", "--quiet", "--upgrade", `${routerDir}[prefill,proxy]`],
