@@ -298,6 +298,11 @@ const { toSessionUpdates }: typeof import("./onboard/session-updates") = require
 const gatewayReuse: typeof import("./onboard/gateway-reuse") = require("./onboard/gateway-reuse");
 const messagingConfig: typeof import("./onboard/messaging-config") = require("./onboard/messaging-config");
 const {
+  detectMessagingCredentialRotation,
+  getMessagingChannelForEnvKey,
+  getRecordedMessagingChannelsForResume: getRecordedMessagingChannelsForResumeFromState,
+}: typeof import("./onboard/messaging-credentials") = require("./onboard/messaging-credentials");
+const {
   getStoredMessagingChannelConfig,
   messagingChannelConfigsEqual,
   persistMessagingChannelConfigToSession,
@@ -1237,54 +1242,6 @@ function upsertMessagingProviders(tokenDefs: MessagingTokenDef[]) {
 }
 function providerExistsInGateway(name: string) {
   return onboardProviders.providerExistsInGateway(name, runOpenshell);
-}
-
-function getMessagingChannelForEnvKey(envKey: string): string | null {
-  if (envKey === "DISCORD_BOT_TOKEN") return "discord";
-  if (envKey === "SLACK_BOT_TOKEN") return "slack";
-  if (envKey === "TELEGRAM_BOT_TOKEN") return "telegram";
-  if (envKey === "WECHAT_BOT_TOKEN") return "wechat";
-  return null;
-}
-
-
-function getRecordedMessagingChannelsForResume(
-  resume: boolean,
-  session: Session | null, sandboxName: string | null,
-): string[] | null {
-  return require("./onboard/messaging-reuse").getNonInteractiveStoredMessagingChannels(
-    resume, session?.messagingChannels, sandboxName, MESSAGING_CHANNELS, (envKey: string) => Boolean(normalizeCredentialValue(process.env[envKey]) || getCredential(envKey)),
-    registry.getSandbox.bind(registry), registry.getDisabledChannels.bind(registry), providerExistsInGateway, isNonInteractive());
-}
-
-/**
- * Detect whether any messaging provider credential has been rotated since
- * the sandbox was created, by comparing SHA-256 hashes of the current
- * token values against hashes stored in the sandbox registry.
- *
- * Returns `changed: false` for legacy sandboxes that have no stored hashes
- * (conservative — avoids unnecessary rebuilds after upgrade).
- *
- * @param {string} sandboxName - Name of the sandbox to check.
- * @param {Array<{name: string, envKey: string, token: string|null}>} tokenDefs
- * @returns {{ changed: boolean, changedProviders: string[] }}
- */
-function detectMessagingCredentialRotation(
-  sandboxName: string,
-  tokenDefs: MessagingTokenDef[],
-): { changed: boolean; changedProviders: string[] } {
-  const sb = registry.getSandbox(sandboxName);
-  const storedHashes = sb?.providerCredentialHashes || {};
-  const changedProviders = [];
-  for (const { name, envKey, token } of tokenDefs) {
-    if (!token) continue;
-    const storedHash = storedHashes[envKey];
-    if (!storedHash) continue;
-    if (storedHash !== hashCredential(token)) {
-      changedProviders.push(name);
-    }
-  }
-  return { changed: changedProviders.length > 0, changedProviders };
 }
 
 // Tri-state probe factory for messaging-conflict backfill. An upfront liveness
@@ -6933,6 +6890,22 @@ async function setupInference(
 // ── Step 6: Messaging channels ───────────────────────────────────
 
 const MESSAGING_CHANNELS = listChannels();
+
+function getRecordedMessagingChannelsForResume(
+  resume: boolean,
+  session: Session | null,
+  sandboxName: string | null,
+): string[] | null {
+  return getRecordedMessagingChannelsForResumeFromState({
+    resume,
+    sessionMessagingChannels: session?.messagingChannels,
+    sandboxName,
+    channels: MESSAGING_CHANNELS,
+    getCredential,
+    providerExistsInGateway,
+    isNonInteractive,
+  });
+}
 
 // Curl exit codes that indicate a network-level failure (not a token problem).
 // 35 (TLS handshake failure) covers corporate proxies that MITM HTTPS.
