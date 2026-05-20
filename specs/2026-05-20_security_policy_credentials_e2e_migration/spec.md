@@ -192,7 +192,7 @@ This work is complete only when both validation gates pass:
 - explicitly deferred with a reason and required runner/secret metadata, or
 - explicitly retired as obsolete/non-applicable with reviewer metadata.
 
-## Phase 1: Coverage Inventory and Primitive Contract
+## Phase 1: Coverage Inventory and Primitive Contract [COMPLETED: c16ab8ade]
 
 Build the smallest reviewable foundation: a precise inventory of legacy assertions and the function contract for the domain primitive library.
 
