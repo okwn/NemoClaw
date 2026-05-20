@@ -77,12 +77,13 @@ Create:
 
 The library owns reusable shell functions for this domain. It must:
 
-- Source `test/e2e/runtime/lib/context.sh`.
+- Source `test/e2e/runtime/lib/env.sh` and `test/e2e/runtime/lib/context.sh`, matching existing suite script conventions.
 - Read `$E2E_CONTEXT_DIR/context.env` via context helpers.
 - Fail clearly when required context keys are missing.
 - Support dry-run/plan-only behavior without contacting live infrastructure.
 - Avoid reinstalling, onboarding, creating sandboxes, or discovering setup state independently.
 - Avoid logging credential values.
+- Reuse existing `e2e_env_is_dry_run`, `e2e_context_require`, and `e2e_context_get` helpers rather than adding duplicate environment parsing.
 
 Candidate primitive groups:
 
@@ -122,20 +123,33 @@ Examples:
 
 ### Suite registry design
 
-Update `test/e2e/validation_suites/suites.yaml` so these suite families no longer point at generic aliases:
+Update `test/e2e/validation_suites/suites.yaml` directly, following the existing explicit step-list pattern consumed by `test/e2e/runtime/run-suites.sh`. Do not add glob expansion, a parallel suite registry, or a new suite runner.
+
+These suite families must no longer point at generic aliases:
 
 - `security-credentials`
 - `security-shields`
 - `security-policy`
 - `security-injection`
 
-Each suite should reference small scripts under domain directories, for example:
+Each suite should reference small explicit scripts under domain directories, for example:
+
+```yaml
+security-credentials:
+  requires_state:
+    credentials.expected: present
+  steps:
+    - id: credentials-present
+      script: security/credentials/00-credentials-present.sh
+```
+
+Use these path families for the focused scripts:
 
 ```text
-test/e2e/validation_suites/security/credentials/*.sh
-test/e2e/validation_suites/security/policy/*.sh
-test/e2e/validation_suites/security/shields/*.sh
-test/e2e/validation_suites/security/injection/*.sh
+test/e2e/validation_suites/security/credentials/<ordered-step>.sh
+test/e2e/validation_suites/security/policy/<ordered-step>.sh
+test/e2e/validation_suites/security/shields/<ordered-step>.sh
+test/e2e/validation_suites/security/injection/<ordered-step>.sh
 ```
 
 ### Parity-map design

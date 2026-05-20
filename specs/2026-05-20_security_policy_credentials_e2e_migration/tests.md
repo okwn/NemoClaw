@@ -43,12 +43,12 @@ Use the existing Vitest scenario-framework tests plus shell dry-run checks. Test
 **New Tests to Create:**
 1. `security_credentials_suite_should_not_use_generic_aliases`
    - **Input**: `test/e2e/validation_suites/suites.yaml`.
-   - **Expected**: `security-credentials` steps point under `security/credentials/` and not generic `assert/no-credentials-leaked.sh` aliases only.
-   - **Covers**: Focused suite wiring.
+   - **Expected**: `security-credentials` steps are explicit YAML entries pointing under `security/credentials/` and not generic `assert/no-credentials-leaked.sh` aliases only.
+   - **Covers**: Focused suite wiring without introducing a second suite discovery mechanism.
 2. `security_credentials_suite_should_emit_stable_assertion_ids`
-   - **Input**: Dry-run execution of `security-credentials`.
-   - **Expected**: Output or metadata includes IDs such as `post-onboard.credentials.gateway-list-redacts-values`.
-   - **Covers**: Stable assertion IDs.
+   - **Input**: Dry-run execution of `security-credentials` through `test/e2e/runtime/run-suites.sh` with a temp context.
+   - **Expected**: Output or metadata includes IDs such as `post-onboard.credentials.gateway-list-redacts-values`; no glob-only step references are required because suites use explicit `suites.yaml` step lists.
+   - **Covers**: Stable assertion IDs and existing suite-runner compatibility.
 3. `credential_parity_entries_should_have_layer_domain_owner_metadata`
    - **Input**: `test/e2e/docs/parity-map.yaml`.
    - **Expected**: All credential migration/sanitization assertions are `mapped`, `deferred`, or `retired` and include `layer`, `gap_domain`, and `owner` as applicable.
