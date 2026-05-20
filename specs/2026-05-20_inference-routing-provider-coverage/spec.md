@@ -301,7 +301,7 @@ Test requirements:
 - Scenario resolver/schema/suite-runner tests pass.
 - Add tests for any new suite naming/schema expectations.
 
-## Phase 4: Parity Map and Coverage Report Completion
+## Phase 4: Parity Map and Coverage Report Completion [COMPLETED: fc960f166]
 
 Make coverage reporting prove the migration is complete.
 
