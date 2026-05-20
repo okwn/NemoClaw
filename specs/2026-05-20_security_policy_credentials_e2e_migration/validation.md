@@ -19,7 +19,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 ## Phase 1: Coverage Inventory and Primitive Contract - Validation Scenarios
 
-### Scenario 1.1: Domain helper loads and uses scenario context [STATUS: pending]
+### Scenario 1.1: Domain helper loads and uses scenario context [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Happy Path
 
 **Given**: A temporary `E2E_CONTEXT_DIR/context.env` with required scenario keys and `E2E_DRY_RUN=1`.
@@ -33,7 +33,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 **Tools Required**: Bash, Vitest
 
-### Scenario 1.2: Missing context fails clearly [STATUS: pending]
+### Scenario 1.2: Missing context fails clearly [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Sad Path
 
 **Given**: A temp context directory with a missing required key.
@@ -49,7 +49,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 ## Phase 2: Credential and Sanitization Suite Migration - Validation Scenarios
 
-### Scenario 2.1: Credential suite runs focused steps in dry-run mode [STATUS: pending]
+### Scenario 2.1: Credential suite runs focused steps in dry-run mode [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Happy Path
 
 **Given**: `suites.yaml` includes `security-credentials` and a dry-run context.
@@ -63,7 +63,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 **Tools Required**: Bash, Vitest
 
-### Scenario 2.2: Credential outputs do not leak raw secrets [STATUS: pending]
+### Scenario 2.2: Credential outputs do not leak raw secrets [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Sad Path
 
 **Given**: Credential fixture data contains credential-shaped raw values.
@@ -79,7 +79,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 ## Phase 3: Security Policy, Shields, and Gateway Health Migration - Validation Scenarios
 
-### Scenario 3.1: Policy and shields suites use focused post-onboard checks [STATUS: pending]
+### Scenario 3.1: Policy and shields suites use focused post-onboard checks [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Happy Path
 
 **Given**: `security-policy` and `security-shields` are configured in `suites.yaml`.
@@ -93,7 +93,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 **Tools Required**: Bash, Vitest
 
-### Scenario 3.2: Gateway health broken state is not reported as success [STATUS: pending]
+### Scenario 3.2: Gateway health broken state is not reported as success [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Sad Path
 
 **Given**: A fixture or context representing a broken gateway/upstream state.
@@ -109,7 +109,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 ## Phase 4: Injection and OpenShell Version Coverage Migration - Validation Scenarios
 
-### Scenario 4.1: Injection suite treats message payloads as data [STATUS: pending]
+### Scenario 4.1: Injection suite treats message payloads as data [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Sad Path
 
 **Given**: A Telegram/message payload fixture containing shell syntax and a temp marker-file path.
@@ -123,7 +123,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 **Tools Required**: Bash, Vitest
 
-### Scenario 4.2: OpenShell version capability is classified [STATUS: pending]
+### Scenario 4.2: OpenShell version capability is classified [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Happy Path
 
 **Given**: The parity map includes `test-openshell-version-pin.sh` assertions.
@@ -139,7 +139,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 ## Phase 5: Parity Review and Coverage Report Gate - Validation Scenarios
 
-### Scenario 5.1: Eight-script legacy area reaches full classification [STATUS: pending]
+### Scenario 5.1: Eight-script legacy area reaches full classification [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Happy Path
 
 **Given**: The parity inventory and parity map include the eight legacy scripts from issue #3815.
@@ -153,7 +153,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 **Tools Required**: Vitest
 
-### Scenario 5.2: Parity metadata rejects incomplete deferred/retired items [STATUS: pending]
+### Scenario 5.2: Parity metadata rejects incomplete deferred/retired items [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Sad Path
 
 **Given**: A fixture parity map entry marked `deferred` without runner/secret requirement or `retired` without reviewer metadata.
@@ -169,7 +169,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 ## Phase 6: Clean the House - Validation Scenarios
 
-### Scenario 6.1: Affected scenarios remain plan-only compatible [STATUS: pending]
+### Scenario 6.1: Affected scenarios remain plan-only compatible [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Happy Path
 
 **Given**: Affected scenario IDs are registered in `scenarios.yaml`.
@@ -183,7 +183,7 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 **Tools Required**: Bash
 
-### Scenario 6.2: New suite scripts pass hygiene checks [STATUS: pending]
+### Scenario 6.2: New suite scripts pass hygiene checks [STATUS: passed] [VALIDATED: 1e4fa4a00]
 **Type**: Sad Path
 
 **Given**: New shell scripts under `test/e2e/validation_suites/security/` and the domain helper.
@@ -201,14 +201,14 @@ Test Spec: `specs/2026-05-20_security_policy_credentials_e2e_migration/tests.md`
 
 | Phase | Happy | Sad | Total | Passed | Failed | Pending |
 |-------|-------|-----|-------|--------|--------|---------|
-| Phase 1 | 1 | 1 | 2 | 0 | 0 | 2 |
-| Phase 2 | 1 | 1 | 2 | 0 | 0 | 2 |
-| Phase 3 | 1 | 1 | 2 | 0 | 0 | 2 |
-| Phase 4 | 1 | 1 | 2 | 0 | 0 | 2 |
-| Phase 5 | 1 | 1 | 2 | 0 | 0 | 2 |
-| Phase 6 | 1 | 1 | 2 | 0 | 0 | 2 |
-| **Total** | **6** | **6** | **12** | **0** | **0** | **12** |
+| Phase 1 | 1 | 1 | 2 | 2 | 0 | 0 |
+| Phase 2 | 1 | 1 | 2 | 2 | 0 | 0 |
+| Phase 3 | 1 | 1 | 2 | 2 | 0 | 0 |
+| Phase 4 | 1 | 1 | 2 | 2 | 0 | 0 |
+| Phase 5 | 1 | 1 | 2 | 2 | 0 | 0 |
+| Phase 6 | 1 | 1 | 2 | 2 | 0 | 0 |
+| **Total** | **6** | **6** | **12** | **12** | **0** | **0** |
 
 ## Approval Status
 
-**Status**: PENDING USER APPROVAL
+**Status**: VALIDATED
