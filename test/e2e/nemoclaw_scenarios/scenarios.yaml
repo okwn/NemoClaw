@@ -106,6 +106,7 @@ setup_scenarios:
     - smoke
     - inference
     - credentials
+    - baseline-onboarding
   ubuntu-repo-cloud-hermes:
     alias_for_plan: ubuntu-repo-docker__cloud-nvidia-hermes
     dimensions:
@@ -118,6 +119,7 @@ setup_scenarios:
     - smoke
     - inference
     - hermes-specific
+    - baseline-onboarding
   gpu-repo-local-ollama-openclaw:
     alias_for_plan: gpu-repo-docker-cdi__local-ollama-openclaw
     dimensions:
@@ -177,6 +179,7 @@ setup_scenarios:
     suites:
     - smoke
     - inference
+    - baseline-onboarding
     runner_requirements:
     - ubuntu-latest
     - brev-api-token
@@ -206,6 +209,7 @@ setup_scenarios:
     - inference
     - credentials
     - onboarding-state
+    - baseline-onboarding
   ubuntu-invalid-nvidia-key-negative:
     dimensions:
       platform: ubuntu-local
