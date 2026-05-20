@@ -36,7 +36,7 @@ e2e_messaging_channel() {
   local provider channel
   provider="$(e2e_context_get E2E_MESSAGING_PROVIDER)"
   if [[ -z "${provider}" ]]; then
-    provider="$(e2e_context_get E2E_PROVIDER)"
+    e2e_fail "expected-state.messaging.provider missing E2E_MESSAGING_PROVIDER"
   fi
   channel="$(e2e_context_get E2E_MESSAGING_CHANNEL)"
   case "${provider}:${channel}" in
@@ -44,7 +44,7 @@ e2e_messaging_channel() {
     slack:bot | slack:) printf 'slack-bot\n' ;;
     whatsapp:*) printf 'whatsapp-qr\n' ;;
     telegram:* | discord:*) printf '%s\n' "${provider}" ;;
-    *) printf '%s\n' "${provider:-unknown}" ;;
+    *) e2e_fail "expected-state.messaging.provider unsupported provider/channel: ${provider}:${channel:-default}" ;;
   esac
 }
 
@@ -70,7 +70,7 @@ e2e_messaging_config_key() {
     discord) printf 'DISCORD_BOT_TOKEN\n' ;;
     slack-bot | slack-app) printf 'SLACK_BOT_TOKEN\n' ;;
     whatsapp-qr) printf 'WHATSAPP_QR\n' ;;
-    *) printf '%s\n' "$(printf '%s' "${provider}" | tr '[:lower:]-' '[:upper:]_')_TOKEN" ;;
+    *) e2e_fail "expected-state.messaging.config-key unsupported provider: ${provider}" ;;
   esac
 }
 
@@ -83,6 +83,36 @@ e2e_messaging_assert_placeholder_configured() {
   fi
   printf 'FAIL: expected-state.messaging.placeholder-configured missing placeholder for %s\n' "${key}" >&2
   return 1
+}
+
+e2e_messaging_read_config_surface() {
+  local direct
+  direct="$(e2e_context_get E2E_MESSAGING_CONFIG_CONTENT)"
+  if [[ -n "${direct}" ]]; then
+    printf '%s\n' "${direct}"
+    return 0
+  fi
+  direct="$(e2e_context_get E2E_MESSAGING_PROVIDER_STATE)"
+  if [[ -n "${direct}" ]]; then
+    printf '%s\n' "${direct}"
+    return 0
+  fi
+  local path
+  path="$(e2e_context_get E2E_MESSAGING_CONFIG_PATH)"
+  if [[ -n "${path}" && -f "${path}" ]]; then
+    cat "${path}"
+    return 0
+  fi
+  path="$(e2e_messaging_agent_config_path)"
+  if [[ -n "${E2E_DRY_RUN:-}" ]]; then
+    printf '%s=PLACEHOLDER\n' "$(e2e_messaging_config_key)"
+    return 0
+  fi
+  if [[ -f "${path}" ]]; then
+    cat "${path}"
+    return 0
+  fi
+  e2e_fail "expected-state.messaging.config-surface missing config content/path for ${path}"
 }
 
 e2e_messaging_assert_no_secret_leak() {

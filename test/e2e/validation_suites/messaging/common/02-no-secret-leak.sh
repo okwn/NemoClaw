@@ -5,4 +5,5 @@
 set -euo pipefail
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/lib/messaging_providers.sh"
 e2e_messaging_load_context
-e2e_messaging_assert_no_secret_leak "$(e2e_messaging_config_key)=placeholder" "$(e2e_context_get E2E_MESSAGING_RAW_TOKEN)"
+content="$(e2e_messaging_read_config_surface)"
+e2e_messaging_assert_no_secret_leak "${content}" "$(e2e_context_get E2E_MESSAGING_RAW_TOKEN)"

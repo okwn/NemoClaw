@@ -53,6 +53,7 @@ describe("Issue #3810 messaging suite wiring", () => {
         E2E_PROVIDER: "telegram",
         E2E_MESSAGING_PROVIDER: "telegram",
         E2E_MESSAGING_BRIDGE_URL: "http://127.0.0.1:18789",
+        E2E_MESSAGING_CONFIG_CONTENT: "TELEGRAM_BOT_TOKEN=PLACEHOLDER",
       });
       const r = runSuites(["messaging-telegram", "messaging-discord", "messaging-slack"], {
         E2E_CONTEXT_DIR: tmp,
