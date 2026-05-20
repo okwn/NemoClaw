@@ -65,7 +65,7 @@ baseline_assert_logs_produce_output() {
   if out=$(nemoclaw "$E2E_SANDBOX_NAME" logs 2>&1) && [[ -n "$out" ]]; then
     baseline_onboarding_pass validation.baseline_onboarding.logs_available "logs available"
   else
-    baseline_onboarding_fail validation.baseline_onboarding.logs_available "logs unavailable"
+    baseline_onboarding_fail validation.baseline_onboarding.logs_available "logs unavailable: ${out:0:200}"
   fi
 }
 
