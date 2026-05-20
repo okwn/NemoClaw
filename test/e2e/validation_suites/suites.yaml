@@ -109,8 +109,11 @@ suites:
     requires_state: *id001
     steps: *id002
   security-shields:
-    requires_state: *id007
-    steps: *id008
+    requires_state:
+      sandbox.status: running
+    steps:
+    - id: shields-config-consistent
+      script: security/shields/00-config-consistent.sh
   inference-routing:
     requires_state: *id003
     steps: *id004
@@ -148,8 +151,11 @@ suites:
     requires_state: *id001
     steps: *id002
   security-policy:
-    requires_state: *id007
-    steps: *id008
+    requires_state:
+      sandbox.status: running
+    steps:
+    - id: telegram-preset-applied
+      script: security/policy/00-telegram-preset-applied.sh
   security-injection:
     requires_state: *id007
     steps: *id008
