@@ -5,6 +5,7 @@
 # Security policy and credential validation primitives.
 
 if [[ -n "${NEMOCLAW_SECURITY_POLICY_CREDENTIALS_LIB_LOADED:-}" ]]; then
+  # shellcheck disable=SC2317 # This file may be sourced repeatedly or executed in tests.
   return 0 2>/dev/null || exit 0
 fi
 NEMOCLAW_SECURITY_POLICY_CREDENTIALS_LIB_LOADED=1
