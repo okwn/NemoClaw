@@ -119,10 +119,11 @@ const sandboxBaseImage: typeof import("./sandbox-base-image") = require("./sandb
 const {
   OPENCLAW_SANDBOX_BASE_IMAGE: SANDBOX_BASE_IMAGE,
   SANDBOX_BASE_TAG,
-  defaultOpenclawBaseDockerfile,
-  buildLocalBaseTag,
-  resolveSandboxBaseImage,
 } = sandboxBaseImage;
+const {
+  getStableGatewayImageRef,
+  pullAndResolveBaseImageDigest,
+}: typeof import("./onboard/base-image") = require("./onboard/base-image");
 const errnoUtils: typeof import("./core/errno") = require("./core/errno");
 const { isErrnoException } = errnoUtils;
 
@@ -659,38 +660,6 @@ function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
     process.exit(1);
   }
   console.log(`  ✓ Docker CDI GPU support detected (${cdiSpecFiles.join(", ")})`);
-}
-
-// ── Base image resolution ───────────────────────────────────────
-// Pulls candidate sandbox-base images from GHCR and inspects them to get the
-// actual repo digest when available. This avoids the registry mismatch that
-// broke e2e tests in #1937 while still allowing PR branches to use a source-SHA
-// base image or local build before latest has been rebuilt. See #1904.
-
-/**
- * Resolve a compatible sandbox-base image and pin it to a repo digest when
- * possible. PR-branch validation first tries a source-SHA tag, then latest,
- * and finally a local Dockerfile.base build when the OpenShell Docker driver
- * requires a newer glibc than the published image provides.
- */
-function pullAndResolveBaseImageDigest(
-  options: { requireOpenshellSandboxAbi?: boolean } = {},
-): { digest: string | null; ref: string; source?: string; glibcVersion?: string | null } | null {
-  return resolveSandboxBaseImage({
-    imageName: SANDBOX_BASE_IMAGE,
-    dockerfilePath: defaultOpenclawBaseDockerfile(ROOT),
-    localTag: buildLocalBaseTag("nemoclaw-sandbox-base-local", ROOT),
-    envVar: "NEMOCLAW_SANDBOX_BASE_IMAGE_REF",
-    label: "OpenClaw sandbox base image",
-    requireOpenshellSandboxAbi: options.requireOpenshellSandboxAbi === true,
-    rootDir: ROOT,
-  });
-}
-
-function getStableGatewayImageRef(versionOutput: string | null = null): string | null {
-  const version = getInstalledOpenshellVersion(versionOutput);
-  if (!version) return null;
-  return `ghcr.io/nvidia/openshell/cluster:${version}`;
 }
 
 function getOpenshellBinary(): string {
