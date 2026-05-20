@@ -4,7 +4,7 @@
 
 _sandbox_lifecycle_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../runtime/lib/context.sh
-. "${_sandbox_lifecycle_dir}/../../../runtime/lib/context.sh"
+. "${_sandbox_lifecycle_dir}/../../runtime/lib/context.sh"
 
 SANDBOX_LIFECYCLE_LAST_OUTPUT=""
 
