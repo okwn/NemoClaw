@@ -340,7 +340,7 @@ Make the migrated, deferred, and retired coverage visible and accurate.
 - No legacy assertion relevant to issue #3810 remains unclassified.
 - Metadata is specific enough for future cleanup work to pick up deferred cases.
 
-## Phase 6: Scenario Framework Validation
+## Phase 6: Scenario Framework Validation [COMPLETED: d8067e637]
 
 Validate the full migration through local framework tests and plan-only scenario execution.
 
