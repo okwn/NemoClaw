@@ -49,6 +49,70 @@ function runCheck(root: string, args: string[] = []) {
   });
 }
 
+const SCOPED_LIFECYCLE_SCRIPTS = [
+  "test-issue-2478-crash-loop-recovery.sh",
+  "test-sandbox-operations.sh",
+  "test-sandbox-survival.sh",
+  "test-snapshot-commands.sh",
+];
+
+function loadRealParityMap(): string {
+  return fs.readFileSync(path.join(REPO_ROOT, "test/e2e/docs/parity-map.yaml"), "utf8");
+}
+
+function extractScriptBlock(yaml: string, script: string): string {
+  const marker = `  ${script}:`;
+  const start = yaml.indexOf(marker);
+  expect(start, `${script} missing from parity map`).toBeGreaterThanOrEqual(0);
+  const rest = yaml.slice(start + marker.length);
+  const next = rest.search(/\n  [^\s][^\n]*:\n/);
+  return next === -1 ? rest : rest.slice(0, next);
+}
+
+describe("sandbox lifecycle parity classification", () => {
+  it("test_should_classify_all_scoped_sandbox_lifecycle_assertions", () => {
+    const yaml = loadRealParityMap();
+    for (const script of SCOPED_LIFECYCLE_SCRIPTS) {
+      const block = extractScriptBlock(yaml, script);
+      expect(block).toMatch(/bucket:\s*lifecycle/);
+      expect(block).not.toMatch(/status:\s*uncategorized|mapping_status:\s*unmapped/);
+      for (const entry of block.split(/\n    - legacy:/).slice(1)) {
+        if (/status:\s*mapped/.test(entry)) {
+          expect(entry, `${script} mapped entry missing id`).toMatch(/\n      id:\s*validation\.sandbox_(lifecycle|operations|snapshot)\./);
+          expect(entry).toMatch(/\n      layer:\s*validation/);
+          expect(entry).toMatch(/\n      gap_domain:\s*sandbox-lifecycle/);
+          expect(entry).toMatch(/\n      owner:\s*e2e-maintainers/);
+        } else if (/status:\s*deferred/.test(entry)) {
+          expect(entry).toMatch(/\n      reason:\s*.+/);
+          expect(entry).toMatch(/\n      owner:\s*e2e-maintainers/);
+          expect(entry).toMatch(/\n      (runner_requirement|secret_requirement):\s*.+/);
+        } else if (/status:\s*retired/.test(entry)) {
+          expect(entry).toMatch(/\n      reason:\s*.+/);
+          expect(entry).toMatch(/\n      reviewer:\s*e2e-maintainers/);
+          expect(entry).toMatch(/\n      approved_at:\s*["']?2026-05-20["']?/);
+        } else {
+          throw new Error(`${script} has uncategorized parity entry: ${entry}`);
+        }
+      }
+    }
+  });
+
+  it("test_should_use_validation_namespace_for_mapped_lifecycle_assertions", () => {
+    const yaml = loadRealParityMap();
+    const mappedIds = SCOPED_LIFECYCLE_SCRIPTS.flatMap((script) => {
+      const block = extractScriptBlock(yaml, script);
+      return Array.from(block.matchAll(/status:\s*mapped[\s\S]*?\n      id:\s*([^\n]+)/g)).map((m) => m[1].trim());
+    });
+    expect(mappedIds.length).toBeGreaterThan(0);
+    expect(mappedIds).toContain("validation.sandbox_lifecycle.gateway_health");
+    expect(mappedIds).toContain("validation.sandbox_operations.status_fields_present");
+    expect(mappedIds).toContain("validation.sandbox_snapshot.create_succeeds");
+    for (const id of mappedIds) {
+      expect(id).toMatch(/^validation\.sandbox_(lifecycle|operations|snapshot)\./);
+    }
+  });
+});
+
 describe("parity map schema validation", () => {
   let tmp: string;
 
