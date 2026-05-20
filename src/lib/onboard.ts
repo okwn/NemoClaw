@@ -364,6 +364,7 @@ import {
   setupHermesToolGateways,
   stringSetsEqual,
 } from "./onboard/hermes-managed-tools";
+import { mergeRequiredMessagingChannelPolicyPresets } from "./onboard/messaging-policy-presets";
 import {
   filterEnabledChannelsByAgent,
   getAvailableMessagingChannelsForAgent,
@@ -10024,6 +10025,13 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       ? latestSession.messagingChannels
       : [];
     const activeMessagingChannels = registry.getSandbox(sandboxName)?.messagingChannels;
+    const policyMessagingChannels = [
+      ...new Set([
+        ...(selectedMessagingChannels.length > 0 ? selectedMessagingChannels : []),
+        ...recordedMessagingChannels,
+        ...(Array.isArray(activeMessagingChannels) ? activeMessagingChannels : []),
+      ]),
+    ];
     verifyCompatibleEndpointSandboxSmoke({
       sandboxName,
       provider,
@@ -10043,22 +10051,28 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     const customPolicyPresetNames = new Set(
       policies.listCustomPresets(sandboxName).map((p: { name: string }) => p.name),
     );
-    let recordedPolicyPresetsForSupport = policies.clampSetupPolicyPresetNames(
+    const clampedRecordedPolicyPresets = policies.clampSetupPolicyPresetNames(
       recordedPolicyPresets || [],
       selectablePolicyPresetsForSupport,
       policyPresetSupportOptions,
       customPolicyPresetNames,
     );
+    let recordedPolicyPresetsForSupport = clampedRecordedPolicyPresets;
+    const recordedPolicyPresetsHaveUnsupported =
+      Array.isArray(recordedPolicyPresets) &&
+      clampedRecordedPolicyPresets.length !== recordedPolicyPresets.length;
     if (recordedPolicyPresets) {
       recordedPolicyPresetsForSupport = mergeRequiredHermesToolGatewayPolicyPresets(
         recordedPolicyPresetsForSupport,
         hermesToolGateways,
         selectablePolicyPresetsForSupport.map((p) => p.name),
       );
+      recordedPolicyPresetsForSupport = mergeRequiredMessagingChannelPolicyPresets(
+        recordedPolicyPresetsForSupport,
+        policyMessagingChannels,
+        selectablePolicyPresetsForSupport.map((p) => p.name),
+      );
     }
-    const recordedPolicyPresetsHaveUnsupported =
-      Array.isArray(recordedPolicyPresets) &&
-      recordedPolicyPresetsForSupport.length !== recordedPolicyPresets.length;
     const resumePolicies =
       resume &&
       sandboxName &&

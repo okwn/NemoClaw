@@ -6,6 +6,10 @@ import {
   HERMES_TOOL_GATEWAY_PRESET_NAMES,
   mergeRequiredHermesToolGatewayPolicyPresets,
 } from "./hermes-managed-tools";
+import {
+  mergeRequiredMessagingChannelPolicyPresets,
+  requiredMessagingChannelPolicyPresets,
+} from "./messaging-policy-presets";
 
 type Preset = { name: string; access?: string };
 type SupportOptions = { webSearchSupported?: boolean | null };
@@ -98,6 +102,7 @@ export function computeSetupPresetSuggestions(
   if (provider && deps.localInferenceProviders.includes(provider)) add("local-inference");
   if (Array.isArray(enabledChannels)) {
     for (const channel of enabledChannels) add(channel);
+    for (const preset of requiredMessagingChannelPolicyPresets(enabledChannels)) add(preset);
   }
   if (Array.isArray(options.hermesToolGateways)) {
     for (const preset of options.hermesToolGateways) {
@@ -156,10 +161,16 @@ export async function setupPoliciesWithSelection(
         )
       : null;
   if (chosen) {
+    const knownSelectablePresets = new Set(selectablePresets.map((preset) => preset.name));
     chosen = mergeRequiredHermesToolGatewayPolicyPresets(
       chosen,
       hermesToolGateways,
-      new Set(selectablePresets.map((preset) => preset.name)),
+      knownSelectablePresets,
+    );
+    chosen = mergeRequiredMessagingChannelPolicyPresets(
+      chosen,
+      enabledChannels,
+      knownSelectablePresets,
     );
   }
 
@@ -221,6 +232,7 @@ export async function setupPoliciesWithSelection(
     }
 
     chosen = mergeRequiredHermesToolGatewayPolicyPresets(chosen, hermesToolGateways, knownPresets);
+    chosen = mergeRequiredMessagingChannelPolicyPresets(chosen, enabledChannels, knownPresets);
 
     const invalidPresets = chosen.filter((name) => !knownPresets.has(name));
     if (invalidPresets.length > 0) {
@@ -259,7 +271,11 @@ export async function setupPoliciesWithSelection(
   ];
   const resolvedPresets = await deps.selectTierPresetsAndAccess(tierName, allPresets, extraSelected);
   const interactiveChoice = mergeRequiredHermesToolGatewayPolicyPresets(
-    resolvedPresets.map((preset) => preset.name),
+    mergeRequiredMessagingChannelPolicyPresets(
+      resolvedPresets.map((preset) => preset.name),
+      enabledChannels,
+      knownNames,
+    ),
     hermesToolGateways,
     knownNames,
   );

@@ -321,6 +321,75 @@ console.log = () => {};
     assert.deepEqual(payload.finalApplied, ["npm"]);
   });
 
+  it("resume selection preserves the Slack policy required by a recorded Slack channel", () => {
+    const script =
+      buildPreamble({
+        policyMode: "suggested",
+        policyPresets: "",
+        alreadyApplied: ["slack"],
+      }) +
+      String.raw`
+console.log = () => {};
+(async () => {
+  try {
+    const chosen = await setupPoliciesWithSelection("test-sb", {
+      selectedPresets: ["npm", "pypi"],
+      enabledChannels: ["slack"],
+    });
+    process.stdout.write(JSON.stringify({ chosen, appliedCalls, removedCalls, finalApplied: appliedState }) + "\n");
+  } catch (err) {
+    process.stdout.write(JSON.stringify({ error: err.message }) + "\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout.trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}`);
+
+    assert.deepEqual(payload.chosen.slice().sort(), ["npm", "pypi", "slack"]);
+    assert.deepEqual(
+      payload.removedCalls,
+      [],
+      `Slack must remain targeted while the slack channel is enabled; got removals ${JSON.stringify(payload.removedCalls)}`,
+    );
+    assert.deepEqual(payload.finalApplied.slice().sort(), ["npm", "pypi", "slack"]);
+  });
+
+  it("custom non-interactive selection preserves the Slack policy required by Slack messaging", () => {
+    const script =
+      buildPreamble({
+        policyMode: "custom",
+        policyPresets: "npm,pypi",
+        alreadyApplied: ["slack"],
+      }) +
+      String.raw`
+console.log = () => {};
+(async () => {
+  try {
+    const chosen = await setupPoliciesWithSelection("test-sb", {
+      enabledChannels: ["slack"],
+    });
+    process.stdout.write(JSON.stringify({ chosen, appliedCalls, removedCalls, finalApplied: appliedState }) + "\n");
+  } catch (err) {
+    process.stdout.write(JSON.stringify({ error: err.message }) + "\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout.trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}`);
+
+    assert.deepEqual(payload.chosen.slice().sort(), ["npm", "pypi", "slack"]);
+    assert.deepEqual(
+      payload.removedCalls,
+      [],
+      `Slack must not be removed while Slack messaging is enabled; got removals ${JSON.stringify(payload.removedCalls)}`,
+    );
+    assert.deepEqual(payload.finalApplied.slice().sort(), ["npm", "pypi", "slack"]);
+  });
+
   // Widening the selection (user re-enables a preset they'd previously dropped)
   // must apply the new one and not re-apply things that are already applied.
   it("non-interactive widen selection applies only new presets", () => {
