@@ -156,6 +156,11 @@ suites:
     steps:
     - id: telegram-preset-applied
       script: security/policy/00-telegram-preset-applied.sh
+    - id: openshell-version-supports-credential-rewrite
+      script: security/policy/01-openshell-version-supports-credential-rewrite.sh
   security-injection:
-    requires_state: *id007
-    steps: *id008
+    requires_state:
+      sandbox.status: running
+    steps:
+    - id: telegram-message-not-shell-executed
+      script: security/injection/00-telegram-message-not-shell-executed.sh
