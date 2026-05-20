@@ -138,6 +138,33 @@ e2e_messaging_bridge_url() {
   printf '%s\n' "${url}"
 }
 
+e2e_messaging_assert_provider_attached() {
+  local provider surface
+  provider="$(e2e_messaging_provider_name)"
+  surface="$(e2e_messaging_read_config_surface)"
+  if [[ "${surface}" == *"$(e2e_messaging_config_key)"* ]] || [[ "${surface}" == *"${provider}"* ]]; then
+    e2e_pass "expected-state.messaging.${provider}.provider-attached provider ${provider} configured for sandbox $(e2e_context_get E2E_SANDBOX_NAME)"
+    return 0
+  fi
+  e2e_fail "expected-state.messaging.${provider}.provider-attached missing provider evidence in config surface"
+}
+
+e2e_messaging_assert_literal_payload() {
+  local assertion_id="${1:?assertion id required}"
+  local payload="${2:?payload required}"
+  local observed="${3:-}"
+  if [[ -z "${observed}" && -n "${E2E_DRY_RUN:-}" ]]; then
+    observed="${payload}"
+  fi
+  if [[ -z "${observed}" ]]; then
+    e2e_fail "${assertion_id} missing observed payload output"
+  fi
+  if [[ "${observed}" != *"${payload}"* ]]; then
+    e2e_fail "${assertion_id} payload was not preserved literally"
+  fi
+  e2e_pass "${assertion_id} payload treated as text"
+}
+
 e2e_messaging_assert_bridge_reachable() {
   local provider url
   provider="${1:-$(e2e_messaging_provider_name)}"
