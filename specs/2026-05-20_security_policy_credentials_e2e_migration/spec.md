@@ -297,7 +297,7 @@ Perform the explicit 100%+ parity review required for validation.
 - The re-review demonstrates 100% or greater parity.
 - Any reduced live behavior is intentionally marked deferred/retired, not silently dropped.
 
-## Phase 6: Clean the House
+## Phase 6: Clean the House [COMPLETED: 9fcba5d76]
 
 Finalize the implementation and remove temporary migration debris.
 
