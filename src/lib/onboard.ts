@@ -283,6 +283,7 @@ const { OnboardRuntime }: typeof import("./onboard/machine/runtime") = require("
 const { handleGatewayState }: typeof import("./onboard/machine/handlers/gateway") = require("./onboard/machine/handlers/gateway");
 const { handlePreflightState }: typeof import("./onboard/machine/handlers/preflight") = require("./onboard/machine/handlers/preflight");
 const { handleProviderInferenceState }: typeof import("./onboard/machine/handlers/provider-inference") = require("./onboard/machine/handlers/provider-inference");
+const { handleSandboxState }: typeof import("./onboard/machine/handlers/sandbox") = require("./onboard/machine/handlers/sandbox");
 const policies: typeof import("./policy") = require("./policy");
 const tiers: typeof import("./policy/tiers") = require("./policy/tiers");
 const { ensureUsageNoticeConsent } = require("./onboard/usage-notice");
@@ -9587,212 +9588,68 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     } = providerInferenceResult;
     let webSearchConfig = providerInferenceResult.webSearchConfig as WebSearchConfig | null;
 
-    const webSearchSupportProbePath = fromDockerfile ? path.resolve(fromDockerfile) : null;
-    const webSearchSupported = agentSupportsWebSearch(agent, webSearchSupportProbePath, ROOT);
-    if (webSearchConfig && !webSearchSupported) {
-      note(
-        `  Web search is not yet supported by ${agent?.displayName ?? "this sandbox image"}. Clearing stale config.`,
-      );
-      webSearchConfig = null;
-      if (session) {
-        session.webSearchConfig = null;
-      }
-      onboardSession.updateSession((current: Session) => {
-        current.webSearchConfig = null;
-        return current;
-      });
-    }
-
-    const storedMessagingChannelConfig = getStoredMessagingChannelConfig(sandboxName, session);
-    const effectiveMessagingChannelConfig = hydrateMessagingChannelConfig(storedMessagingChannelConfig);
-    const messagingChannelConfigChanged = !messagingChannelConfigsEqual(
-      effectiveMessagingChannelConfig,
-      storedMessagingChannelConfig,
-    );
-    if (effectiveMessagingChannelConfig) {
-      persistMessagingChannelConfigToSession(effectiveMessagingChannelConfig);
-      if (session) {
-        session.messagingChannelConfig = effectiveMessagingChannelConfig;
-      }
-    }
-
-    const sandboxReuseState = getSandboxReuseState(sandboxName);
-    const webSearchConfigChanged = Boolean(session?.webSearchConfig) !== Boolean(webSearchConfig);
-    // Telegram mention-mode is baked into openclaw.json at sandbox build time, so
-    // changes to TELEGRAM_REQUIRE_MENTION only take effect after a rebuild. Treat
-    // a mismatch between the recorded config and the current env value as drift
-    // so the reuse path forces a recreate (mirrors webSearchConfigChanged). See
-    // #1737 and the CodeRabbit review on #2417.
-    //
-    // Compare *effective* modes — null and false both produce groupPolicy: open
-    // at config-generation time (default behavior), so they collapse to the same
-    // bucket here. Without this, a sandbox built before TELEGRAM_REQUIRE_MENTION
-    // existed (recordedTelegramRequireMention === null) would be reused with the
-    // old groupPolicy: open even after the user sets TELEGRAM_REQUIRE_MENTION=1,
-    // and vice versa.
-    const currentTelegramRequireMention = computeTelegramRequireMention();
-    const recordedTelegramRequireMention = session?.telegramConfig?.requireMention ?? null;
-    const effectiveCurrent = currentTelegramRequireMention ?? false;
-    const effectiveRecorded = recordedTelegramRequireMention ?? false;
-    const telegramConfigChanged = effectiveCurrent !== effectiveRecorded;
-    const sandboxGpuConfigChanged = sandboxName
-      ? hasSandboxGpuDrift(sandboxName, sandboxGpuConfig)
-      : false;
-    const wechatConfigChanged = hasWechatConfigDrift(session);
-    const recordedHermesToolGateways = sandboxName
-      ? normalizeHermesToolGatewaySelections(registry.getSandbox(sandboxName)?.hermesToolGateways)
-      : [];
-    const hermesToolGatewayConfigChanged = !stringSetsEqual(
-      recordedHermesToolGateways,
+    const sandboxStateResult = await handleSandboxState({
+      resume,
+      fresh,
+      session,
+      sandboxName,
+      model,
+      provider,
+      nimContainer,
+      webSearchConfig,
+      selectedMessagingChannels,
+      fromDockerfile,
+      agent,
+      gpu,
+      preferredInferenceApi,
+      sandboxGpuConfig,
       hermesToolGateways,
-    );
-    const resumeSandbox =
-      resume &&
-      !webSearchConfigChanged &&
-      !telegramConfigChanged &&
-      !sandboxGpuConfigChanged &&
-      !wechatConfigChanged &&
-      !messagingChannelConfigChanged &&
-      !hermesToolGatewayConfigChanged &&
-      session?.steps?.sandbox?.status === "complete" &&
-      sandboxReuseState === "ready";
-    if (resumeSandbox) {
-      if (webSearchConfig) {
-        note("  [resume] Reusing Brave Search configuration already baked into the sandbox.");
-      }
-      selectedMessagingChannels = session?.messagingChannels ?? [];
-      skippedStepMessage("sandbox", sandboxName);
-    } else {
-      if (resume && session?.steps?.sandbox?.status === "complete") {
-        if (webSearchConfigChanged) {
-          note("  [resume] Web Search configuration changed; recreating sandbox.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        } else if (telegramConfigChanged) {
-          note("  [resume] TELEGRAM_REQUIRE_MENTION changed; recreating sandbox.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        } else if (sandboxGpuConfigChanged) {
-          note("  [resume] Sandbox GPU settings changed; recreating sandbox.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        } else if (wechatConfigChanged) {
-          note("  [resume] WeChat account metadata changed; recreating sandbox.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        } else if (messagingChannelConfigChanged) {
-          note("  [resume] Messaging channel configuration changed; recreating sandbox.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        } else if (hermesToolGatewayConfigChanged) {
-          note("  [resume] Hermes managed tool gateway selection changed; recreating sandbox.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        } else if (sandboxReuseState === "not_ready") {
-          note(
-            `  [resume] Recorded sandbox '${sandboxName}' exists but is not ready; recreating it.`,
-          );
-          repairRecordedSandbox(sandboxName);
-        } else {
-          note("  [resume] Recorded sandbox state is unavailable; recreating it.");
-          if (sandboxName) {
-            registry.removeSandbox(sandboxName);
-          }
-        }
-      }
-      let nextWebSearchConfig = webSearchConfig;
-      if (nextWebSearchConfig) {
-        note("  [resume] Revalidating Brave Search configuration for sandbox recreation.");
-        const braveApiKey = await ensureValidatedBraveSearchCredential();
-        nextWebSearchConfig = braveApiKey ? { fetchEnabled: true } : null;
-        if (nextWebSearchConfig) {
-          note("  [resume] Reusing Brave Search configuration.");
-        }
-      } else {
-        nextWebSearchConfig = await configureWebSearch(null, agent, webSearchSupportProbePath);
-      }
-      await startRecordedStep("sandbox", { provider, model });
-      const recordedMessagingChannels = getRecordedMessagingChannelsForResume(resume, session, sandboxName);
-      if (recordedMessagingChannels) {
-        selectedMessagingChannels = recordedMessagingChannels;
-        if (selectedMessagingChannels.length > 0) {
-          note(
-            `  [non-interactive] Reusing messaging channel configuration: ${selectedMessagingChannels.join(", ")}`,
-          );
-        }
-      } else {
-        const existing = sandboxName
-          ? registry.getSandbox(sandboxName)?.messagingChannels ??
-            session?.messagingChannels ??
-            null
-          : session?.messagingChannels ?? null;
-        selectedMessagingChannels = await setupMessagingChannels(agent, existing);
-      }
-      const messagingChannelConfig = readMessagingChannelConfigFromEnv();
-      onboardSession.updateSession((current: Session) => {
-        current.messagingChannels = selectedMessagingChannels;
-        current.messagingChannelConfig = messagingChannelConfig;
-        return current;
-      });
-      if (!sandboxName) {
-        sandboxName = await promptValidatedSandboxName(agent);
-      }
-      if (typeof model !== "string" || typeof provider !== "string") {
-        console.error("  Inference selection is incomplete; cannot create sandbox.");
-        process.exit(1);
-      }
-      if (fresh) {
-        stopStaleDashboardListenersForSandbox(registry.listSandboxes().sandboxes, sandboxName);
-      }
-      sandboxName = await createSandbox(
-        gpu,
-        model,
-        provider,
-        preferredInferenceApi,
-        sandboxName,
-        nextWebSearchConfig,
-        selectedMessagingChannels,
-        fromDockerfile,
-        agent,
-        opts.controlUiPort || null,
-        sandboxGpuConfig,
-        hermesToolGateways,
-      );
-      webSearchConfig = nextWebSearchConfig;
-      registry.updateSandbox(sandboxName, {
-        model,
-        provider,
-        ...getSandboxAgentRegistryFields(agent, !fromDockerfile),
-      });
-      registry.setDefault(sandboxName);
-      await recordStepComplete(
-        "sandbox",
-        toSessionUpdates({
-          sandboxName,
-          provider,
-          model,
-          nimContainer,
-          webSearchConfig,
-          messagingChannelConfig,
-          hermesToolGateways,
-        }),
-      );
-    }
-
-    if (
-      typeof sandboxName !== "string" ||
-      typeof provider !== "string" ||
-      typeof model !== "string"
-    ) {
-      console.error("  Onboarding state is incomplete after sandbox setup.");
-      process.exit(1);
-    }
+      controlUiPort: opts.controlUiPort || null,
+      rootDir: ROOT,
+      deps: {
+        resolvePath: path.resolve,
+        agentSupportsWebSearch,
+        note,
+        updateSession: onboardSession.updateSession,
+        getStoredMessagingChannelConfig,
+        hydrateMessagingChannelConfig,
+        messagingChannelConfigsEqual,
+        persistMessagingChannelConfigToSession,
+        getSandboxReuseState,
+        computeTelegramRequireMention,
+        hasSandboxGpuDrift,
+        hasWechatConfigDrift,
+        getSandboxHermesToolGateways: (name) => registry.getSandbox(name)?.hermesToolGateways,
+        normalizeHermesToolGatewaySelections,
+        stringSetsEqual,
+        removeSandboxFromRegistry: registry.removeSandbox.bind(registry),
+        repairRecordedSandbox,
+        ensureValidatedBraveSearchCredential,
+        configureWebSearch,
+        startRecordedStep,
+        getRecordedMessagingChannelsForResume,
+        getSandboxMessagingChannels: (name) => registry.getSandbox(name)?.messagingChannels,
+        setupMessagingChannels,
+        readMessagingChannelConfigFromEnv,
+        promptValidatedSandboxName,
+        stopStaleDashboardListenersForSandbox,
+        listRegistrySandboxes: registry.listSandboxes,
+        createSandbox,
+        updateSandboxRegistry: (name, updates) => registry.updateSandbox(name, updates),
+        setDefaultSandbox: registry.setDefault,
+        getSandboxAgentRegistryFields,
+        recordStepComplete,
+        toSessionUpdates: (updates) => toSessionUpdates(updates as Parameters<typeof toSessionUpdates>[0]),
+        skippedStepMessage,
+        error: (message) => console.error(message),
+        exitProcess: (code) => process.exit(code),
+      },
+    });
+    session = sandboxStateResult.session;
+    sandboxName = sandboxStateResult.sandboxName;
+    webSearchConfig = sandboxStateResult.webSearchConfig ?? null;
+    selectedMessagingChannels = sandboxStateResult.selectedMessagingChannels;
+    const webSearchSupported = sandboxStateResult.webSearchSupported;
 
     if (agent) {
       await agentOnboard.handleAgentSetup(sandboxName, model, provider, agent, resume, session, {
