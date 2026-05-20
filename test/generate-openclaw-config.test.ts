@@ -266,9 +266,8 @@ describe("generate-openclaw-config.py: config generation", () => {
   it("seeds channels.openclaw-weixin when the base plugin install registry exists", () => {
     const configPath = path.join(tmpDir, ".openclaw", "openclaw.json");
     const installEntry = {
-      type: "npm",
+      source: "npm",
       spec: "@tencent-weixin/openclaw-weixin@2.4.2",
-      resolved: "@tencent-weixin/openclaw-weixin@2.4.2",
     };
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     fs.writeFileSync(
@@ -327,9 +326,8 @@ describe("generate-openclaw-config.py: config generation", () => {
     const configPath = path.join(tmpDir, ".openclaw", "openclaw.json");
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     const installEntry = {
-      type: "npm",
+      source: "npm",
       spec: "@tencent-weixin/openclaw-weixin@2.4.2",
-      resolved: "@tencent-weixin/openclaw-weixin@2.4.2",
     };
     fs.writeFileSync(
       configPath,
