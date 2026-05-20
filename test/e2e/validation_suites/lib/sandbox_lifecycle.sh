@@ -160,7 +160,7 @@ sandbox_lifecycle_assert_snapshot_create_list_restore_marker() {
     sandbox_lifecycle_fail validation.sandbox_snapshot.restore_rolls_back_marker "snapshot restore failed"
     return 1
   }
-  sandbox_lifecycle_run_with_timeout 30 openshell sandbox exec "${E2E_SANDBOX_NAME}" -- sh -lc 'test "$(cat /tmp/nemoclaw-lifecycle-marker 2>/dev/null)" = lifecycle-marker-before-snapshot' >/dev/null || {
+  sandbox_lifecycle_run_with_timeout 30 openshell sandbox exec "${E2E_SANDBOX_NAME}" -- sh -lc 'actual=$(cat /tmp/nemoclaw-lifecycle-marker 2>/dev/null); test "${actual}" = lifecycle-marker-before-snapshot' >/dev/null || {
     sandbox_lifecycle_fail validation.sandbox_snapshot.restore_rolls_back_marker "marker did not roll back"
     return 1
   }
