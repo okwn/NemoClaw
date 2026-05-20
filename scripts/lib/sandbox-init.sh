@@ -21,11 +21,11 @@
 _SANDBOX_INIT_LOADED=1
 
 # ── /tmp trust boundary map ──────────────────────────────────────
-# Files in /tmp that cross user boundaries. Every file sourced by
-# .bashrc/.profile MUST be root-owned 444 in root mode.
+# Files in /tmp that cross user boundaries. Every file sourced by system-wide
+# shell hooks MUST be root-owned 444 in root mode.
 #
 # File                         Owner      Mode  Writer   Reader    Sourced?
-# /tmp/nemoclaw-proxy-env.sh   root       444   root     sandbox   YES (.bashrc/.profile)
+# /tmp/nemoclaw-proxy-env.sh   root       444   root     sandbox   YES (/etc shell hooks)
 # /tmp/gateway.log             gateway    644   gateway  all       no (world-readable for diagnostics)
 # /tmp/auto-pair.log           sandbox    600   sandbox  sandbox   no
 # /tmp/.npm-cache/             sandbox    755   sandbox  sandbox   no (tool data)

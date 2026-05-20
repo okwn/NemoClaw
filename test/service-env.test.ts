@@ -533,15 +533,34 @@ describe("service environment", () => {
       }
     });
 
-    it("backfills proxy-env.sh source shims into stale rc files", () => {
+    it("removes legacy proxy-env.sh source shims from sandbox user rc files", () => {
       const fakeHome = join(tmpdir(), `nemoclaw-rc-shim-test-${process.pid}`);
       const proxyEnvPath = join(fakeHome, "proxy-env.sh");
       const tmpFile = join(tmpdir(), `nemoclaw-rc-shim-write-test-${process.pid}.sh`);
-      const runtimeEnvShim = `[ -f ${proxyEnvPath} ] && . ${proxyEnvPath}`;
       try {
         execFileSync("mkdir", ["-p", fakeHome]);
-        writeFileSync(join(fakeHome, ".bashrc"), "# old bashrc\n", { mode: 0o644 });
-        writeFileSync(join(fakeHome, ".profile"), "# old profile\n", { mode: 0o444 });
+        writeFileSync(
+          join(fakeHome, ".bashrc"),
+          [
+            "# old bashrc",
+            "# Source runtime proxy config",
+            `[ -f ${proxyEnvPath} ] && . ${proxyEnvPath}`,
+            "export PATH=/usr/local/bin:$PATH",
+            "",
+          ].join("\n"),
+          { mode: 0o644 },
+        );
+        writeFileSync(
+          join(fakeHome, ".profile"),
+          [
+            "# old profile",
+            "# Source runtime proxy config",
+            `[ -f ${proxyEnvPath} ] && . ${proxyEnvPath}`,
+            "umask 022",
+            "",
+          ].join("\n"),
+          { mode: 0o444 },
+        );
 
         const wrapper = [
           "#!/usr/bin/env bash",
@@ -556,7 +575,9 @@ describe("service environment", () => {
 
         for (const rcName of [".bashrc", ".profile"]) {
           const rcFile = readFileSync(join(fakeHome, rcName), "utf-8");
-          expect(rcFile.split(runtimeEnvShim).length - 1).toBe(1);
+          expect(rcFile.toLowerCase()).not.toContain("proxy");
+          expect(rcFile).not.toContain(proxyEnvPath);
+          expect(rcFile).toContain(rcName === ".bashrc" ? "export PATH" : "umask 022");
         }
       } finally {
         try {

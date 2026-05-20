@@ -1564,12 +1564,9 @@ emit_sandbox_sourced_file "$_SECCOMP_GUARD_SCRIPT" <"$_SECCOMP_GUARD_SOURCE"
 export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--require $_SECCOMP_GUARD_SCRIPT"
 
 # OpenShell re-injects narrow NO_PROXY/no_proxy=127.0.0.1,localhost,::1 every
-# time a user connects via `openshell sandbox connect`.  The connect path spawns
-# `/bin/bash -i` (interactive, non-login), which sources ~/.bashrc — NOT
-# ~/.profile or /etc/profile.d/*.
-#
-# We write dynamic connect-session config to /tmp/nemoclaw-proxy-env.sh. The
-# pre-built .bashrc and .profile source this file automatically.
+# time a user connects via `openshell sandbox connect`. Dynamic connect-session
+# config lives in /tmp/nemoclaw-proxy-env.sh and is sourced by system-wide shell
+# hooks from the base image, keeping per-user rc files free of proxy entries.
 #
 # SECURITY: The proxy-env file is written via emit_sandbox_sourced_file()
 # which ensures root:root 444 in root mode (sandbox cannot modify) and
@@ -1776,10 +1773,9 @@ GUARDENVEOF
 # primary process whose exit status is returned).
 # Each code path below sets these before registering the trap.
 
-# Stale base images may have rc files from before the runtime env source shim
-# was baked into Dockerfile.base. Backfill the static shim before lock_rc_files
-# makes those files read-only so connect sessions still receive proxy config,
-# gateway auth, and command guards through /tmp/nemoclaw-proxy-env.sh.
+# Keep per-user rc files out of runtime proxy wiring. Older images and prior
+# entrypoint versions wrote a two-line shim into .bashrc/.profile; remove that
+# managed stanza before lock_rc_files makes the files read-only again.
 ensure_runtime_shell_env_shim() {
   local failed=0
   local rc_file
@@ -1795,18 +1791,20 @@ ensure_runtime_shell_env_shim() {
       failed=1
       continue
     fi
-    if [ -f "$rc_file" ] && grep -qxF "$_RUNTIME_SHELL_ENV_SHIM" "$rc_file" 2>/dev/null; then
+    if [ -f "$rc_file" ] \
+      && ! grep -qxF "$_RUNTIME_SHELL_ENV_SHIM" "$rc_file" 2>/dev/null \
+      && ! grep -q '/tmp/nemoclaw-proxy-env\.sh' "$rc_file" 2>/dev/null \
+      && ! grep -qxF '# Source runtime proxy config' "$rc_file" 2>/dev/null; then
       continue
     fi
-
     if [ "$(id -u)" -eq 0 ] && [ -f "$rc_file" ]; then
       if ! chown root:root "$rc_file" 2>/dev/null; then
-        echo "[SECURITY] could not take ownership of $rc_file before shim backfill" >&2
+        echo "[SECURITY] could not take ownership of $rc_file before shim cleanup" >&2
         failed=1
         continue
       fi
       if ! chmod 644 "$rc_file" 2>/dev/null; then
-        echo "[SECURITY] could not make $rc_file writable before shim backfill" >&2
+        echo "[SECURITY] could not make $rc_file writable before shim cleanup" >&2
         failed=1
         continue
       fi
@@ -1814,20 +1812,42 @@ ensure_runtime_shell_env_shim() {
       chmod u+w "$rc_file" 2>/dev/null || true
     fi
 
-    if [ -e "$rc_file" ]; then
-      if ! printf '\n%s\n%s\n' '# Source runtime proxy config' "$_RUNTIME_SHELL_ENV_SHIM" >>"$rc_file"; then
-        echo "[SECURITY] could not backfill runtime env shim into $rc_file" >&2
-        failed=1
-        continue
-      fi
-    elif ! printf '%s\n%s\n' '# Source runtime proxy config' "$_RUNTIME_SHELL_ENV_SHIM" >"$rc_file"; then
-      echo "[SECURITY] could not create $rc_file with runtime env shim" >&2
-      failed=1
+    if [ ! -f "$rc_file" ]; then
       continue
     fi
 
-    if ! grep -qxF "$_RUNTIME_SHELL_ENV_SHIM" "$rc_file" 2>/dev/null; then
-      echo "[SECURITY] runtime env shim missing after backfill: $rc_file" >&2
+    local tmp_file
+    tmp_file="${rc_file}.nemoclaw-clean.$$"
+    if ! awk -v shim="$_RUNTIME_SHELL_ENV_SHIM" '
+      $0 == "# Source runtime proxy config" {
+        if ((getline next_line) > 0) {
+          if (next_line == shim || next_line ~ /\/tmp\/nemoclaw-proxy-env\.sh/) {
+            next
+          }
+          print $0
+          print next_line
+          next
+        }
+      }
+      $0 == shim { next }
+      $0 ~ /\/tmp\/nemoclaw-proxy-env\.sh/ { next }
+      { print }
+    ' "$rc_file" >"$tmp_file"; then
+      rm -f "$tmp_file"
+      echo "[SECURITY] could not clean runtime env shim from $rc_file" >&2
+      failed=1
+      continue
+    fi
+    if ! cat "$tmp_file" >"$rc_file"; then
+      rm -f "$tmp_file"
+      echo "[SECURITY] could not replace cleaned rc file: $rc_file" >&2
+      failed=1
+      continue
+    fi
+    rm -f "$tmp_file"
+
+    if grep -qxF "$_RUNTIME_SHELL_ENV_SHIM" "$rc_file" 2>/dev/null; then
+      echo "[SECURITY] runtime env shim still present after cleanup: $rc_file" >&2
       failed=1
     fi
   done
