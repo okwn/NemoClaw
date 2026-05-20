@@ -386,7 +386,7 @@ Classify scoped legacy assertions into mapped, deferred, or retired groups and d
 - The classification distinguishes setup/onboard checks from post-onboard lifecycle validation.
 - Initial parity math shows how 100% or greater coverage will be demonstrated.
 
-## Phase 2: Sandbox Lifecycle Primitive Library
+## Phase 2: Sandbox Lifecycle Primitive Library [COMPLETED: 1752bb4]
 
 ### Objective
 
