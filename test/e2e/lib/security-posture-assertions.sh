@@ -141,7 +141,7 @@ security_posture_assert_rc_files() {
 security_posture_assert_proxy_env() {
   local sandbox_name="$1"
   local agent_name="$2"
-  local function_name guard_arg out rc
+  local function_name guard_arg out rc allow_non_root_owner
 
   case "$agent_name" in
     hermes)
@@ -154,11 +154,19 @@ security_posture_assert_proxy_env() {
       ;;
   esac
 
+  allow_non_root_owner=0
+  if [ "${NEMOCLAW_E2E_EXPECT_NON_ROOT_HOST:-}" = "1" ]; then
+    # OpenShell's non-root host posture creates the runtime proxy-env file
+    # after dropping to the sandbox user. Keep root ownership required in
+    # normal lanes, but accept current-user ownership for that explicit lane.
+    allow_non_root_owner=1
+  fi
+
   rc=0
-  out="$(security_posture_sandbox_exec "$sandbox_name" "f=/tmp/nemoclaw-proxy-env.sh; bad=0; if [ ! -f \"\$f\" ]; then echo MISSING_PROXY_ENV; exit 1; fi; if [ -L \"\$f\" ]; then echo SYMLINK_PROXY_ENV; bad=1; fi; meta=\$(stat -c \"%a %U:%G\" \"\$f\" 2>/dev/null || true); echo \"META \$f \$meta\"; set -- \$meta; mode=\"\${1:-}\"; owner=\"\${2:-}\"; current_owner=\"\$(id -un):\$(id -gn)\"; if [ \"\$mode\" != \"444\" ]; then echo \"BAD_PROXY_ENV_MODE \$mode\"; bad=1; fi; case \"\$owner\" in root:root) ;; \"\$current_owner\") echo \"NON_ROOT_PROXY_ENV_OWNER \$owner\" ;; *) echo \"BAD_PROXY_ENV_OWNER \$owner\"; bad=1 ;; esac; grep -Fq '# nemoclaw-configure-guard begin' \"\$f\" || { echo MISSING_GUARD_BEGIN; bad=1; }; grep -Fq '${function_name}() {' \"\$f\" || { echo MISSING_AGENT_GUARD_FUNCTION; bad=1; }; grep -Fq '# nemoclaw-configure-guard end' \"\$f\" || { echo MISSING_GUARD_END; bad=1; }; exit \"\$bad\"")" || rc=$?
+  out="$(security_posture_sandbox_exec "$sandbox_name" "f=/tmp/nemoclaw-proxy-env.sh; allow_non_root_owner=${allow_non_root_owner}; bad=0; if [ ! -f \"\$f\" ]; then echo MISSING_PROXY_ENV; exit 1; fi; if [ -L \"\$f\" ]; then echo SYMLINK_PROXY_ENV; bad=1; fi; meta=\$(stat -c \"%a %U:%G\" \"\$f\" 2>/dev/null || true); echo \"META \$f \$meta\"; set -- \$meta; mode=\"\${1:-}\"; owner=\"\${2:-}\"; current_owner=\"\$(id -un):\$(id -gn)\"; if [ \"\$mode\" != \"444\" ]; then echo \"BAD_PROXY_ENV_MODE \$mode\"; bad=1; fi; case \"\$owner\" in root:root) ;; \"\$current_owner\") if [ \"\$allow_non_root_owner\" = \"1\" ]; then echo \"NON_ROOT_PROXY_ENV_OWNER \$owner\"; else echo \"BAD_PROXY_ENV_OWNER \$owner\"; bad=1; fi ;; *) echo \"BAD_PROXY_ENV_OWNER \$owner\"; bad=1 ;; esac; grep -Fq '# nemoclaw-configure-guard begin' \"\$f\" || { echo MISSING_GUARD_BEGIN; bad=1; }; grep -Fq '${function_name}() {' \"\$f\" || { echo MISSING_AGENT_GUARD_FUNCTION; bad=1; }; grep -Fq '# nemoclaw-configure-guard end' \"\$f\" || { echo MISSING_GUARD_END; bad=1; }; exit \"\$bad\"")" || rc=$?
   info "runtime proxy-env metadata: ${out//$'\n'/; }"
   if [ "$rc" -eq 0 ]; then
-    pass "Runtime proxy env is mode 444 and carries the ${function_name} configure guard"
+    pass "Runtime proxy env is mode 444 with an accepted owner and carries the ${function_name} configure guard"
   else
     fail "Runtime proxy env is not locked or missing guard content: ${out:0:500}"
   fi
