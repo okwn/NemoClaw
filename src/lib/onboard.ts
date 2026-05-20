@@ -17,7 +17,6 @@ const {
 }: typeof import("./onboard/branding") = require("./onboard/branding");
 const { cleanupTempDir }: typeof import("./onboard/temp-files") = require("./onboard/temp-files");
 const { stopStaleDashboardListenersForSandbox } = require("./onboard/stale-gateway-cleanup");
-const { looksLikeForwardPortConflict, runBackgroundForwardStartWithPortReleaseRetries }: typeof import("./onboard/forward-start") = require("./onboard/forward-start");
 const {
   ensureOllamaLoopbackSystemdOverride,
 }: typeof import("./onboard/ollama-systemd") = require("./onboard/ollama-systemd");
@@ -50,7 +49,7 @@ const {
 const {
   agentSupportsWebSearch,
 }: typeof import("./onboard/web-search-support") = require("./onboard/web-search-support");
-const dashboardAccess: typeof import("./onboard/dashboard-access") = require("./onboard/dashboard-access");
+const onboardDashboard: typeof import("./onboard/dashboard") = require("./onboard/dashboard");
 const {
   buildGatewayBootstrapSecretsScript,
   createGatewayBootstrapRepairHelpers,
@@ -87,9 +86,6 @@ const {
 const bedrockRuntimeOnboard: typeof import("./onboard/bedrock-runtime") =
   require("./onboard/bedrock-runtime");
 const { buildVllmMenuEntries }: typeof import("./onboard/vllm-menu") = require("./onboard/vllm-menu");
-const {
-  prepareModelRouterVenv,
-}: typeof import("./onboard/model-router-python") = require("./onboard/model-router-python");
 const crypto = require("node:crypto");
 const fs = require("fs");
 const os = require("os");
@@ -279,7 +275,15 @@ const { resolveSandboxImageTagFromCreateOutput } =
   require("./domain/sandbox/image-tag") as typeof import("./domain/sandbox/image-tag");
 const nim: typeof import("./inference/nim") = require("./inference/nim");
 const onboardSession: typeof import("./state/onboard-session") = require("./state/onboard-session");
-const { OnboardRuntime }: typeof import("./onboard/machine/runtime") = require("./onboard/machine/runtime");
+const { toSessionUpdates }: typeof import("./onboard/session-updates") = require("./onboard/session-updates");
+const modelRouter: typeof import("./onboard/model-router") = require("./onboard/model-router");
+const {
+  DEFAULT_MODEL_ROUTER_CREDENTIAL_ENV,
+  isRoutedInferenceProvider,
+  loadBlueprintProfile,
+  reconcileModelRouter,
+} = modelRouter;
+const { OnboardRuntimeBoundary }: typeof import("./onboard/runtime-boundary") = require("./onboard/runtime-boundary");
 const { handleAgentSetupState }: typeof import("./onboard/machine/handlers/agent-setup") = require("./onboard/machine/handlers/agent-setup");
 const { handleFinalizationState }: typeof import("./onboard/machine/handlers/finalization") = require("./onboard/machine/handlers/finalization");
 const { handleGatewayState }: typeof import("./onboard/machine/handlers/gateway") = require("./onboard/machine/handlers/gateway");
@@ -293,8 +297,6 @@ const { ensureUsageNoticeConsent } = require("./onboard/usage-notice");
 const {
   findAvailableDashboardPort,
   findDashboardForwardOwner,
-  getOccupiedPorts,
-  isLiveForwardStatus,
 } = require("./onboard/dashboard-port") as typeof import("./onboard/dashboard-port");
 const { destroyGatewayForReuse } = require("./onboard/gateway-cleanup") as typeof import("./onboard/gateway-cleanup");
 const { verifyGatewayContainerRunning } =
@@ -341,7 +343,6 @@ const sandboxState: typeof import("./state/sandbox") = require("./state/sandbox"
 const validation: typeof import("./validation") = require("./validation");
 const urlUtils: typeof import("./core/url-utils") = require("./core/url-utils");
 const buildContext = require("./build-context");
-const dashboardContract: typeof import("./dashboard/contract") = require("./dashboard/contract");
 const httpProbe: typeof import("./adapters/http/probe") = require("./adapters/http/probe");
 const modelPrompts: typeof import("./inference/model-prompts") = require("./inference/model-prompts");
 const providerModels: typeof import("./inference/provider-models") = require("./inference/provider-models");
@@ -388,9 +389,9 @@ import { decidePolicyCarryForward } from "./onboard/policy-carryforward";
 import { getSuggestedPolicyPresets } from "./onboard/policy-presets";
 import {
   computeSetupPresetSuggestions as computeSetupPresetSuggestionsImpl,
-  setupPoliciesWithSelection as setupPoliciesWithSelectionImpl,
   type SetupPolicySelectionOptions,
   type SetupPresetSuggestionOptions,
+  setupPoliciesWithSelection as setupPoliciesWithSelectionImpl,
 } from "./onboard/policy-selection";
 import {
   getResumeSandboxGpuOverrides,
@@ -417,7 +418,6 @@ const USE_COLOR = !process.env.NO_COLOR && !!process.stdout.isTTY;
 const DIM = USE_COLOR ? "\x1b[2m" : "";
 const RESET = USE_COLOR ? "\x1b[0m" : "";
 let OPENSHELL_BIN: string | null = null;
-let ONBOARD_RUNTIME: import("./onboard/machine/runtime").OnboardRuntime | null = null;
 const GATEWAY_NAME = "nemoclaw";
 const BACK_TO_SELECTION = "__NEMOCLAW_BACK_TO_SELECTION__";
 type HermesAuthMethod = "oauth" | "api_key";
@@ -702,503 +702,6 @@ function getBlueprintMaxOpenshellVersion(rootDir = ROOT): string | null {
 }
 
 type OpenshellChannel = "stable" | "dev" | "auto";
-
-/**
- * Load a named inference profile and router config from blueprint.yaml.
- * Returns null if the blueprint or profile is missing.
- */
-type BlueprintRouterConfig = {
-  enabled?: boolean;
-  port?: number;
-  pool_config_path?: string;
-  credential_env?: string;
-};
-
-type BlueprintInferenceProfile = {
-  provider_name?: string;
-  endpoint?: string;
-  model: string;
-  credential_env?: string;
-  credential_default?: string;
-  router: BlueprintRouterConfig;
-};
-
-function loadBlueprintProfile(
-  profileName: string,
-  rootDir: string = ROOT,
-): BlueprintInferenceProfile | null {
-  try {
-    const YAML = require("yaml");
-    const blueprintPath = path.join(rootDir, "nemoclaw-blueprint", "blueprint.yaml");
-    if (!fs.existsSync(blueprintPath)) return null;
-    const raw = fs.readFileSync(blueprintPath, "utf8");
-    const parsed = YAML.parse(raw);
-    const profile = parsed?.components?.inference?.profiles?.[profileName];
-    if (!profile) return null;
-    const router = { ...(parsed?.components?.router || {}) };
-    if (typeof profile.credential_env === "string" && profile.credential_env.trim().length > 0) {
-      router.credential_env = profile.credential_env;
-    }
-    return { ...profile, router } as BlueprintInferenceProfile;
-  } catch {
-    return null;
-  }
-}
-
-const ROUTER_HEALTH_RETRIES = 15;
-const ROUTER_HEALTH_INTERVAL_MS = 2000;
-const ROUTER_HEALTH_TIMEOUT_MS = 3000;
-const MODEL_ROUTER_RELATIVE_DIR = path.join("nemoclaw-blueprint", "router", "llm-router");
-const MODEL_ROUTER_VENV_DIR = path.join(os.homedir(), ".nemoclaw", "model-router-venv");
-const MODEL_ROUTER_FINGERPRINT_FILE = ".nemoclaw-source-fingerprint";
-const MODEL_ROUTER_FINGERPRINT_IGNORED_NAMES = new Set([
-  ".git",
-  ".hg",
-  ".mypy_cache",
-  ".pytest_cache",
-  ".ruff_cache",
-  ".svn",
-  ".venv",
-  "__pycache__",
-  "build",
-  "dist",
-  "node_modules",
-  "venv",
-]);
-const DEFAULT_MODEL_ROUTER_CREDENTIAL_ENV = "NVIDIA_API_KEY";
-
-async function isRouterHealthy(port: number, timeoutMs = ROUTER_HEALTH_TIMEOUT_MS): Promise<boolean> {
-  const http = require("http");
-  return new Promise<boolean>((resolve) => {
-    let settled = false;
-    const settle = (healthy: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(healthy);
-    };
-    const request = http
-      .get(`http://127.0.0.1:${port}/health`, (res: import("node:http").IncomingMessage) => {
-        res.resume();
-        settle((res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300);
-      })
-      .on("error", () => settle(false));
-    request.setTimeout(timeoutMs, () => {
-      request.destroy();
-      settle(false);
-    });
-  });
-}
-
-function isProcessRunning(pid: number | null | undefined): boolean {
-  if (!Number.isInteger(pid) || Number(pid) <= 0) return false;
-  try {
-    process.kill(Number(pid), 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function stopModelRouterProcess(pid: number, port: number): Promise<void> {
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    return;
-  }
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    if (!isProcessRunning(pid) && !(await isRouterHealthy(port, 1000))) return;
-  }
-  try {
-    process.kill(pid, "SIGKILL");
-  } catch {
-    // already stopped
-  }
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    if (!isProcessRunning(pid) && !(await isRouterHealthy(port, 1000))) return;
-  }
-}
-
-function resolveHostCommandPath(commandName: string): string | null {
-  const result = runCapture(["sh", "-c", 'command -v "$1"', "--", commandName], {
-    ignoreError: true,
-  }).trim();
-  return result || null;
-}
-
-function modelRouterPackageDir(): string {
-  return path.join(ROOT, MODEL_ROUTER_RELATIVE_DIR);
-}
-
-function modelRouterVenvDir(): string {
-  return process.env.NEMOCLAW_MODEL_ROUTER_VENV || MODEL_ROUTER_VENV_DIR;
-}
-
-function modelRouterCommandPath(venvDir = modelRouterVenvDir()): string {
-  return path.join(venvDir, "bin", "model-router");
-}
-
-function modelRouterFingerprintPath(venvDir = modelRouterVenvDir()): string {
-  return path.join(venvDir, MODEL_ROUTER_FINGERPRINT_FILE);
-}
-
-function isExecutableFile(filePath: string): boolean {
-  try {
-    fs.accessSync(filePath, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function isModelRouterPackageReady(routerDir = modelRouterPackageDir()): boolean {
-  return fs.existsSync(path.join(routerDir, "pyproject.toml")) ||
-    fs.existsSync(path.join(routerDir, "setup.py"));
-}
-
-function shouldSkipModelRouterFingerprintEntry(name: string): boolean {
-  return MODEL_ROUTER_FINGERPRINT_IGNORED_NAMES.has(name) || name.endsWith(".egg-info");
-}
-
-function hashModelRouterSourceTree(routerDir = modelRouterPackageDir()): string | null {
-  const sourceHash = crypto.createHash("sha256");
-
-  const hashDirectory = (currentDir: string): boolean => {
-    let entries: import("fs").Dirent[];
-    try {
-      entries = fs
-        .readdirSync(currentDir, { withFileTypes: true })
-        .sort((left: import("fs").Dirent, right: import("fs").Dirent) =>
-          left.name.localeCompare(right.name),
-        );
-    } catch {
-      return false;
-    }
-
-    let hashedSourceFile = false;
-    for (const entry of entries) {
-      if (shouldSkipModelRouterFingerprintEntry(entry.name)) continue;
-      if (entry.name.endsWith(".pyc") || entry.name.endsWith(".pyo")) continue;
-
-      const entryPath = path.join(currentDir, entry.name);
-      const relativePath = path.relative(routerDir, entryPath).split(path.sep).join("/");
-      if (entry.isDirectory()) {
-        hashedSourceFile = hashDirectory(entryPath) || hashedSourceFile;
-        continue;
-      }
-      if (entry.isSymbolicLink()) {
-        try {
-          sourceHash.update(`link:${relativePath}\0`);
-          sourceHash.update(fs.readlinkSync(entryPath));
-          sourceHash.update("\0");
-          hashedSourceFile = true;
-        } catch {
-          // Ignore unreadable links; the install step will fail if they are required.
-        }
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      sourceHash.update(`file:${relativePath}\0`);
-      sourceHash.update(fs.readFileSync(entryPath));
-      sourceHash.update("\0");
-      hashedSourceFile = true;
-    }
-    return hashedSourceFile;
-  };
-
-  return hashDirectory(routerDir) ? `files:${sourceHash.digest("hex")}` : null;
-}
-
-function getModelRouterSourceFingerprint(routerDir = modelRouterPackageDir()): string | null {
-  const gitHead = runCapture(["git", "-C", routerDir, "rev-parse", "HEAD"], {
-    ignoreError: true,
-  }).trim();
-  if (/^[0-9a-f]{40}$/i.test(gitHead)) return `git:${gitHead}`;
-
-  const gitLink = runCapture(["git", "-C", ROOT, "rev-parse", `HEAD:${MODEL_ROUTER_RELATIVE_DIR}`], {
-    ignoreError: true,
-  }).trim();
-  if (/^[0-9a-f]{40}$/i.test(gitLink)) return `gitlink:${gitLink}`;
-
-  return hashModelRouterSourceTree(routerDir);
-}
-
-function readModelRouterInstalledFingerprint(venvDir = modelRouterVenvDir()): string | null {
-  try {
-    const fingerprint = fs.readFileSync(modelRouterFingerprintPath(venvDir), "utf8").trim();
-    return fingerprint || null;
-  } catch {
-    return null;
-  }
-}
-
-function writeModelRouterInstalledFingerprint(
-  fingerprint: string | null,
-  venvDir = modelRouterVenvDir(),
-): void {
-  if (!fingerprint) return;
-  fs.writeFileSync(modelRouterFingerprintPath(venvDir), `${fingerprint}\n`, { mode: 0o600 });
-}
-
-function isManagedModelRouterCurrent(
-  routerDir = modelRouterPackageDir(),
-  venvDir = modelRouterVenvDir(),
-): boolean {
-  if (!isExecutableFile(modelRouterCommandPath(venvDir))) return false;
-  const sourceFingerprint = getModelRouterSourceFingerprint(routerDir);
-  return Boolean(
-    sourceFingerprint && readModelRouterInstalledFingerprint(venvDir) === sourceFingerprint,
-  );
-}
-
-function initializeModelRouterSubmodule(routerDir = modelRouterPackageDir()): void {
-  if (isModelRouterPackageReady(routerDir)) return;
-  if (!fs.existsSync(path.join(ROOT, ".gitmodules")) || !fs.existsSync(path.join(ROOT, ".git"))) {
-    return;
-  }
-  console.log("  Initializing Model Router source...");
-  run(["git", "-C", ROOT, "submodule", "update", "--init", "--depth", "1", MODEL_ROUTER_RELATIVE_DIR], {
-    ignoreError: true,
-  });
-}
-
-function installModelRouterCommand(routerDir = modelRouterPackageDir()): string {
-  initializeModelRouterSubmodule(routerDir);
-  if (!isModelRouterPackageReady(routerDir)) {
-    throw new Error(
-      `Model Router source is not initialized at ${routerDir}. ` +
-        `Run: git -C ${ROOT} submodule update --init --depth 1 ${MODEL_ROUTER_RELATIVE_DIR}`,
-    );
-  }
-
-  const venvDir = modelRouterVenvDir();
-  const routerCommand = modelRouterCommandPath(venvDir);
-  const sourceFingerprint = getModelRouterSourceFingerprint(routerDir);
-  const allowReplaceExistingVenv =
-    path.resolve(venvDir) === path.resolve(MODEL_ROUTER_VENV_DIR) ||
-    readModelRouterInstalledFingerprint(venvDir) !== null;
-  const venvPython = prepareModelRouterVenv({
-    venvDir,
-    allowReplaceExisting: allowReplaceExistingVenv,
-  });
-
-  const installResult = run(
-    [venvPython, "-m", "pip", "install", "--quiet", "--upgrade", `${routerDir}[prefill,proxy]`],
-    {
-      ignoreError: true,
-      timeout: 600_000,
-    },
-  );
-  if (installResult.status !== 0) {
-    throw new Error("Failed to install Model Router dependencies.");
-  }
-  if (!isExecutableFile(routerCommand)) {
-    throw new Error("Model Router install did not produce the model-router command.");
-  }
-  writeModelRouterInstalledFingerprint(sourceFingerprint, venvDir);
-  return routerCommand;
-}
-
-function ensureModelRouterCommand(): string {
-  const routerDir = modelRouterPackageDir();
-  const venvDir = modelRouterVenvDir();
-  const managedCommand = modelRouterCommandPath(venvDir);
-
-  if (isModelRouterPackageReady(routerDir) && isManagedModelRouterCurrent(routerDir, venvDir)) {
-    return managedCommand;
-  }
-
-  if (!isModelRouterPackageReady(routerDir)) {
-    initializeModelRouterSubmodule(routerDir);
-  }
-
-  if (isModelRouterPackageReady(routerDir)) {
-    if (isManagedModelRouterCurrent(routerDir, venvDir)) return managedCommand;
-    return installModelRouterCommand(routerDir);
-  }
-
-  if (isExecutableFile(managedCommand)) return managedCommand;
-  return resolveHostCommandPath("model-router") || installModelRouterCommand();
-}
-
-/**
- * Start the model-router proxy and wait for it to become healthy.
- * Follows the same pattern as Ollama startup (spawn detached, poll health).
- * Returns the PID of the child process.
- */
-async function startModelRouter(routerCfg: BlueprintRouterConfig): Promise<number> {
-  const routerCommand = ensureModelRouterCommand();
-  const port = routerCfg.port || 4000;
-  const blueprintDir = path.join(ROOT, "nemoclaw-blueprint");
-  const poolConfigPath = path.join(
-    blueprintDir,
-    routerCfg.pool_config_path || "router/pool-config.yaml",
-  );
-  const stateDir = path.join(os.homedir(), ".nemoclaw", "state");
-  const litellmConfigPath = path.join(stateDir, "litellm-proxy.yaml");
-
-  fs.mkdirSync(stateDir, { recursive: true });
-
-  const proxyConfigResult = spawnSync(
-    routerCommand,
-    ["proxy-config", "--config", poolConfigPath, "--output", litellmConfigPath],
-    { encoding: "utf8", timeout: 30_000, cwd: blueprintDir },
-  );
-  if (proxyConfigResult.status !== 0) {
-    throw new Error(
-      `model-router proxy-config failed: ${proxyConfigResult.stderr || proxyConfigResult.error || "unknown error"}`,
-    );
-  }
-
-  const { buildSubprocessEnv } = require("./subprocess-env");
-  const credEnvVars: Record<string, string> = {};
-  const credName = routerCfg.credential_env || DEFAULT_MODEL_ROUTER_CREDENTIAL_ENV;
-  const routedCredential = resolveProviderCredential(credName);
-  const openAiCredential = resolveProviderCredential("OPENAI_API_KEY");
-  if (routedCredential) {
-    credEnvVars[credName] = routedCredential;
-    if (!openAiCredential) credEnvVars.OPENAI_API_KEY = routedCredential;
-  }
-  if (openAiCredential) credEnvVars.OPENAI_API_KEY = openAiCredential;
-  const _providerKey = (process.env.NEMOCLAW_PROVIDER_KEY || "").trim();
-  if (_providerKey) {
-    if (!credEnvVars[credName]) credEnvVars[credName] = _providerKey;
-    if (!credEnvVars.OPENAI_API_KEY) credEnvVars.OPENAI_API_KEY = _providerKey;
-  }
-
-  if (await isRouterHealthy(port)) {
-    throw new Error(
-      `Port ${port} already has a healthy router endpoint; refusing to start a second router.`,
-    );
-  }
-
-  const child = spawn(
-    routerCommand,
-    [
-      "proxy",
-      "--litellm-config", litellmConfigPath,
-      "--router-config", poolConfigPath,
-      "--host", "0.0.0.0",
-      "--port", String(port),
-    ],
-    {
-      detached: true,
-      stdio: "ignore",
-      cwd: blueprintDir,
-      env: buildSubprocessEnv(credEnvVars),
-    },
-  );
-  let childExited = false;
-  let childExitDetail = "";
-  child.once("error", (err: Error) => {
-    childExited = true;
-    childExitDetail = `child failed to start: ${err.message}`;
-  });
-  child.once("exit", (code: number | null, signal: string | null) => {
-    childExited = true;
-    if (!childExitDetail) {
-      childExitDetail = `child exited with code ${code ?? "null"}${signal ? ` signal ${signal}` : ""}`;
-    }
-  });
-  child.unref();
-
-  const pid = child.pid;
-  if (!pid) {
-    throw new Error(
-      "Failed to start model-router proxy: no PID returned" +
-        (childExitDetail ? ` (${childExitDetail})` : ""),
-    );
-  }
-
-  for (let attempt = 0; attempt < ROUTER_HEALTH_RETRIES; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, ROUTER_HEALTH_INTERVAL_MS));
-    if (childExited) break;
-    const healthy = await isRouterHealthy(port);
-    let processAlive = true;
-    try {
-      process.kill(pid, 0);
-    } catch {
-      processAlive = false;
-    }
-    if (healthy && processAlive) return pid;
-    if (!processAlive) {
-      childExited = true;
-      if (!childExitDetail) childExitDetail = "child process is no longer running";
-      break;
-    }
-  }
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    // already dead
-  }
-  throw new Error(
-    `Model router failed to become healthy on port ${port} after ${ROUTER_HEALTH_RETRIES} attempts` +
-      (childExitDetail ? ` (${childExitDetail})` : ""),
-  );
-}
-
-function getRoutedProfile(): BlueprintInferenceProfile {
-  const bp = loadBlueprintProfile("routed");
-  if (!bp || bp.router?.enabled !== true) {
-    throw new Error("Router is not enabled in nemoclaw-blueprint/blueprint.yaml.");
-  }
-  return bp;
-}
-
-function isRoutedInferenceProvider(provider: string | null | undefined): boolean {
-  if (!provider) return false;
-  if (provider === "nvidia-router") return true;
-  const bp = loadBlueprintProfile("routed");
-  return Boolean(bp?.provider_name && provider === bp.provider_name);
-}
-
-async function reconcileModelRouter(): Promise<void> {
-  const bp = getRoutedProfile();
-  const routerPort = bp.router.port || 4000;
-  const routerCredentialEnv =
-    bp.router.credential_env || bp.credential_env || DEFAULT_MODEL_ROUTER_CREDENTIAL_ENV;
-  const routerCredential =
-    hydrateCredentialEnv(routerCredentialEnv) ||
-    normalizeCredentialValue(bp.credential_default || "");
-  if (!routerCredential) {
-    throw new Error(`${routerCredentialEnv} is required to start Model Router.`);
-  }
-  saveCredential(routerCredentialEnv, routerCredential);
-  const routerCredentialHash = hashCredential(routerCredential);
-  const session = onboardSession.loadSession();
-  const recordedPid = session?.routerPid ?? null;
-  const recordedCredentialHash = session?.routerCredentialHash ?? null;
-
-  if (await isRouterHealthy(routerPort)) {
-    if (
-      routerCredentialHash &&
-      recordedCredentialHash === routerCredentialHash &&
-      isProcessRunning(recordedPid)
-    ) {
-      console.log(`  ✓ Model router is already healthy on port ${routerPort}`);
-      return;
-    }
-    if (isProcessRunning(recordedPid)) {
-      console.log("  Restarting model router with updated credentials...");
-      await stopModelRouterProcess(requireValue(recordedPid, "Expected recorded router PID"), routerPort);
-    } else {
-      throw new Error(
-        `Port ${routerPort} already has a healthy router endpoint, but its credential state is unknown. Stop the existing model-router process and rerun onboarding.`,
-      );
-    }
-  }
-
-  console.log("  Starting model router...");
-  const routerPid = await startModelRouter(bp.router);
-  console.log(`  ✓ Model router started (PID ${routerPid}) on port ${routerPort}`);
-  onboardSession.updateSession((current: Session) => {
-    current.routerPid = routerPid;
-    current.routerCredentialHash = routerCredentialHash;
-    return current;
-  });
-}
 
 function getOpenshellChannel(env: NodeJS.ProcessEnv = process.env): OpenshellChannel {
   const raw = String(env.NEMOCLAW_OPENSHELL_CHANNEL || "auto")
@@ -8576,519 +8079,45 @@ async function setupPoliciesWithSelection(
 
 const CONTROL_UI_PORT = DASHBOARD_PORT;
 
-// Dashboard helpers — delegated to src/lib/dashboard/contract.ts
-const { buildChain, buildControlUiUrls } = dashboardContract;
+const {
+  buildChain,
+  buildControlUiUrls,
+  buildOrphanedSandboxRollbackMessage,
+  ensureDashboardForward,
+  ensureAgentDashboardForward,
+  fetchGatewayAuthTokenFromSandbox,
+  getDashboardForwardPort,
+  getDashboardForwardTarget,
+  getWslHostAddress,
+  printDashboard,
+  stopAllDashboardForwards,
+} = onboardDashboard.createOnboardDashboardHelpers({
+  runOpenshell,
+  runCaptureOpenshell,
+  runCapture,
+  cliName,
+  agentProductName,
+  getProviderLabel,
+  note,
+  isWsl,
+  redact,
+  sleep,
+  printAgentDashboardUi: agentOnboard.printDashboardUi,
+});
 
-function findForwardEntry(
-  forwardListOutput: string | null | undefined,
-  port: string,
-): { sandboxName: string; status: string } | null {
-  if (!forwardListOutput) return null;
-  for (const rawLine of forwardListOutput.split("\n")) {
-    const line = rawLine.replace(ANSI_RE, "");
-    if (/^\s*SANDBOX\s/i.test(line)) continue;
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 3 || parts[2] !== port) continue;
-    return {
-      sandboxName: parts[0] || "",
-      status: (parts[4] || "").toLowerCase(),
-    };
-  }
-  return null;
-}
+const onboardRuntimeBoundary = new OnboardRuntimeBoundary({
+  toSessionUpdates: (updates: Record<string, unknown>) =>
+    toSessionUpdates(updates as Parameters<typeof toSessionUpdates>[0]),
+  maybeForceE2eStepFailure,
+});
 
-function getRunningForwardPorts(forwardListOutput: string | null | undefined): string[] {
-  const ports = new Set<string>();
-  if (!forwardListOutput) return [];
-  for (const rawLine of forwardListOutput.split("\n")) {
-    const line = rawLine.replace(ANSI_RE, "");
-    if (/^\s*SANDBOX\s/i.test(line)) continue;
-    const parts = line.trim().split(/\s+/);
-    if (parts.length < 5 || !/^\d+$/.test(parts[2])) continue;
-    const status = (parts[4] || "").toLowerCase();
-    if (isLiveForwardStatus(status)) {
-      ports.add(parts[2]);
-    }
-  }
-  return [...ports];
-}
-
-function stopAllDashboardForwards(): void {
-  const forwardList = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-  for (const port of getRunningForwardPorts(forwardList)) {
-    runOpenshell(["forward", "stop", port], { ignoreError: true });
-  }
-}
-
-
-/**
- * Build the actionable error lines printed when the just-created openshell
- * sandbox is rolled back after a dashboard port-allocation failure. Pure
- * function over (sandboxName, alloc-error, delete-result) so the rollback path
- * is testable without spawning subprocesses or exiting the process (#2174).
- */
-function buildOrphanedSandboxRollbackMessage(
-  sandboxName: string,
-  err: unknown,
-  deleteSucceeded: boolean,
-): string[] {
-  const lines = [
-    "",
-    `  Could not allocate a dashboard port for '${sandboxName}'.`,
-    `  ${err instanceof Error ? err.message : String(err)}`,
-  ];
-  if (deleteSucceeded) {
-    lines.push("  The orphaned sandbox has been removed — you can safely retry.");
-  } else {
-    lines.push("  Could not remove the orphaned sandbox. Manual cleanup:");
-    lines.push(`    openshell sandbox delete "${sandboxName}"`);
-  }
-  return lines;
-}
-
-/**
- * Set up the dashboard forward for a sandbox. Auto-allocates the next free
- * port if the preferred port is taken by a different sandbox (Fixes #2174).
- * Returns the actual port number used.
- *
- * When `rollbackSandboxOnFailure` is true, deletes the just-created openshell
- * sandbox before exiting on unrecoverable port-allocation failure. This keeps
- * `openshell sandbox list` and the NemoClaw registry from drifting when the
- * range is exhausted between sandbox-create and forward-setup ("leaks ghost
- * sandbox" half of #2174). Mirrors the not-ready rollback pattern in
- * createSandbox.
- */
-function ensureDashboardForward(
-  sandboxName: string,
-  chatUiUrl = `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: { rollbackSandboxOnFailure?: boolean } = {},
-): number {
-  const { rollbackSandboxOnFailure = false } = options;
-  const preferredPort = Number(getDashboardForwardPort(chatUiUrl));
-  let existingForwards = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-  const preferredEntry = findForwardEntry(existingForwards, String(preferredPort));
-  if (
-    preferredEntry &&
-    (preferredEntry.sandboxName === sandboxName || !isLiveForwardStatus(preferredEntry.status))
-  ) {
-    runOpenshell(["forward", "stop", String(preferredPort)], { ignoreError: true });
-    existingForwards = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-  }
-  let actualPort: number;
-  try {
-    actualPort = findAvailableDashboardPort(sandboxName, preferredPort, existingForwards);
-  } catch (err) {
-    if (!rollbackSandboxOnFailure) throw err;
-    const delResult = runOpenshell(["sandbox", "delete", sandboxName], { ignoreError: true });
-    for (const line of buildOrphanedSandboxRollbackMessage(
-      sandboxName,
-      err,
-      delResult.status === 0,
-    )) {
-      console.error(line);
-    }
-    process.exit(1);
-  }
-
-  if (actualPort !== preferredPort) {
-    if (rollbackSandboxOnFailure) {
-      // Create path: the sandbox was just built with CHAT_UI_URL and
-      // NEMOCLAW_DASHBOARD_PORT baked from `preferredPort` (see the
-      // `formatEnvAssignment("CHAT_UI_URL", …)` call in createSandbox). If
-      // the port was bound during the build window (TOCTOU), picking a new
-      // host port would leave the sandbox serving the dashboard on
-      // `preferredPort` internally while the forward listens on `actualPort`
-      // — reproducing the original "onboard exits but dashboard is
-      // unreachable" failure on the newly selected port. Reallocation is
-      // only safe on reuse paths where the sandbox image is fixed; on the
-      // create path we must roll back so the next onboard re-bakes with a
-      // clean port. (#3260)
-      const err = new Error(
-        `Dashboard port ${preferredPort} became host-bound during sandbox build; ` +
-          `cannot reallocate to ${actualPort} after the sandbox has been created with ` +
-          `CHAT_UI_URL=${preferredPort}. Free the port and re-run \`${cliName()} onboard\`, ` +
-          `or pass \`--control-ui-port <N>\` to pick a different dashboard port.`,
-      );
-      const delResult = runOpenshell(["sandbox", "delete", sandboxName], { ignoreError: true });
-      for (const line of buildOrphanedSandboxRollbackMessage(
-        sandboxName,
-        err,
-        delResult.status === 0,
-      )) {
-        console.error(line);
-      }
-      process.exit(1);
-    }
-    console.warn(`  ! Port ${preferredPort} is taken. Using port ${actualPort} instead.`);
-  }
-
-  // Clean up any stale forwards owned by this sandbox on other ports so we
-  // don't leak forwards across port changes and exhaust the range over time.
-  const occupied = getOccupiedPorts(existingForwards);
-  for (const [port, owner] of occupied.entries()) {
-    if (owner === sandboxName && Number(port) !== actualPort) {
-      runOpenshell(["forward", "stop", port], { ignoreError: true });
-    }
-  }
-
-  // Preserve the original URL's hostname (loopback vs remote) but swap to the actual port.
-  const parsedUrl = new URL(chatUiUrl.includes("://") ? chatUiUrl : `http://${chatUiUrl}`);
-  parsedUrl.port = String(actualPort);
-  const actualTarget = getDashboardForwardTarget(parsedUrl.toString());
-  runOpenshell(["forward", "stop", String(actualPort)], { ignoreError: true });
-  const { result: fwdResult, diagnostic: fwdDiagnostic } = runBackgroundForwardStartWithPortReleaseRetries(
-    (stdio, timeout) =>
-      runOpenshell(
-        ["forward", "start", "--background", actualTarget, sandboxName],
-        { ignoreError: true, suppressOutput: true, stdio, timeout },
-      ),
-    () => { sleep(1); runOpenshell(["forward", "stop", String(actualPort)], { ignoreError: true }); },
-  );
-  if (fwdResult && fwdResult.status !== 0) {
-    const looksLikePortConflict = looksLikeForwardPortConflict(fwdDiagnostic);
-    if (rollbackSandboxOnFailure) {
-      // The sandbox was just created, committed to actualPort via its
-      // baked-in CHAT_UI_URL and NEMOCLAW_DASHBOARD_PORT env. Silently
-      // returning here leaves the user with a dashboard URL that points
-      // at a port held by another process — a TOCTOU race where the
-      // proactive probe in findAvailableDashboardPort missed the
-      // conflict (e.g., another listener bound during the multi-minute
-      // image build). Roll back so the next `onboard` retry's allocator
-      // observes the bound port and picks a different one. Only the
-      // EADDRINUSE-style failure gets the port-conflict wording; other
-      // errors (gateway / transport) propagate the real diagnostic so
-      // users aren't pointed at the wrong fix (#3260).
-      const err = new Error(
-        looksLikePortConflict
-          ? `Failed to start dashboard forward on port ${actualPort} — the host port ` +
-              `is held by another process. Free it and run \`${cliName()} onboard\` again, ` +
-              `or pass \`--control-ui-port <N>\` to pick a different dashboard port.`
-          : `Failed to start dashboard forward on port ${actualPort}: ${fwdDiagnostic.slice(0, 240)}`,
-      );
-      const delResult = runOpenshell(["sandbox", "delete", sandboxName], { ignoreError: true });
-      for (const line of buildOrphanedSandboxRollbackMessage(
-        sandboxName,
-        err,
-        delResult.status === 0,
-      )) {
-        console.error(line);
-      }
-      process.exit(1);
-    }
-    if (looksLikePortConflict) {
-      console.warn(
-        `! Port ${actualPort} forward did not start — port may be in use by another process.`,
-      );
-      console.warn(
-        `  Check: docker ps --format 'table {{.Names}}\\t{{.Ports}}' | grep ${actualPort}`,
-      );
-      console.warn(`  Free the port, then reconnect: ${cliName()} ${sandboxName} connect`);
-    } else {
-      console.warn(`! Port ${actualPort} forward did not start: ${fwdDiagnostic.slice(0, 240)}`);
-      console.warn(`  Reconnect after resolving the issue: ${cliName()} ${sandboxName} connect`);
-    }
-  }
-  return actualPort;
-}
-
-function ensureAgentDashboardForward(
-  sandboxName: string,
-  agent: { forwardPort?: number | null },
-): number {
-  const agentDashboardPort = agent.forwardPort ?? CONTROL_UI_PORT;
-  const agentDashboardUrl = `http://127.0.0.1:${agentDashboardPort}`;
-  const actualAgentDashboardPort = ensureDashboardForward(sandboxName, agentDashboardUrl);
-  process.env.CHAT_UI_URL = `http://127.0.0.1:${actualAgentDashboardPort}`;
-  return actualAgentDashboardPort;
-}
-
-function findOpenclawJsonPath(dir: string): string | null {
-  if (!fs.existsSync(dir)) return null;
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const e of entries) {
-    const p = path.join(dir, e.name);
-    if (e.isDirectory()) {
-      const found: string | null = findOpenclawJsonPath(p);
-      if (found) return found;
-    } else if (e.name === "openclaw.json") {
-      return p;
-    }
-  }
-  return null;
-}
-
-/**
- * Pull gateway.auth.token from the sandbox image via openshell sandbox download
- * so onboard can build dashboard access URLs. User-visible output must redact
- * the token fragment.
- */
-function fetchGatewayAuthTokenFromSandbox(sandboxName: string): string | null {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-token-"));
-  try {
-    const destDir = `${tmpDir}${path.sep}`;
-    const result = runOpenshell(
-      ["sandbox", "download", sandboxName, "/sandbox/.openclaw/openclaw.json", destDir],
-      { ignoreError: true, stdio: ["ignore", "ignore", "ignore"] },
-    );
-    if (result.status !== 0) return null;
-    const jsonPath = findOpenclawJsonPath(tmpDir);
-    if (!jsonPath) return null;
-    const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
-    const token = cfg && cfg.gateway && cfg.gateway.auth && cfg.gateway.auth.token;
-    return typeof token === "string" && token.length > 0 ? token : null;
-  } catch {
-    return null;
-  } finally {
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
-    }
-  }
-}
-
-// buildControlUiUrls — see dashboard-contract import above
-
-function getDashboardForwardPort(
-  chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: Parameters<typeof dashboardAccess.getDashboardForwardPort>[1] = {},
-): string {
-  return dashboardAccess.getDashboardForwardPort(chatUiUrl, {
-    ...options,
-    runCapture: options.runCapture || runCapture,
-  });
-}
-
-function getDashboardForwardTarget(
-  chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`,
-  options: Parameters<typeof dashboardAccess.getDashboardForwardTarget>[1] = {},
-): string {
-  return dashboardAccess.getDashboardForwardTarget(chatUiUrl, {
-    ...options,
-    runCapture: options.runCapture || runCapture,
-  });
-}
-
-function dashboardUrlForDisplay(url: string): string {
-  return dashboardAccess.dashboardUrlForDisplay(url, redact);
-}
-
-function getWslHostAddress(
-  options: Parameters<typeof dashboardAccess.getWslHostAddress>[0] = {},
-): string | null {
-  return dashboardAccess.getWslHostAddress({ ...options, runCapture: options.runCapture || runCapture });
-}
-
-/** Print the post-onboard dashboard with sandbox status and reconfiguration hints. */
-function printDashboard(
-  sandboxName: string,
-  model: string,
-  provider: string,
-  nimContainer: string | null = null,
-  agent: AgentDefinition | null = null,
-): void {
-  const nimStat = nimContainer ? nim.nimStatusByName(nimContainer) : nim.nimStatus(sandboxName);
-  const showNim = nim.shouldShowNimLine(nimContainer, nimStat.running);
-  const nimLabel = nimStat.running ? "running" : "not running";
-
-  const providerLabel = getProviderLabel(provider);
-
-  const token = fetchGatewayAuthTokenFromSandbox(sandboxName);
-  const chatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${CONTROL_UI_PORT}`;
-  const wslAddr = getWslHostAddress();
-  const chain = buildChain({ chatUiUrl, isWsl: isWsl(), wslHostAddress: wslAddr });
-
-  // Build access info inline — uses chain instead of re-deriving from env
-  const dashboardAccess = buildControlUiUrls(token, chain.port, chain.accessUrl).map((url, i) => ({
-    label: i === 0 ? "Dashboard" : `Alt ${i}`,
-    url,
-  }));
-  if (wslAddr) {
-    const wslUrl = `http://${wslAddr}:${chain.port}/${token ? `#token=${encodeURIComponent(token)}` : ""}`;
-    const existing = dashboardAccess.find((a) => a.url === wslUrl);
-    if (existing) existing.label = "VS Code/WSL";
-    else dashboardAccess.push({ label: "VS Code/WSL", url: wslUrl });
-  }
-  const guidanceLines = [`Port ${chain.port} must be forwarded before opening these URLs.`];
-  if (isWsl())
-    guidanceLines.push(
-      "WSL detected: if localhost fails in Windows, use the WSL host IP shown by `hostname -I`.",
-    );
-  if (dashboardAccess.length === 0) guidanceLines.push("No dashboard URLs were generated.");
-
-  console.log("");
-  console.log(`  ${"─".repeat(50)}`);
-  // console.log(`  Dashboard    http://localhost:${DASHBOARD_PORT}/`);
-  console.log(`  Sandbox      ${sandboxName} (Landlock + seccomp + netns)`);
-  console.log(`  Model        ${model} (${providerLabel})`);
-  if (showNim) {
-    console.log(`  NIM          ${nimLabel}`);
-  }
-  console.log(`  ${"─".repeat(50)}`);
-  console.log(`  Run:         ${cliName()} ${sandboxName} connect`);
-  console.log(`  Status:      ${cliName()} ${sandboxName} status`);
-  console.log(`  Logs:        ${cliName()} ${sandboxName} logs --follow`);
-  console.log("");
-  if (agent) {
-    agentOnboard.printDashboardUi(sandboxName, token, agent, {
-      note,
-      buildControlUiUrls: (tokenValue: string | null, port: number) => {
-        return buildControlUiUrls(tokenValue, port, chain.accessUrl);
-      },
-    });
-  } else if (token) {
-    console.log(
-      `  ${agentProductName()} UI (auth token redacted from displayed URLs)`,
-    );
-    for (const line of guidanceLines) {
-      console.log(`  ${line}`);
-    }
-    for (const entry of dashboardAccess) {
-      console.log(`  ${entry.label}: ${dashboardUrlForDisplay(entry.url)}`);
-    }
-    console.log(`  Token:       ${cliName()} ${sandboxName} gateway-token --quiet`);
-    console.log(`               append  #token=<token> locally if the browser asks for auth.`);
-  } else {
-    note("  Could not read gateway token from the sandbox (download failed).");
-    console.log(`  ${agentProductName()} UI`);
-    for (const line of guidanceLines) {
-      console.log(`  ${line}`);
-    }
-    for (const entry of dashboardAccess) {
-      console.log(`  ${entry.label}: ${dashboardUrlForDisplay(entry.url)}`);
-    }
-    console.log(
-      `  Token:       ${cliName()} ${sandboxName} connect  →  jq -r '.gateway.auth.token' /sandbox/.openclaw/openclaw.json`,
-    );
-    console.log(`               append  #token=<token>  to the URL locally if needed.`);
-  }
-  console.log(`  ${"─".repeat(50)}`);
-  console.log("");
-  console.log("  To change settings later:");
-  console.log(
-    `    Model:       ${cliName()} inference get\n                 ${cliName()} inference set --model <model> --provider <provider> --sandbox ${sandboxName}`,
-  );
-  console.log(`    Policies:    ${cliName()} ${sandboxName} policy-add`);
-  console.log(`    Credentials: ${cliName()} credentials reset <KEY>  then  ${cliName()} onboard`);
-  console.log("");
-}
-
-// Preserve the nullable contract end-to-end: `null` means "clear this
-// field on the persisted session", `undefined` means "leave unchanged".
-function toNullableString(value: string | null | undefined): string | null | undefined {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  return value;
-}
-
-function toSessionUpdates(
-  updates: {
-    sandboxName?: string | null;
-    provider?: string | null;
-    model?: string | null;
-    endpointUrl?: string | null;
-    credentialEnv?: string | null;
-    hermesAuthMethod?: HermesAuthMethod | string | null;
-    preferredInferenceApi?: string | null;
-    nimContainer?: string | null;
-    webSearchConfig?: WebSearchConfig | null;
-    policyPresets?: string[] | null;
-    messagingChannels?: string[] | null;
-    messagingChannelConfig?: MessagingChannelConfig | null;
-    hermesToolGateways?: string[] | null;
-  } = {},
-): SessionUpdates {
-  const normalized: SessionUpdates = {};
-  if (updates.sandboxName !== undefined)
-    normalized.sandboxName = toNullableString(updates.sandboxName);
-  if (updates.provider !== undefined) normalized.provider = toNullableString(updates.provider);
-  if (updates.model !== undefined) normalized.model = toNullableString(updates.model);
-  if (updates.endpointUrl !== undefined)
-    normalized.endpointUrl = toNullableString(updates.endpointUrl);
-  if (updates.credentialEnv !== undefined)
-    normalized.credentialEnv = toNullableString(updates.credentialEnv);
-  if (updates.hermesAuthMethod !== undefined)
-    normalized.hermesAuthMethod = normalizeHermesAuthMethod(updates.hermesAuthMethod);
-  if (updates.preferredInferenceApi !== undefined) {
-    normalized.preferredInferenceApi = toNullableString(updates.preferredInferenceApi);
-  }
-  if (updates.nimContainer !== undefined)
-    normalized.nimContainer = toNullableString(updates.nimContainer);
-  if (updates.webSearchConfig !== undefined) normalized.webSearchConfig = updates.webSearchConfig;
-  if (updates.policyPresets !== undefined) normalized.policyPresets = updates.policyPresets;
-  if (updates.messagingChannels !== undefined)
-    normalized.messagingChannels = updates.messagingChannels;
-  if (updates.messagingChannelConfig !== undefined) {
-    normalized.messagingChannelConfig = updates.messagingChannelConfig;
-  }
-  if (updates.hermesToolGateways !== undefined)
-    normalized.hermesToolGateways = updates.hermesToolGateways;
-  return normalized;
-}
-
-function getOnboardRuntime(): import("./onboard/machine/runtime").OnboardRuntime {
-  if (!ONBOARD_RUNTIME) ONBOARD_RUNTIME = new OnboardRuntime();
-  return ONBOARD_RUNTIME;
-}
-
-async function startRecordedStep(
-  stepName: string,
-  updates: {
-    sandboxName?: string | null;
-    provider?: string | null;
-    model?: string | null;
-    policyPresets?: string[] | null;
-  } = {},
-): Promise<void> {
-  const runtime = getOnboardRuntime();
-  await runtime.markStepStarted(stepName);
-  if (Object.keys(updates).length > 0) {
-    await runtime.updateContext(toSessionUpdates(updates));
-  }
-  maybeForceE2eStepFailure(stepName);
-}
-
-async function recordStepComplete(
-  stepName: string,
-  updates: SessionUpdates = {},
-): Promise<Session> {
-  return getOnboardRuntime().markStepComplete(stepName, updates);
-}
-
-async function recordStepSkipped(stepName: string): Promise<Session> {
-  return getOnboardRuntime().markStepSkipped(stepName);
-}
-
-async function recordStateSkipped(
-  state: import("./onboard/machine/types").OnboardMachineState,
-  metadata: Record<string, unknown> | null = null,
-): Promise<Session> {
-  return getOnboardRuntime().markSkipped(state, metadata);
-}
-
-async function recordRepairEvent(
-  type: "state.repair.started" | "state.repair.completed" | "state.repair.failed",
-  options: {
-    state?: import("./onboard/machine/types").OnboardMachineState | null;
-    error?: string | null;
-    metadata?: Record<string, unknown> | null;
-  } = {},
-): Promise<Session> {
-  return getOnboardRuntime().emitRepairEvent(type, options);
-}
-
-async function recordSessionComplete(updates: SessionUpdates = {}): Promise<Session> {
-  const runtime = getOnboardRuntime();
-  const current = await runtime.session();
-  if (current.machine.state === "finalizing") {
-    await runtime.transition("post_verify");
-    return runtime.complete(updates);
-  }
-  if (current.machine.state === "post_verify") {
-    return runtime.complete(updates);
-  }
-  return runtime.completeSession(updates);
-}
+const startRecordedStep = onboardRuntimeBoundary.startRecordedStep.bind(onboardRuntimeBoundary);
+const recordStepComplete = onboardRuntimeBoundary.recordStepComplete.bind(onboardRuntimeBoundary);
+const recordStepSkipped = onboardRuntimeBoundary.recordStepSkipped.bind(onboardRuntimeBoundary);
+const recordStepFailed = onboardRuntimeBoundary.recordStepFailed.bind(onboardRuntimeBoundary);
+const recordStateSkipped = onboardRuntimeBoundary.recordStateSkipped.bind(onboardRuntimeBoundary);
+const recordRepairEvent = onboardRuntimeBoundary.recordRepairEvent.bind(onboardRuntimeBoundary);
+const recordSessionComplete = onboardRuntimeBoundary.recordSessionComplete.bind(onboardRuntimeBoundary);
 
 const ONBOARD_STEP_INDEX: Record<string, { number: number; title: string }> = {
   preflight: { number: 1, title: "Preflight checks" },
@@ -9125,7 +8154,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
   RECREATE_SANDBOX = opts.recreateSandbox || process.env.NEMOCLAW_RECREATE_SANDBOX === "1";
   AUTO_YES = opts.autoYes === true || process.env.NEMOCLAW_YES === "1";
   _preflightDashboardPort = opts.controlUiPort || null;
-  ONBOARD_RUNTIME = new OnboardRuntime();
+  onboardRuntimeBoundary.reset();
   delete process.env.OPENSHELL_GATEWAY;
   const resume = opts.resume === true;
   const fresh = opts.fresh === true;
@@ -9708,8 +8737,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
           cleanupTempDir,
           startRecordedStep,
           recordStepComplete,
-          recordStepFailed: (stepName: string, message: string | null) =>
-            getOnboardRuntime().markStepFailed(stepName, message),
+          recordStepFailed,
           skippedStepMessage,
         }),
         ensureAgentDashboardForward,
@@ -9816,7 +8844,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     });
   } finally {
     releaseOnboardLock();
-    ONBOARD_RUNTIME = null;
+    onboardRuntimeBoundary.clear();
   }
 }
 
