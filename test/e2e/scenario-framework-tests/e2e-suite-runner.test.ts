@@ -46,11 +46,33 @@ function fullContext(): Record<string, string> {
 
 describe("Issue #3810 messaging suite wiring", () => {
   it("should_define_real_steps_for_messaging_provider_suites", () => {
-    const suites = fs.readFileSync(path.join(REPO_ROOT, "test/e2e/validation_suites/suites.yaml"), "utf8");
-    for (const suite of ["messaging-telegram", "messaging-discord", "messaging-slack"]) {
-      const block = suites.match(new RegExp(`  ${suite}:\\n(?:    .+\\n)+`))?.[0] ?? "";
-      expect(block, `${suite} block missing`).toContain("messaging/");
-      expect(block, `${suite} still aliases smoke`).not.toContain("smoke/");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-messaging-suites-"));
+    try {
+      seedContext(tmp, {
+        ...fullContext(),
+        E2E_PROVIDER: "telegram",
+        E2E_MESSAGING_PROVIDER: "telegram",
+        E2E_MESSAGING_BRIDGE_URL: "http://127.0.0.1:18789",
+      });
+      const r = runSuites(["messaging-telegram", "messaging-discord", "messaging-slack"], {
+        E2E_CONTEXT_DIR: tmp,
+        E2E_DRY_RUN: "1",
+      });
+      expect(r.status, `stderr:${r.stderr}\nstdout:${r.stdout}`).toBe(0);
+      for (const id of [
+        "messaging-provider-attached",
+        "messaging-placeholder-configured",
+        "messaging-no-secret-leak",
+        "messaging-bridge-reachable",
+        "telegram-injection-safety",
+        "discord-gateway-path",
+        "slack-provider-state",
+      ]) {
+        expect(r.stdout).toContain(id);
+      }
+      expect(r.stdout).not.toContain("cli-available");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });

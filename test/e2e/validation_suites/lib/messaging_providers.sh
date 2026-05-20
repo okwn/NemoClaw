@@ -5,6 +5,7 @@
 # Messaging-provider primitives for scenario validation suites.
 
 if [[ -n "${_E2E_MESSAGING_PROVIDERS_SH_LOADED:-}" ]]; then
+  # shellcheck disable=SC2317 # This guard is reached only when the file is sourced more than once.
   return 0 2>/dev/null || true
 fi
 _E2E_MESSAGING_PROVIDERS_SH_LOADED=1
