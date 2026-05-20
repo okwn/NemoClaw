@@ -281,6 +281,7 @@ const nim: typeof import("./inference/nim") = require("./inference/nim");
 const onboardSession: typeof import("./state/onboard-session") = require("./state/onboard-session");
 const { OnboardRuntime }: typeof import("./onboard/machine/runtime") = require("./onboard/machine/runtime");
 const { handleAgentSetupState }: typeof import("./onboard/machine/handlers/agent-setup") = require("./onboard/machine/handlers/agent-setup");
+const { handleFinalizationState }: typeof import("./onboard/machine/handlers/finalization") = require("./onboard/machine/handlers/finalization");
 const { handleGatewayState }: typeof import("./onboard/machine/handlers/gateway") = require("./onboard/machine/handlers/gateway");
 const { handlePoliciesState }: typeof import("./onboard/machine/handlers/policies") = require("./onboard/machine/handlers/policies");
 const { handlePreflightState }: typeof import("./onboard/machine/handlers/preflight") = require("./onboard/machine/handlers/preflight");
@@ -9724,88 +9725,57 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     });
     session = policiesResult.session;
 
-    if (agent) {
-      ensureAgentDashboardForward(sandboxName, agent);
-    }
-
-    await recordSessionComplete(
-      toSessionUpdates({ sandboxName, provider, model, hermesAuthMethod, hermesToolGateways }),
-    );
-    completed = true;
-    // Onboarding finished successfully. Delete the legacy plaintext
-    // credentials.json only when every staged *value* was actually pushed
-    // to the gateway in this run. A successful upsert under the same
-    // env-key name with a different value (e.g. vllm-local upserting
-    // `OPENAI_API_KEY: "dummy"` while the legacy file held a real
-    // `sk-…` cloud key) does not count as a migration — the gateway
-    // never received the legacy secret, so unlinking the file would
-    // strand the user's only copy.
-    const allStagedMigrated =
-      stagedLegacyKeys.length > 0 && stagedLegacyKeys.every((k) => migratedLegacyKeys.has(k));
-    if (allStagedMigrated) {
-      removeLegacyCredentialsFile();
-    } else if (stagedLegacyKeys.length > 0) {
-      const unmigrated = stagedLegacyKeys.filter((k) => !migratedLegacyKeys.has(k));
-      console.error(
-        `  Kept ~/.nemoclaw/credentials.json: ${String(unmigrated.length)} ` +
-          `legacy credential(s) were not migrated verbatim to the gateway in this run ` +
-          `(${unmigrated.join(", ")}). Re-run onboard with the relevant ` +
-          `providers/channels enabled to migrate them, then the file is removed automatically.`,
-      );
-    }
-    // Sweep stale host files left over from older NemoClaw versions —
-    // e.g. an empty/orphaned ~/.nemoclaw/credentials.json from upgrades
-    // before the credentials-gateway move (issue #3105). Each registered
-    // entry enforces its own safety guards; this call is a no-op when
-    // every target is already clean.
-    cleanupStaleHostFiles();
-
-    // Step [8/8] policy-apply restarts the sandbox container; the OpenClaw
-    // gateway inside the new container is launched lazily (normally by the
-    // first `nemoclaw <name> connect`). Bring it up explicitly here so the
-    // verifyDeployment block below does not race the post-policy startup and
-    // surface a false "gateway crashed during startup" warning. The helper
-    // is a no-op when the gateway is already running. Fixes #3573.
-    const processRecovery: typeof import("./actions/sandbox/process-recovery") =
-      require("./actions/sandbox/process-recovery");
-    processRecovery.checkAndRecoverSandboxProcesses(sandboxName, { quiet: true });
-
-    // Post-deployment verification — confirm the full delivery chain is
-    // operational before telling the user "YOUR AGENT IS LIVE". Fixes #2342.
-    const verifyDeploymentModule: typeof import("./verify-deployment") = require("./verify-deployment");
-    const _verifyChatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${DASHBOARD_PORT}`;
-    const verifyChain = buildChain({ chatUiUrl: _verifyChatUiUrl, isWsl: isWsl(), wslHostAddress: getWslHostAddress() });
-    const verificationResult = await verifyDeploymentModule.verifyDeployment(
+    await handleFinalizationState({
       sandboxName,
-      verifyChain,
-      {
-        executeSandboxCommand: (name: string, script: string) => {
-          return executeSandboxCommandForVerification(name, script);
+      model,
+      provider,
+      nimContainer,
+      agent,
+      hermesAuthMethod,
+      hermesToolGateways,
+      selectedMessagingChannels,
+      stagedLegacyKeys,
+      migratedLegacyKeys,
+      deps: {
+        ensureAgentDashboardForward,
+        recordSessionComplete,
+        toSessionUpdates: (updates) => toSessionUpdates(updates as Parameters<typeof toSessionUpdates>[0]),
+        removeLegacyCredentialsFile,
+        cleanupStaleHostFiles,
+        checkAndRecoverSandboxProcesses: (name, options) => {
+          const processRecovery: typeof import("./actions/sandbox/process-recovery") =
+            require("./actions/sandbox/process-recovery");
+          processRecovery.checkAndRecoverSandboxProcesses(name, options);
         },
-        probeHostPort: (port: number, probePath: string) => {
-          const result = runCapture(
-            ["curl", "-so", "/dev/null", "-w", "%{http_code}", "--max-time", "3",
-              `http://127.0.0.1:${port}${probePath}`],
-            { ignoreError: true },
-          );
-          return parseInt(result.trim(), 10) || 0;
+        getChatUiUrl: () => process.env.CHAT_UI_URL || `http://127.0.0.1:${DASHBOARD_PORT}`,
+        buildVerifyChain: (chatUiUrl) =>
+          buildChain({ chatUiUrl, isWsl: isWsl(), wslHostAddress: getWslHostAddress() }),
+        verifyDeployment: async (name, chain) => {
+          const verifyDeploymentModule: typeof import("./verify-deployment") = require("./verify-deployment");
+          return verifyDeploymentModule.verifyDeployment(name, chain, {
+            executeSandboxCommand: (sandbox: string, script: string) =>
+              executeSandboxCommandForVerification(sandbox, script),
+            probeHostPort: (port: number, probePath: string) => {
+              const result = runCapture(
+                ["curl", "-so", "/dev/null", "-w", "%{http_code}", "--max-time", "3", `http://127.0.0.1:${port}${probePath}`],
+                { ignoreError: true },
+              );
+              return parseInt(result.trim(), 10) || 0;
+            },
+            captureForwardList: () => runCaptureOpenshell(["forward", "list"], { ignoreError: true }) || null,
+            getMessagingChannels: () => selectedMessagingChannels || [],
+            providerExistsInGateway: (providerName: string) => providerExistsInGateway(providerName),
+          });
         },
-        captureForwardList: () => {
-          const output = runCaptureOpenshell(["forward", "list"], { ignoreError: true });
-          return output || null;
+        formatVerificationDiagnostics: (result) => {
+          const verifyDeploymentModule: typeof import("./verify-deployment") = require("./verify-deployment");
+          return verifyDeploymentModule.formatVerificationDiagnostics(result);
         },
-        getMessagingChannels: (_name: string) => selectedMessagingChannels || [],
-        providerExistsInGateway: (providerName: string) => providerExistsInGateway(providerName),
+        printDashboard,
+        error: (message) => console.error(message),
+        log: (message) => console.log(message),
       },
-    );
-
-    // Print verification diagnostics
-    const diagLines = verifyDeploymentModule.formatVerificationDiagnostics(verificationResult);
-    for (const line of diagLines) {
-      console.log(line);
-    }
-
-    printDashboard(sandboxName, model, provider, nimContainer, agent);
+    });
   } finally {
     releaseOnboardLock();
     ONBOARD_RUNTIME = null;
