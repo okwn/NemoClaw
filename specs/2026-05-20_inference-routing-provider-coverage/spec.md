@@ -186,6 +186,8 @@ Validation has two gates.
 When the PR is opened, all tests added or affected by the migration must pass, including static scenario-framework validation. Minimum expected commands:
 
 ```bash
+npm test -- test/e2e/scenario-framework-tests/e2e-legacy-assertion-inventory.test.ts
+npm test -- test/e2e/scenario-framework-tests/e2e-lib-helpers.test.ts
 npm test -- test/e2e/scenario-framework-tests/e2e-scenario-resolver.test.ts
 npm test -- test/e2e/scenario-framework-tests/e2e-scenario-schema.test.ts
 npm test -- test/e2e/scenario-framework-tests/e2e-suite-runner.test.ts
@@ -249,10 +251,11 @@ Add reusable shell primitives for inference/provider scenario suites.
 Implementation tasks:
 
 - Add `test/e2e/validation_suites/lib/inference_routing.sh`.
-- Implement helper functions for bounded sandbox execution and HTTP probing.
+- Implement helper functions for bounded sandbox execution and HTTP probing; every live `curl` path must use `--max-time`.
 - Ensure helpers consume `$E2E_CONTEXT_DIR/context.env` via runtime context helpers.
 - Ensure dry-run/plan-only behavior emits intended checks without requiring live infrastructure.
-- Ensure helpers redact or avoid printing secrets.
+- Ensure helpers redact or avoid printing secrets; use `e2e_context_dump` only when redacted context output is needed.
+- Keep helper functions small and shellcheck-compatible under `set -euo pipefail`.
 
 Acceptance criteria:
 
@@ -281,7 +284,7 @@ Minimum migrated behaviors:
 
 - `inference.local` chat completion from inside sandbox succeeds for routed provider.
 - Provider route/health can be inspected or confirmed where the scenario expects it.
-- Inference switch updates registry/session/config state and produces a switched completion.
+- Inference switch updates registry/session/config state and produces a switched completion; state assertions should reuse or extend `onboarding/state/*provider-model-policies.sh` where practical instead of duplicating registry/session parsing.
 - Ollama auth proxy rejects unauthenticated/wrong-token requests and accepts valid-token requests where runner supports it.
 - Kimi compatibility route/plugin behavior is represented by stable assertions.
 - Model-router reports healthy endpoint and returns a provider-routed completion where runner supports it.
@@ -291,6 +294,7 @@ Acceptance criteria:
 - New suite steps use `inference_routing.sh` primitives.
 - Stable assertion IDs are emitted for migrated behaviors.
 - `run-scenario.sh <id> --plan-only` works for affected scenario families.
+- `suites.yaml` no longer maps issue #3812 domain families to generic cloud steps where a domain-specific assertion exists.
 
 Test requirements:
 

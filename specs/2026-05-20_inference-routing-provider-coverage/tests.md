@@ -17,7 +17,7 @@ Use TDD around the existing scenario framework tests. Prefer static and plan-onl
 **New Tests to Create:**
 1. `test_should_include_all_issue_3812_target_scripts_in_parity_map`
    - **Input**: `parity-map.yaml` entries for the five target scripts.
-   - **Expected**: No target script missing from the map.
+   - **Expected**: No target script missing from the map; include `test-inference-routing.sh`, `test-openclaw-inference-switch.sh`, `test-kimi-inference-compat.sh`, `test-ollama-auth-proxy-e2e.sh`, and `test-model-router-provider-routed-inference.sh` literally in the assertion fixture.
    - **Covers**: Phase 1 acceptance criteria.
 2. `test_should_reject_unknown_target_assertion_status`
    - **Input**: Target assertion with missing or invalid status.
@@ -27,6 +27,7 @@ Use TDD around the existing scenario framework tests. Prefer static and plan-onl
 **Test Implementation Notes:**
 - Keep inventory tests deterministic; do not execute legacy scripts.
 - Use existing YAML parsing and fixture patterns in scenario-framework tests.
+- When adding negative fixtures, keep them in test-local temporary data or inline objects so they cannot be mistaken for real parity metadata.
 
 ## Phase 2: Inference Routing Primitive Library - Test Guide
 
@@ -115,6 +116,7 @@ Use TDD around the existing scenario framework tests. Prefer static and plan-onl
 **Test Implementation Notes:**
 - Tests should fail if any target assertion is unknown or omitted.
 - Do not require live provider credentials for coverage-report tests.
+- Include a count-based assertion for each of the five target scripts so one large script cannot mask an omitted smaller script.
 
 ## Phase 5: PR Validation and Live-Capable Verification - Test Guide
 
