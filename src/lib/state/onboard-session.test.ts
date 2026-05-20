@@ -163,9 +163,7 @@ describe("onboard session", () => {
       sandboxName: "my-assistant",
       credentialEnv: "NVIDIA_API_KEY",
     });
-    expect(emitted[1].context.endpointUrl).toBe(
-      "https://example.com/v1?token=%3CREDACTED%3E&keep=yes",
-    );
+    expect(emitted[1].context.endpointOrigin).toBe("https://example.com");
     expect(emitted[1].metadata.fields).toEqual([
       "sandboxName",
       "endpointUrl",
