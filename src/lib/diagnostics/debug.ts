@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { platform, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -415,6 +415,25 @@ function collectKernel(collectDir: string): void {
   }
 }
 
+export function isDmesgRestrictedForCurrentUser(
+  restrictPath = "/proc/sys/kernel/dmesg_restrict",
+  euid = process.geteuid?.() ?? 0,
+): boolean {
+  if (euid === 0) return false;
+  try {
+    return readFileSync(restrictPath, "utf-8").trim() === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSkippedDiagnostic(collectDir: string, label: string, message: string): void {
+  const filename = label.replace(/[ /]/g, (c) => (c === " " ? "_" : "-"));
+  const outfile = join(collectDir, `${filename}.txt`);
+  writeFileSync(outfile, message + "\n");
+  console.log(message);
+}
+
 function collectKernelMessages(collectDir: string): void {
   section("Kernel Messages");
   if (isMacOS) {
@@ -422,6 +441,12 @@ function collectKernelMessages(collectDir: string): void {
       collectDir,
       "system-log",
       'log show --last 5m --predicate "eventType == logEvent" --style compact 2>/dev/null | tail -100',
+    );
+  } else if (isDmesgRestrictedForCurrentUser()) {
+    writeSkippedDiagnostic(
+      collectDir,
+      "dmesg",
+      "(skipped — `dmesg` is not readable as a non-root user (kernel.dmesg_restrict=1). Re-run as `sudo nemoclaw debug --quick` if you need kernel messages in this report.)",
     );
   } else {
     collectShell(collectDir, "dmesg", "dmesg | tail -100");

@@ -6,7 +6,12 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 // Import from compiled dist/ so coverage is attributed correctly.
-import { createTarball, getDebugCompletionMessages, redact } from "../../../dist/lib/diagnostics/debug";
+import {
+  createTarball,
+  getDebugCompletionMessages,
+  isDmesgRestrictedForCurrentUser,
+  redact,
+} from "../../../dist/lib/diagnostics/debug";
 
 describe("redact", () => {
   it("redacts NVIDIA_API_KEY=value patterns", () => {
@@ -87,6 +92,32 @@ describe("createTarball", () => {
     expect(ok).toBe(true);
     expect(process.exitCode).toBeUndefined();
     expect(existsSync(output)).toBe(true);
+  });
+});
+
+
+describe("dmesg restriction detection", () => {
+  let tempDir: string;
+
+  afterEach(() => {
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("detects restricted dmesg for non-root users", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "debug-dmesg-test-"));
+    const restrictPath = join(tempDir, "dmesg_restrict");
+    writeFileSync(restrictPath, "1\n");
+
+    expect(isDmesgRestrictedForCurrentUser(restrictPath, 1000)).toBe(true);
+  });
+
+  it("does not skip dmesg for root or unreadable restriction state", () => {
+    tempDir = mkdtempSync(join(tmpdir(), "debug-dmesg-test-"));
+    const restrictPath = join(tempDir, "dmesg_restrict");
+    writeFileSync(restrictPath, "1\n");
+
+    expect(isDmesgRestrictedForCurrentUser(restrictPath, 0)).toBe(false);
+    expect(isDmesgRestrictedForCurrentUser(join(tempDir, "missing"), 1000)).toBe(false);
   });
 });
 
