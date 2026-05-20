@@ -2443,16 +2443,6 @@ function getResumeConfigConflicts(
     });
   }
 
-  const requestedAgent = opts.agent || process.env.NEMOCLAW_AGENT || null;
-  const recordedAgent = session?.agent || null;
-  if (requestedAgent && recordedAgent && requestedAgent !== recordedAgent) {
-    conflicts.push({
-      field: "agent",
-      requested: requestedAgent,
-      recorded: recordedAgent,
-    });
-  }
-
   return conflicts;
 }
 
@@ -4485,6 +4475,53 @@ function formatSandboxAgentName(agentName: string | null | undefined): string {
   return normalized;
 }
 
+function resetStepForAgentChange(session: Session, stepName: string): void {
+  const stepState = session.steps[stepName];
+  if (!stepState) return;
+  stepState.status = "pending";
+  stepState.startedAt = null;
+  stepState.completedAt = null;
+  stepState.error = null;
+}
+
+function clearAgentScopedResumeState(session: Session, selectedAgentName: string): Session {
+  const normalizedAgentName = normalizeSandboxAgentName(selectedAgentName);
+  session.agent = normalizedAgentName === "openclaw" ? null : normalizedAgentName;
+  session.provider = null;
+  session.model = null;
+  session.endpointUrl = null;
+  session.credentialEnv = null;
+  session.hermesAuthMethod = null;
+  session.hermesToolGateways = null;
+  session.preferredInferenceApi = null;
+  session.nimContainer = null;
+  session.routerPid = null;
+  session.routerCredentialHash = null;
+  session.policyPresets = null;
+
+  const resetSteps = [
+    "provider_selection",
+    "inference",
+    "sandbox",
+    "openclaw",
+    "agent_setup",
+    "policies",
+  ];
+  for (const stepName of resetSteps) resetStepForAgentChange(session, stepName);
+  if (session.lastCompletedStep && resetSteps.includes(session.lastCompletedStep)) {
+    session.lastCompletedStep =
+      session.steps.gateway?.status === "complete"
+        ? "gateway"
+        : session.steps.preflight?.status === "complete"
+          ? "preflight"
+          : null;
+  }
+  if (session.lastStepStarted && resetSteps.includes(session.lastStepStarted)) {
+    session.lastStepStarted = null;
+  }
+  return session;
+}
+
 function getDefaultSandboxNameForAgent(agent: AgentDefinition | null | undefined): string {
   return getRequestedSandboxAgentName(agent) === "hermes" ? "hermes" : "my-assistant";
 }
@@ -5138,7 +5175,15 @@ async function createSandbox(
     }
 
     const previousEntry: SandboxEntry | null = registry.getSandbox(sandboxName);
-    const decision = decidePolicyCarryForward(previousEntry?.policies, process.env, isNonInteractive());
+    const previousPoliciesForCarryForward = recreateForAgentDrift ? null : previousEntry?.policies;
+    if (recreateForAgentDrift && previousEntry?.policies && previousEntry.policies.length > 0) {
+      note("  Agent type changed; refreshing policy presets instead of carrying them forward.");
+    }
+    const decision = decidePolicyCarryForward(
+      previousPoliciesForCarryForward,
+      process.env,
+      isNonInteractive(),
+    );
     onboardSession.updateSession((c: Session) => {
       c.policyPresets = decision.newPresets;
       return c;
@@ -9368,8 +9413,22 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       resume,
       canPrompt: !cannotPrompt,
     });
+    const selectedAgentName = normalizeSandboxAgentName(agent?.name);
+    const recordedAgentName = normalizeSandboxAgentName(session?.agent);
+    let resumeAgentChanged = false;
+    let forceProviderSelectionForAgentChange = false;
+    if (resume && session && recordedAgentName !== selectedAgentName) {
+      resumeAgentChanged = true;
+      forceProviderSelectionForAgentChange = true;
+      note(
+        `  Agent changed from ${formatSandboxAgentName(recordedAgentName)} to ${formatSandboxAgentName(selectedAgentName)}; refreshing provider selection.`,
+      );
+      session = onboardSession.updateSession((current: Session) =>
+        clearAgentScopedResumeState(current, selectedAgentName),
+      );
+    }
     setOnboardBrandingAgent(agent?.name || "openclaw");
-    onboardSession.updateSession((s: Session) => {
+    session = onboardSession.updateSession((s: Session) => {
       s.agent = agent?.name ?? null;
       return s;
     });
@@ -9614,7 +9673,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     let preferredInferenceApi = session?.preferredInferenceApi || null;
     let nimContainer = session?.nimContainer || null;
     let webSearchConfig = session?.webSearchConfig || null;
-    let forceProviderSelection = false;
+    let forceProviderSelection = forceProviderSelectionForAgentChange;
     while (true) {
       const resumeProviderSelection =
         !forceProviderSelection &&
@@ -9837,6 +9896,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     );
     const resumeSandbox =
       resume &&
+      !resumeAgentChanged &&
       !webSearchConfigChanged &&
       !telegramConfigChanged &&
       !sandboxGpuConfigChanged &&
@@ -9853,7 +9913,11 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       skippedStepMessage("sandbox", sandboxName);
     } else {
       if (resume && session?.steps?.sandbox?.status === "complete") {
-        if (webSearchConfigChanged) {
+        if (resumeAgentChanged) {
+          note(
+            "  [resume] Agent selection changed; revalidating sandbox compatibility.",
+          );
+        } else if (webSearchConfigChanged) {
           note("  [resume] Web Search configuration changed; recreating sandbox.");
           if (sandboxName) {
             registry.removeSandbox(sandboxName);
@@ -10049,6 +10113,11 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
       policyPresetSupportOptions,
       customPolicyPresetNames,
     );
+    if (!webSearchConfig && !customPolicyPresetNames.has("brave")) {
+      recordedPolicyPresetsForSupport = recordedPolicyPresetsForSupport.filter(
+        (name) => name !== "brave",
+      );
+    }
     if (recordedPolicyPresets) {
       recordedPolicyPresetsForSupport = mergeRequiredHermesToolGatewayPolicyPresets(
         recordedPolicyPresetsForSupport,
@@ -10254,6 +10323,7 @@ module.exports = {
   hasStaleGateway,
   getRequestedSandboxNameHint,
   getResumeSandboxConflict,
+  clearAgentScopedResumeState,
   getSandboxReuseState,
   getSandboxStateFromOutputs,
   getPortConflictServiceHints,
