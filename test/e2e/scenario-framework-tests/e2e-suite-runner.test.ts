@@ -44,6 +44,17 @@ function fullContext(): Record<string, string> {
   };
 }
 
+describe("Issue #3810 messaging suite wiring", () => {
+  it("should_define_real_steps_for_messaging_provider_suites", () => {
+    const suites = fs.readFileSync(path.join(REPO_ROOT, "test/e2e/validation_suites/suites.yaml"), "utf8");
+    for (const suite of ["messaging-telegram", "messaging-discord", "messaging-slack"]) {
+      const block = suites.match(new RegExp(`  ${suite}:\\n(?:    .+\\n)+`))?.[0] ?? "";
+      expect(block, `${suite} block missing`).toContain("messaging/");
+      expect(block, `${suite} still aliases smoke`).not.toContain("smoke/");
+    }
+  });
+});
+
 describe("run-suites.sh", () => {
   it("run_suites_should_run_steps_in_declared_order", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-suite-"));
