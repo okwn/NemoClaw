@@ -108,6 +108,7 @@ sandbox_exec() {
 # `openclaw` rather than the older `openclaw-gateway` argv. Match the process
 # table directly so readiness does not depend on the legacy rename.
 gateway_pid() {
+  # shellcheck disable=SC2016 # Single-quoted body runs inside the sandbox shell.
   sandbox_exec sh -c '
     pid="$(ps -eo pid=,comm=,args= 2>/dev/null | awk '\''($2 == "openclaw" && $0 ~ /gateway/) || $0 ~ /openclaw[ -]gateway/ { print $1 }'\'' | sort -n | head -n 1)"
     if [ -z "$pid" ]; then
