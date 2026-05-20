@@ -103,7 +103,7 @@ Create `test/e2e/validation_suites/lib/messaging_providers.sh` as the shared dom
 Required capabilities:
 
 - Load and validate `$E2E_CONTEXT_DIR/context.env` through `e2e_context_require` / `e2e_context_get`.
-- Resolve active sandbox name, agent, provider, messaging channel, and expected config paths.
+- Resolve active sandbox name, agent, provider, messaging channel, and expected config paths from normalized `E2E_*` context keys.
 - Derive provider names for Telegram, Discord, Slack, and WhatsApp QR-only cases covered by the legacy messaging scripts.
 - Inspect provider existence via OpenShell.
 - Inspect sandbox-side agent config:
@@ -214,16 +214,16 @@ Each migrated/deferred/retired item should include:
 
 No new production environment variables are expected.
 
-Suite scripts should consume existing scenario/context variables such as:
+Suite scripts should consume the scenario framework's normalized `E2E_*` context variables, including:
 
 - `E2E_CONTEXT_DIR`
-- `NEMOCLAW_SANDBOX_NAME`
-- `NEMOCLAW_AGENT`
-- `NEMOCLAW_PROVIDER`
-- `NEMOCLAW_MESSAGING_PROVIDER` or equivalent context key if already emitted
+- `E2E_SANDBOX_NAME`
+- `E2E_AGENT`
+- `E2E_PROVIDER`
+- `E2E_MESSAGING_PROVIDER` if emitted for messaging onboarding profiles
 - Provider tokens only as masked test inputs from existing scenarios/secrets
 
-If a missing normalized context key is discovered, extend `test/e2e/nemoclaw_scenarios/helpers/emit-context-from-plan.sh` rather than rediscovering state in each suite.
+If `E2E_MESSAGING_PROVIDER` or another required normalized context key is missing, extend `test/e2e/nemoclaw_scenarios/helpers/emit-context-from-plan.sh` rather than rediscovering state in each suite. Do not introduce `NEMOCLAW_*` aliases in new suite code unless an existing helper already requires them.
 
 ### Dependencies
 

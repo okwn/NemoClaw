@@ -54,9 +54,9 @@ Use TDD around the existing scenario framework tests in `test/e2e/scenario-frame
    - **Expected**: `messaging-telegram`, `messaging-discord`, and `messaging-slack` reference messaging-specific scripts, not generic smoke aliases.
    - **Covers**: Suite aliases replaced with real checks.
 2. `test_should_wire_messaging_suites_to_existing_messaging_scenarios`
-   - **Input**: `nemoclaw_scenarios/scenarios.yaml`.
-   - **Expected**: All listed Telegram/Discord/Slack OpenClaw and Hermes scenarios include matching suite IDs.
-   - **Covers**: Scenario YAML changes.
+   - **Input**: `nemoclaw_scenarios/scenarios.yaml` and generated context from `emit-context-from-plan.sh`.
+   - **Expected**: All listed Telegram/Discord/Slack OpenClaw and Hermes scenarios include matching suite IDs, and messaging plans emit normalized `E2E_*` context keys required by the suites.
+   - **Covers**: Scenario YAML changes and context emission.
 3. `test_should_accept_stable_messaging_assertion_ids`
    - **Input**: New suite metadata/assertion output fixtures or dry-run output from messaging scripts.
    - **Expected**: IDs follow `<layer>.<domain>.<behavior>` and use approved messaging/security domains in existing `PASS:` / `FAIL:` output.
@@ -70,6 +70,7 @@ Use TDD around the existing scenario framework tests in `test/e2e/scenario-frame
 - Plan-only tests may be shell-driven and should not require secrets.
 - Add skip/fail-clear assertions for absent live context at suite-script level.
 - Assert that only wired suite scripts are required to exist; deferred lifecycle and compatible-endpoint gaps belong in parity metadata until scenario state is available.
+- Use `E2E_*` context names in tests and fixtures; avoid introducing new `NEMOCLAW_*` aliases.
 
 ## Phase 3: Token Rotation and Channel Lifecycle Suites - Test Guide
 
