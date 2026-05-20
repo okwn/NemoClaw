@@ -276,6 +276,11 @@ const { resolveSandboxImageTagFromCreateOutput } =
   require("./domain/sandbox/image-tag") as typeof import("./domain/sandbox/image-tag");
 const nim: typeof import("./inference/nim") = require("./inference/nim");
 const onboardSession: typeof import("./state/onboard-session") = require("./state/onboard-session");
+const {
+  getFutureShellPathHint,
+  getPortConflictServiceHints,
+  printRemediationActions,
+}: typeof import("./onboard/remediation") = require("./onboard/remediation");
 const resumeConfig: typeof import("./onboard/resume-config") = require("./onboard/resume-config");
 const {
   getRequestedModelHint,
@@ -1583,49 +1588,8 @@ const {
 
 const ollamaModelSize: typeof import("./inference/ollama/model-size") = require("./inference/ollama/model-size");
 
-function printRemediationActions(
-  actions: Array<{ title: string; reason: string; commands?: string[] }> | null | undefined,
-): void {
-  if (!Array.isArray(actions) || actions.length === 0) {
-    return;
-  }
-
-  console.error("");
-  console.error("  Suggested fix:");
-  console.error("");
-  for (const action of actions) {
-    console.error(`  - ${action.title}: ${action.reason}`);
-    for (const command of action.commands || []) {
-      console.error(`    ${command}`);
-    }
-  }
-}
-
 function isOpenshellInstalled(): boolean {
   return resolveOpenshell() !== null;
-}
-
-function getFutureShellPathHint(binDir: string, pathValue = process.env.PATH || ""): string | null {
-  const parts = String(pathValue).split(path.delimiter).filter(Boolean);
-  if (parts[0] === binDir) {
-    return null;
-  }
-  return `export PATH="${binDir}:$PATH"`;
-}
-
-function getPortConflictServiceHints(platform = process.platform): string[] {
-  if (platform === "darwin") {
-    return [
-      "       # or, if it's a launchctl service (macOS):",
-      "       launchctl list | grep -i claw   # columns: PID | ExitStatus | Label",
-      `       launchctl unload ${OPENCLAW_LAUNCH_AGENT_PLIST}`,
-      "       # or: launchctl bootout gui/$(id -u)/ai.openclaw.gateway",
-    ];
-  }
-  return [
-    "       # or, if it's a systemd service:",
-    "       systemctl --user stop openclaw-gateway.service",
-  ];
 }
 
 function installOpenshell(): OpenShellInstallResult {
