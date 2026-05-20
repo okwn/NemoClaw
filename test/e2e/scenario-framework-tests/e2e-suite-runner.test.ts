@@ -153,6 +153,7 @@ describe("run-suites.sh", () => {
         "suite.rebuild.agent_version_upgraded",
         "suite.rebuild.inference_still_works",
         "suite.rebuild.policy_presets_preserved",
+        "suite.rebuild.hermes_config_preserved",
         "suite.upgrade.sandbox_registry_preserved",
         "suite.upgrade.gateway_version_upgraded",
         "suite.upgrade.survivor_agent_reachable",

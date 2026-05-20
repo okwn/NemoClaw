@@ -109,7 +109,10 @@ rebuild_upgrade_assert_policy_presets_preserved() {
   presets="${E2E_EXPECTED_POLICY_PRESETS:-npm pypi}"
   output="$(_rebuild_upgrade_run REBUILD_UPGRADE_NEMOCLAW_CMD nemoclaw policy status 2>/dev/null || true)"
   for preset in ${presets}; do
-    [[ "${output}" == *"${preset}"* ]] || e2e_fail "suite.rebuild.policy_presets_preserved"
+    if [[ "${output}" != *"${preset}"* ]]; then
+      e2e_fail "suite.rebuild.policy_presets_preserved"
+      return 1
+    fi
   done
   e2e_pass "suite.rebuild.policy_presets_preserved"
 }
