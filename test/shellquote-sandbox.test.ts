@@ -42,13 +42,13 @@ describe("sandboxName command hardening in onboard.js", () => {
       pathToFileURL(path.join(repoRoot, "dist", "lib", "state", "registry.js")).href,
     );
     const preflightUrl = JSON.stringify(
-      pathToFileURL(path.join(repoRoot, "dist", "lib", "preflight.js")).href,
+      pathToFileURL(path.join(repoRoot, "dist", "lib", "onboard", "preflight.js")).href,
     );
     const credentialsUrl = JSON.stringify(
-      pathToFileURL(path.join(repoRoot, "dist", "lib", "credentials.js")).href,
+      pathToFileURL(path.join(repoRoot, "dist", "lib", "credentials", "store.js")).href,
     );
     const streamUrl = JSON.stringify(
-      pathToFileURL(path.join(repoRoot, "dist", "lib", "sandbox-create-stream.js")).href,
+      pathToFileURL(path.join(repoRoot, "dist", "lib", "sandbox", "create-stream.js")).href,
     );
 
     fs.mkdirSync(fakeBin, { recursive: true });
@@ -104,6 +104,8 @@ try {
   process.env.OPENSHELL_GATEWAY = "nemoclaw";
   process.env.NEMOCLAW_NON_INTERACTIVE = "1";
   process.env.NEMOCLAW_HEALTH_POLL_COUNT = "1";
+  Object.defineProperty(process, "platform", { value: "darwin" });
+  Object.defineProperty(process, "arch", { value: "x64" });
   const sandboxName = await createSandbox(null, "gpt-5.4", "nvidia-prod", null, "my-assistant");
   console.log(JSON.stringify({ sandboxName, commands }));
 } catch (error) {

@@ -18,7 +18,7 @@
 const readline = require("readline");
 
 // ── Stubs ──────────────────────────────────────────────────────────────────
-const creds = require("../dist/lib/credentials.js");
+const creds = require("../dist/lib/credentials/store.js");
 const runner = require("../dist/lib/runner.js");
 const registry = require("../dist/lib/state/registry.js");
 
@@ -55,7 +55,7 @@ const onboard = /** @type {{
  *   selectTierPresetsAndAccess: (tierName: string, allPresets: unknown[]) => Promise<unknown>;
  * }} */ (require("../dist/lib/onboard.js"));
 const { selectPolicyTier, selectTierPresetsAndAccess } = onboard;
-const policies = require("../dist/lib/policies.js");
+const policies = require("../dist/lib/policy/index.js");
 
 (async () => {
   const tier = await selectPolicyTier();

@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.join(import.meta.dirname, "..");
 const TSX = path.join(REPO_ROOT, "node_modules", ".bin", "tsx");
-const BOUNDARY_SCRIPT = path.join(REPO_ROOT, "scripts", "check-layer-import-boundaries.ts");
+const BOUNDARY_SCRIPT = path.join(REPO_ROOT, "scripts", "checks", "layer-import-boundaries.ts");
 
 describe("CLI layer import boundaries", () => {
   it("keeps domain, adapter, action, and command layers separated", () => {
@@ -42,7 +42,7 @@ describe("CLI layer import boundaries", () => {
   });
 
   it("counts only classes that extend Command as oclif command classes", () => {
-    const fixture = path.join(REPO_ROOT, "src", "lib", "commands", `__boundary-implements-${process.pid}.ts`);
+    const fixture = path.join(REPO_ROOT, "src", "commands", `__boundary-implements-${process.pid}.ts`);
     try {
       fs.writeFileSync(
         fixture,

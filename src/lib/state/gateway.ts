@@ -78,10 +78,15 @@ export function getReportedGatewayName(output = ""): string | null {
 }
 
 export function isGatewayConnected(statusOutput = ""): boolean {
-  return (
-    typeof statusOutput === "string" &&
-    (statusOutput.includes("Connected") || statusOutput.includes("Server Status"))
-  );
+  if (typeof statusOutput !== "string") return false;
+  const clean = stripAnsi(statusOutput);
+  if (
+    /\b(Error|transport error|client error)\b/i.test(clean) ||
+    /Connection refused|Connection reset|No active gateway/i.test(clean)
+  ) {
+    return false;
+  }
+  return clean.includes("Connected") || clean.includes("Server Status");
 }
 
 export function hasActiveGatewayInfo(activeGatewayInfoOutput = ""): boolean {
@@ -129,19 +134,31 @@ export function getGatewayReuseState(
   const connected = isGatewayConnected(statusOutput);
   const activeGatewayName =
     getReportedGatewayName(statusOutput) || getReportedGatewayName(activeGatewayInfoOutput);
+  const activeInfo = hasActiveGatewayInfo(activeGatewayInfoOutput);
   if (connected && activeGatewayName === GATEWAY_NAME) {
     return "active-unnamed";
   }
-  if (connected && activeGatewayName && activeGatewayName !== GATEWAY_NAME) {
+  if ((connected || activeInfo) && activeGatewayName && activeGatewayName !== GATEWAY_NAME) {
     return "foreign-active";
   }
   if (hasStaleGateway(gwInfoOutput)) {
     return "stale";
   }
-  if (hasActiveGatewayInfo(activeGatewayInfoOutput)) {
+  if (activeInfo) {
     return "active-unnamed";
   }
   return "missing";
+}
+
+export function shouldSelectNamedGatewayForReuse(
+  statusOutput = "",
+  gwInfoOutput = "",
+  activeGatewayInfoOutput = "",
+): boolean {
+  return (
+    getGatewayReuseState(statusOutput, gwInfoOutput, activeGatewayInfoOutput) === "foreign-active" &&
+    hasStaleGateway(gwInfoOutput)
+  );
 }
 
 export function parseSandboxPhase(getOutput: string): string | null {
@@ -158,5 +175,8 @@ export function getSandboxStateFromOutputs(
 ): SandboxState {
   if (!sandboxName) return "missing";
   if (!getOutput) return "missing";
+  if (/\bNotFound\b|\bNot Found\b|sandbox not found/i.test(stripAnsi(getOutput))) {
+    return "missing";
+  }
   return isSandboxReady(listOutput, sandboxName) ? "ready" : "not_ready";
 }
