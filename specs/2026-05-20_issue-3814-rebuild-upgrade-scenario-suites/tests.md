@@ -126,7 +126,7 @@ Suggested new or expanded tests:
 **Test Implementation Notes:**
 
 - Add metadata resolution tests to `e2e-suite-runner.test.ts` when practical so suite parsing remains covered in one place.
-- Select concrete affected scenario IDs during implementation after suite metadata is updated.
+- Select concrete affected scenario IDs during implementation after suite metadata is updated; record them in implementation notes or PR validation so this gate is reproducible.
 - Use dry-run/fake context tests rather than live sandbox commands.
 
 ---
@@ -179,12 +179,17 @@ Suggested new or expanded tests:
    - **Expected**: passes locally.
    - **Covers**: added test pass gate.
 
-2. `test_should_run_strict_parity_map_validation`
+2. `test_should_run_plan_only_for_recorded_rebuild_upgrade_scenarios`
+   - **Input**: `bash test/e2e/runtime/run-scenario.sh <recorded-rebuild-id> --plan-only` and `bash test/e2e/runtime/run-scenario.sh <recorded-upgrade-id> --plan-only`.
+   - **Expected**: both commands exit 0 and do not execute suite actions.
+   - **Covers**: affected scenario compatibility gate.
+
+3. `test_should_run_strict_parity_map_validation`
    - **Input**: `npx tsx scripts/e2e/check-parity-map.ts --root . --strict`.
    - **Expected**: exits 0.
    - **Covers**: parity gate.
 
-3. `test_should_record_100_percent_or_greater_parity_review`
+4. `test_should_record_100_percent_or_greater_parity_review`
    - **Input**: PR body or implementation notes.
    - **Expected**: contains a validation note comparing migrated scenario assertions to reviewed legacy E2E coverage.
    - **Covers**: final parity acceptance criterion.

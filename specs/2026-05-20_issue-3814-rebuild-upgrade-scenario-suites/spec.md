@@ -133,7 +133,7 @@ Potential environment/context expectations:
 - `E2E_AGENT`
 - `E2E_SANDBOX_NAME`
 - `E2E_GATEWAY_URL`
-- Optional expected version keys if already emitted by scenario setup, or helper-level fallback commands if available through the existing sandbox/gateway interface.
+- Optional expected version keys if already emitted by scenario setup. If absent, helper tests must use explicit fake command outputs; implementation should not add broad filesystem or network rediscovery solely to infer expected versions.
 
 ## Acceptance Criteria
 
@@ -197,6 +197,7 @@ Add reusable shell helpers for rebuild/upgrade suite steps.
   - policy presets/config are preserved
   - gateway reports upgraded version
   - survivor sandbox remains registered and reachable
+- Define command boundaries through small wrapper functions or override variables so tests can fake command output without touching live sandboxes.
 - Keep helper functions command-injectable or mockable for tests.
 
 ### Acceptance Criteria
@@ -269,6 +270,7 @@ Validate the implementation by passing all added tests and proving coverage pari
 - Run targeted scenario-framework tests.
 - Run parity-map validation.
 - Run coverage report generation/checks.
+- Run plan-only validation for the selected rebuild and upgrade scenario IDs recorded during implementation.
 - Re-review the relevant legacy E2E onboarding/rebuild/upgrade coverage against migrated scenario assertions.
 - Document the parity result in the PR body or implementation notes.
 - Remove temporary scripts, logs, scratch files, or local generated artifacts not intended for commit.
