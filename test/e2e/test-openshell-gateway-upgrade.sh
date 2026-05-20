@@ -516,7 +516,8 @@ AGENT
 
 install_current_nemoclaw_upgrade() {
   local current_ref
-  current_ref="${GITHUB_SHA:-$(git rev-parse HEAD)}"
+  current_ref="${NEMOCLAW_CURRENT_NEMOCLAW_REF:-$(git rev-parse HEAD 2>/dev/null || printf '%s' "${GITHUB_SHA:-}")}"
+  [ -n "$current_ref" ] || fail "could not determine current NemoClaw ref"
   run_installer_payload "current ${current_ref:0:12}" "$current_ref" "${REPO_ROOT}/scripts/install.sh" "$CURRENT_INSTALL_LOG"
   grep -Fq "Accepted experimental OpenShell gateway upgrade" "$CURRENT_INSTALL_LOG" \
     || fail "current installer did not exercise the experimental OpenShell gateway upgrade acceptance path"
