@@ -280,6 +280,7 @@ const { resolveSandboxImageTagFromCreateOutput } =
 const nim: typeof import("./inference/nim") = require("./inference/nim");
 const onboardSession: typeof import("./state/onboard-session") = require("./state/onboard-session");
 const { OnboardRuntime }: typeof import("./onboard/machine/runtime") = require("./onboard/machine/runtime");
+const { handleAgentSetupState }: typeof import("./onboard/machine/handlers/agent-setup") = require("./onboard/machine/handlers/agent-setup");
 const { handleGatewayState }: typeof import("./onboard/machine/handlers/gateway") = require("./onboard/machine/handlers/gateway");
 const { handlePreflightState }: typeof import("./onboard/machine/handlers/preflight") = require("./onboard/machine/handlers/preflight");
 const { handleProviderInferenceState }: typeof import("./onboard/machine/handlers/provider-inference") = require("./onboard/machine/handlers/provider-inference");
@@ -9651,38 +9652,39 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     selectedMessagingChannels = sandboxStateResult.selectedMessagingChannels;
     const webSearchSupported = sandboxStateResult.webSearchSupported;
 
-    if (agent) {
-      await agentOnboard.handleAgentSetup(sandboxName, model, provider, agent, resume, session, {
-        step,
-        runCaptureOpenshell,
-        openshellShellCommand,
-        openshellBinary: getOpenshellBinary(),
-        buildSandboxConfigSyncScript,
-        writeSandboxConfigSyncFile,
-        cleanupTempDir,
-        startRecordedStep,
+    const agentSetupResult = await handleAgentSetupState({
+      agent,
+      sandboxName,
+      model,
+      provider,
+      resume,
+      session,
+      hermesAuthMethod,
+      hermesToolGateways,
+      deps: {
+        handleAgentSetup: agentOnboard.handleAgentSetup,
+        agentSetupContext: () => ({
+          step,
+          runCaptureOpenshell,
+          openshellShellCommand,
+          openshellBinary: getOpenshellBinary(),
+          buildSandboxConfigSyncScript,
+          writeSandboxConfigSyncFile,
+          cleanupTempDir,
+          startRecordedStep,
+          skippedStepMessage,
+        }),
+        ensureAgentDashboardForward,
+        recordStepSkipped,
+        isOpenclawReady,
         skippedStepMessage,
-      });
-      ensureAgentDashboardForward(sandboxName, agent);
-      await recordStepSkipped("openclaw");
-    } else {
-      const resumeOpenclaw = resume && sandboxName && isOpenclawReady(sandboxName);
-      if (resumeOpenclaw) {
-        skippedStepMessage("openclaw", sandboxName);
-        await recordStepComplete(
-          "openclaw",
-          toSessionUpdates({ sandboxName, provider, model, hermesAuthMethod, hermesToolGateways }),
-        );
-      } else {
-        await startRecordedStep("openclaw", { sandboxName, provider, model });
-        await setupOpenclaw(sandboxName, model, provider);
-        await recordStepComplete(
-          "openclaw",
-          toSessionUpdates({ sandboxName, provider, model, hermesAuthMethod, hermesToolGateways }),
-        );
-      }
-      await recordStepSkipped("agent_setup");
-    }
+        startRecordedStep,
+        setupOpenclaw,
+        recordStepComplete,
+        toSessionUpdates: (updates) => toSessionUpdates(updates as Parameters<typeof toSessionUpdates>[0]),
+      },
+    });
+    session = agentSetupResult.session;
 
     const latestSession = onboardSession.loadSession();
     const recordedPolicyPresets = Array.isArray(latestSession?.policyPresets)
