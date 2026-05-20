@@ -540,6 +540,7 @@ test_plans:
     - preflight-passed
     suites:
     - smoke
+    - messaging-token-rotation
 onboarding_assertions:
   base-installed:
     stage: base

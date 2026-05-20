@@ -169,7 +169,9 @@ suites:
     steps: *id004
   messaging-token-rotation:
     requires_state: *id001
-    steps: *id002
+    steps:
+    - id: provider-rotation-isolated
+      script: messaging/token-rotation/00-provider-rotation-isolated.sh
   security-policy:
     requires_state: *id007
     steps: *id008
