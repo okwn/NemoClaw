@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parse as yamlParse } from "yaml";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const CHECK_BIN = path.join(REPO_ROOT, "scripts/e2e/check-parity-map.ts");
@@ -47,6 +48,20 @@ function runCheck(root: string, args: string[] = []) {
     encoding: "utf8",
     timeout: Number(process.env.E2E_SPAWN_TIMEOUT_MS ?? 60_000),
   });
+}
+
+const ISSUE_3812_TARGET_SCRIPTS = [
+  "test-inference-routing.sh",
+  "test-openclaw-inference-switch.sh",
+  "test-kimi-inference-compat.sh",
+  "test-ollama-auth-proxy-e2e.sh",
+  "test-model-router-provider-routed-inference.sh",
+];
+
+function loadRealParityMap(): { scripts?: Record<string, unknown> } {
+  return yamlParse(fs.readFileSync(path.join(REPO_ROOT, "test/e2e/docs/parity-map.yaml"), "utf8")) as {
+    scripts?: Record<string, unknown>;
+  };
 }
 
 describe("parity map schema validation", () => {
@@ -137,6 +152,33 @@ scripts:
     const missingStatus = runCheck(tmp, ["--strict"]);
     expect(missingStatus.status).not.toBe(0);
     expect(missingStatus.stdout + missingStatus.stderr).toMatch(/status/);
+  });
+
+  it("test_should_include_all_issue_3812_target_scripts_in_parity_map", () => {
+    const parityMap = loadRealParityMap();
+
+    for (const script of ISSUE_3812_TARGET_SCRIPTS) {
+      expect(parityMap.scripts, script).toHaveProperty(script);
+    }
+  });
+
+  it("test_should_reject_unknown_target_assertion_status", () => {
+    writeMap(
+      tmp,
+      `
+scripts:
+  test-new.sh:
+    scenario: ubuntu-repo-cloud-openclaw
+    assertions:
+      - legacy: "CLI ready"
+        status: planned
+`,
+    );
+    const r = runCheck(tmp);
+    expect(r.status).not.toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/test-new\.sh/);
+    expect(r.stdout + r.stderr).toMatch(/assertions\[0\]/);
+    expect(r.stdout + r.stderr).toMatch(/status/i);
   });
 
   it("check_parity_map_should_reject_unknown_legacy_assertion_strings", () => {
