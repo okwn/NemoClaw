@@ -4,6 +4,33 @@
 
 NVIDIA NemoClaw is available in early preview starting March 16, 2026. Use this page to track changes.
 
+## v0.0.46
+
+NemoClaw v0.0.46 improves Windows setup, messaging channels, Hermes sandboxes, inference routing, and command compatibility:
+
+- Windows users can start from the bootstrap PowerShell script, and WSL installs can accept express install to use the Windows-host Ollama path automatically.
+- Messaging channels add WhatsApp support. `channels add whatsapp` records the channel, rebuilds the sandbox, and then pairs through the agent-specific QR command inside the sandbox.
+- `nemoclaw <name> exec` runs non-interactive commands inside a running sandbox through OpenShell and exits with the remote command's status.
+- Hermes sandboxes can use the managed tool gateway broker for supported tool routes, and Hermes startup recovers its readiness marker more reliably.
+- Compatible Anthropic endpoint setup auto-detects Amazon Bedrock Runtime endpoints and starts the local adapter needed for OpenShell routing.
+- Local Ollama setup on WSL native Docker now routes through NemoClaw's authenticated proxy, and subprocesses inherit the proxy bypass settings used by onboarding.
+- Model Router setup probes supported host Python interpreters and falls back to the next usable one when virtual environment creation fails.
+- The NemoClaw OpenClaw plugin registers the `/nemoclaw` command again after package metadata changes, and sandbox extension backups restore compatibility with current snapshots.
+- Sandbox builds patch OpenClaw's tool catalog to reduce startup latency for Nemotron-focused sandboxes.
+- `nemoclaw uninstall` docs now show how to pass flags through the hosted install script form.
+
+## v0.0.45
+
+NemoClaw v0.0.45 improves onboarding recovery, local inference behavior, channel cleanup, sandbox sharing diagnostics, and uninstall cleanup:
+
+- `nemoclaw onboard` handles GPU setup failures more directly. It can replace a stale CPU-only gateway when doing so is safe, skips GPU advice when you explicitly pass `--no-gpu`, points working-driver hosts toward NVIDIA Container Toolkit setup, and enforces the 63-character sandbox name limit before names reach OpenShell.
+- Preflight checks catch more host setup issues before the sandbox build starts. Container DNS probing uses a fresh `.invalid` lookup so cached DNS answers do not hide blocked resolver egress, and restrictive checkout file modes no longer make model-specific setup manifests unreadable inside the image.
+- Local inference setup is more predictable. Managed vLLM accepts `NEMOCLAW_VLLM_MODEL` for supported registry slugs and checks Hugging Face tokens before pulling gated models. Ollama-backed sandboxes now enable streamed usage accounting so OpenClaw token counters update after each turn.
+- Messaging channel removal is a clean inverse of channel add. `nemoclaw <name> channels remove <channel>` detaches live bridge providers before deleting them and un-applies the matching built-in network policy preset when it was active.
+- `nemoclaw <name> share mount` fails earlier with clearer guidance when the sandbox path cannot be verified or the host mount target is on a read-only filesystem.
+- `nemoclaw uninstall` stops host `openshell-gateway` processes, and subprocesses add IPv6 loopback plus wildcard local bind addresses to `NO_PROXY` so local traffic stays off forwarded proxies.
+- Diagnostics and internal command output redact more credential-shaped values and use private temporary directories for generated SSH and config files.
+
 ## v0.0.44
 
 NemoClaw v0.0.44 improves onboarding reliability, GPU sandbox networking, local inference verification, messaging recovery, and remote dashboard access:
