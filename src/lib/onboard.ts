@@ -283,6 +283,7 @@ const {
   getResumeConfigConflicts,
   getResumeSandboxConflict,
 } = resumeConfig;
+const { pruneKnownHostsEntries }: typeof import("./onboard/known-hosts") = require("./onboard/known-hosts");
 const openshellVersion: typeof import("./onboard/openshell-version") = require("./onboard/openshell-version");
 const {
   getBlueprintMaxOpenshellVersion,
@@ -630,22 +631,6 @@ function selectNamedGatewayForReuseIfNeeded(snapshot: GatewayReuseSnapshot): Gat
     console.log(`  ✓ Selected existing ${cliDisplayName()} gateway`);
   }
   return refreshed;
-}
-
-/**
- * Remove known_hosts lines whose host field contains an openshell-* entry.
- * Preserves blank lines and comments. Returns the cleaned string.
- */
-function pruneKnownHostsEntries(contents: string): string {
-  return contents
-    .split("\n")
-    .filter((l) => {
-      const trimmed = l.trim();
-      if (!trimmed || trimmed.startsWith("#")) return true;
-      const hostField = trimmed.split(/\s+/)[0];
-      return !hostField.split(",").some((h) => h.startsWith("openshell-"));
-    })
-    .join("\n");
 }
 
 function getSandboxReuseState(sandboxName: string | null) {
