@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
 
 import { buildComment } from "../tools/pr-review-advisor/comment.mts";
-import { classifyTestDepth, deriveGateStatus, normalizeReviewResult, renderSummary } from "../tools/pr-review-advisor/analyze.mts";
+import { buildSystemPrompt, classifyTestDepth, deriveGateStatus, normalizeReviewResult, readTrustedSecurityReviewSkill, renderSummary } from "../tools/pr-review-advisor/analyze.mts";
 import { githubGraphql } from "../tools/advisors/github.mts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -170,6 +170,17 @@ describe("PR review advisor", () => {
     await expect(githubGraphql("token", "query { viewer { login } }", {})).rejects.toThrow(
       "GitHub GraphQL returned errors: rate limit",
     );
+  });
+
+  it("loads the checked-in security review skill into the advisor prompt", () => {
+    const schema = JSON.parse(fs.readFileSync(path.join(ROOT, "tools/pr-review-advisor/schema.json"), "utf8"));
+    const skill = readTrustedSecurityReviewSkill();
+    const prompt = buildSystemPrompt(schema, skill);
+
+    expect(skill).toContain("# Security Code Review");
+    expect(skill).toContain("Category 1: Secrets and Credentials");
+    expect(prompt).toContain("Trusted security review skill from main checkout");
+    expect(prompt).toContain("For NemoClaw PRs, pay special attention to sandbox escape vectors");
   });
 
   it("renders summaries and sticky comments with human-review framing", () => {
