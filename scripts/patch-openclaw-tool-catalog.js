@@ -264,6 +264,15 @@ function patchOpenClawToolCatalog(distDir) {
     return text.includes(ALL_CUSTOM_TOOLS_PATTERN) || text.includes(MARKER);
   });
   if (targetFiles.length !== 1) {
+    if (targetFiles.length === 0) {
+      const builtInCatalogFile = selectionFiles.find((file) => {
+        const text = fs.readFileSync(file, "utf-8");
+        return text.includes("applyToolSearchCatalog({") && text.includes("buildToolSearchRunPlan({");
+      });
+      if (builtInCatalogFile) {
+        return { status: "skipped-built-in", file: builtInCatalogFile, version };
+      }
+    }
     throw new Error(`Expected exactly one selection-*.js target, found ${targetFiles.length}`);
   }
 
