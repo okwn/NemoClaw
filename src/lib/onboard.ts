@@ -290,7 +290,10 @@ const {
   getResumeSandboxConflict,
 } = resumeConfig;
 const { pruneKnownHostsEntries }: typeof import("./onboard/known-hosts") = require("./onboard/known-hosts");
-const onboardPromptHelpers: typeof import("./onboard/prompt-helpers") = require("./onboard/prompt-helpers");
+const {
+  isAffirmativeAnswer,
+  ...onboardPromptHelpers
+}: typeof import("./onboard/prompt-helpers") = require("./onboard/prompt-helpers");
 const providerRecovery: typeof import("./onboard/provider-recovery") = require("./onboard/provider-recovery");
 const { createOpenclawSetup }: typeof import("./onboard/openclaw-setup") = require("./onboard/openclaw-setup");
 const {
@@ -1220,14 +1223,6 @@ async function confirmRecreateForSelectionDrift(
 
 function isOpenclawReady(sandboxName: string): boolean {
   return Boolean(fetchGatewayAuthTokenFromSandbox(sandboxName));
-}
-
-function isAffirmativeAnswer(value: string | null | undefined): boolean {
-  return ["y", "yes"].includes(
-    String(value || "")
-      .trim()
-      .toLowerCase(),
-  );
 }
 
 function validateBraveSearchApiKey(apiKey: string): CurlProbeResult {

@@ -1,6 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+export function isAffirmativeAnswer(value: string | null | undefined): boolean {
+  return ["y", "yes"].includes(
+    String(value || "")
+      .trim()
+      .toLowerCase(),
+  );
+}
+
 export interface PromptHelperDeps {
   isNonInteractive(): boolean;
   note(message: string): void;
