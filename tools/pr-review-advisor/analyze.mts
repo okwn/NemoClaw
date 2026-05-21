@@ -404,7 +404,7 @@ function isAdvisorCheckContext(context: string): boolean {
   return ADVISOR_CHECK_CONTEXT_PATTERNS.some((pattern) => pattern.test(context));
 }
 
-async function discoverRequiredStatusCheckContexts(): Promise<string[]> {
+export async function discoverRequiredStatusCheckContexts(): Promise<string[]> {
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   const fallbackContexts = parseContextList(process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS);

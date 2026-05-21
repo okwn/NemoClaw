@@ -13,6 +13,7 @@ import {
   classifyMonolithDelta,
   classifyTestDepth,
   deriveGateStatus,
+  discoverRequiredStatusCheckContexts,
   extractRequiredStatusChecksFromRulesets,
   extractStatusCheckSummaries,
   normalizeReviewResult,
@@ -56,6 +57,14 @@ function metadata(overrides: Partial<ReviewMetadata> = {}): ReviewMetadata {
     deterministic,
     ...overrides,
   } as ReviewMetadata;
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
 
 function validResult(overrides = {}) {
@@ -223,6 +232,30 @@ describe("PR review advisor", () => {
     expect(extractRequiredStatusChecksFromRulesets(rulesets, "release/1.0")).toEqual(["release-only"]);
   });
 
+  it("falls back to configured required checks when rulesets cannot be read", async () => {
+    const previous = {
+      repo: process.env.GITHUB_REPOSITORY,
+      token: process.env.GH_TOKEN,
+      githubToken: process.env.GITHUB_TOKEN,
+      fallback: process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS,
+    };
+    process.env.GITHUB_REPOSITORY = "NVIDIA/NemoClaw";
+    process.env.GH_TOKEN = "token";
+    delete process.env.GITHUB_TOKEN;
+    process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS = "checks,commit-lint";
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({ ok: false, text: async () => "rulesets unavailable" } as Response);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      await expect(discoverRequiredStatusCheckContexts()).resolves.toEqual(["checks", "commit-lint"]);
+    } finally {
+      restoreEnv("GITHUB_REPOSITORY", previous.repo);
+      restoreEnv("GH_TOKEN", previous.token);
+      restoreEnv("GITHUB_TOKEN", previous.githubToken);
+      restoreEnv("PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS", previous.fallback);
+    }
+  });
+
   it("bases the CI gate on required contexts when they are known", () => {
     const gates = deriveGateStatus(
       {
@@ -253,6 +286,35 @@ describe("PR review advisor", () => {
     expect(gates.ci.status).toBe("pass");
     expect(gates.ci.evidence).toContain("2 required status context(s) completed");
     expect(gates.ci.evidence).toContain("Non-required contexts still pending: 1");
+  });
+
+  it("fails the CI gate when required contexts fail", () => {
+    const gates = deriveGateStatus(
+      {
+        graphQl: {
+          data: {
+            repository: {
+              pullRequest: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [
+                      { __typename: "CheckRun", name: "checks", status: "COMPLETED", conclusion: "FAILURE" },
+                      { __typename: "CheckRun", name: "commit-lint", status: "COMPLETED", conclusion: "SUCCESS" },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as never,
+      [],
+      [],
+      ["checks", "commit-lint"],
+    );
+
+    expect(gates.ci.status).toBe("fail");
+    expect(gates.ci.evidence).toContain("Required status context(s) failed: checks");
   });
 
   it("wait logic treats missing or in-progress required contexts as pending", () => {
