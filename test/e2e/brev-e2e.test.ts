@@ -1057,9 +1057,8 @@ describe("Brev GPU runtime setup", () => {
     const setup = gpuDockerRuntimeSetupCommands().join("\n");
 
     expect(setup).toContain(
-      `ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp`,
+      `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW Docker bridge allow rule" >&2; fi`,
     );
-    expect(setup).toContain("warning: could not add UFW Docker bridge allow rule");
   });
 });
 
