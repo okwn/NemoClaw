@@ -32,6 +32,202 @@ function runBash(script: string, env: Record<string, string> = {}): SpawnSyncRet
 // ──────────────────────────────────────────────────────────────────────────
 
 describe("E2E shell helpers", () => {
+  it("security_policy_credentials_helper_should_load_with_context_library", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-context-"));
+    try {
+      fs.writeFileSync(path.join(tmp, "context.env"), "E2E_SCENARIO=test\nE2E_PROVIDER=nvidia\nE2E_CREDENTIALS_EXPECTED=present\n");
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_require_context E2E_SCENARIO E2E_PROVIDER
+        echo "provider=$(spc_context_get E2E_PROVIDER)"
+        `,
+        { E2E_CONTEXT_DIR: tmp, E2E_DRY_RUN: "1" },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("provider=nvidia");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("security_policy_credentials_helper_should_fail_when_required_context_missing", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-context-missing-"));
+    try {
+      fs.writeFileSync(path.join(tmp, "context.env"), "E2E_SCENARIO=test\n");
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_require_context E2E_PROVIDER
+        `,
+        { E2E_CONTEXT_DIR: tmp, E2E_DRY_RUN: "1" },
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toContain("E2E_PROVIDER");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("security_policy_credentials_helper_should_not_log_secret_values", () => {
+    const r = runBash(`
+      set -euo pipefail
+      . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+      spc_log_provider_metadata "nvidia" "primary"
+      printf 'token=nvapi-secret-value-1234567890 sk-abcdefghijklmnop\n' | spc_redact_secret_text
+    `);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("provider=nvidia name=primary");
+    expect(r.stdout).not.toMatch(/nvapi-secret-value|sk-abcdefghijklmnop/);
+    expect(r.stdout).toMatch(/\[REDACTED\]/);
+  });
+
+  it("security_policy_credentials_helper_should_reject_empty_gateway_credentials", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-credentials-empty-"));
+    const fakeBin = path.join(tmp, "bin");
+    fs.mkdirSync(fakeBin);
+    fs.writeFileSync(
+      path.join(fakeBin, "nemoclaw"),
+      `#!/usr/bin/env bash
+if [ "$1 $2" = "credentials list" ]; then
+  echo "  No provider credentials registered."
+  exit 0
+fi
+exit 2
+`,
+      { mode: 0o755 },
+    );
+    try {
+      fs.writeFileSync(path.join(tmp, "context.env"), "E2E_SCENARIO=test\nE2E_PROVIDER=nvidia\nE2E_CREDENTIALS_EXPECTED=present\n");
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_assert_credentials_expected
+        `,
+        { E2E_CONTEXT_DIR: tmp, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/no gateway credentials/i);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("security_policy_credentials_helper_should_verify_policy_and_shields_state", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-policy-shields-"));
+    const fakeBin = path.join(tmp, "bin");
+    fs.mkdirSync(fakeBin);
+    fs.writeFileSync(
+      path.join(fakeBin, "nemoclaw"),
+      `#!/usr/bin/env bash
+if [ "$1 $2" = "sb policy-list" ]; then
+  echo "  Policy presets for sandbox 'sb':"
+  echo "    ● telegram — Telegram bridge egress"
+  echo "    ○ slack — Slack bridge egress"
+  exit 0
+fi
+if [ "$1 $2 $3" = "sb shields status" ]; then
+  echo "  Shields: UP (lockdown active)"
+  exit 0
+fi
+exit 2
+`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(fakeBin, "openshell"),
+      `#!/usr/bin/env bash
+if [ "$1 $2 $3" = "sandbox exec --name" ]; then
+  echo "440 root:root"
+  exit 0
+fi
+exit 2
+`,
+      { mode: 0o755 },
+    );
+    try {
+      fs.writeFileSync(
+        path.join(tmp, "context.env"),
+        "E2E_SCENARIO=test\nE2E_PROVIDER=nvidia\nE2E_SANDBOX_NAME=sb\nE2E_AGENT=openclaw\nE2E_SHIELDS_EXPECTED_STATE=up\n",
+      );
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_assert_policy_preset_present telegram
+        spc_assert_shields_config_consistent
+        `,
+        { E2E_CONTEXT_DIR: tmp, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("telegram");
+      expect(r.stdout).toContain("shields config state is consistent: up");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("security_policy_credentials_helper_should_fail_on_missing_policy_preset", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-policy-missing-"));
+    const fakeBin = path.join(tmp, "bin");
+    fs.mkdirSync(fakeBin);
+    fs.writeFileSync(
+      path.join(fakeBin, "nemoclaw"),
+      `#!/usr/bin/env bash
+echo "    ○ telegram — Telegram bridge egress"
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    try {
+      fs.writeFileSync(path.join(tmp, "context.env"), "E2E_SCENARIO=test\nE2E_PROVIDER=nvidia\nE2E_SANDBOX_NAME=sb\n");
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_assert_policy_preset_present telegram
+        `,
+        { E2E_CONTEXT_DIR: tmp, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/expected policy preset 'telegram'/);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("security_policy_credentials_helper_should_verify_openshell_rewrite_markers", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-openshell-"));
+    const fakeBin = path.join(tmp, "bin");
+    fs.mkdirSync(fakeBin);
+    fs.writeFileSync(
+      path.join(fakeBin, "openshell"),
+      `#!/usr/bin/env bash
+# request-body-credential-rewrite websocket-credential-rewrite
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    try {
+      fs.writeFileSync(path.join(tmp, "context.env"), "E2E_SCENARIO=test\n");
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_assert_openshell_credential_rewrite_supported
+        `,
+        { E2E_CONTEXT_DIR: tmp, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("OpenShell credential rewrite capability markers present");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("env_helper_should_set_standard_noninteractive_env", () => {
     const r = runBash(`
       set -euo pipefail
@@ -616,6 +812,20 @@ describe("Phase 1.E install dispatcher splits", () => {
     expect(r.stdout + r.stderr).not.toMatch(/install-curl|install-ollama|install-launchable/);
   });
 
+  it("repo_current_install_should_use_full_cli_build_script", () => {
+    const script = fs.readFileSync(path.join(INSTALL_DIR, "repo-current.sh"), "utf8");
+    expect(script).toContain("npm run build:cli");
+    expect(script).not.toContain("./node_modules/.bin/tsc -p tsconfig.src.json");
+    expect(script).not.toContain("./node_modules/.bin/tsc -p nemoclaw-blueprint/tsconfig.json");
+  });
+
+  it("repo_current_install_should_verify_generated_oclif_metadata", () => {
+    const script = fs.readFileSync(path.join(INSTALL_DIR, "repo-current.sh"), "utf8");
+    const buildScript = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8")).scripts?.["build:cli"] ?? "";
+    expect(buildScript).toContain("generate-oclif-metadata-manifest.js");
+    expect(script).toContain("dist/lib/cli/oclif-command-metadata.generated.json");
+  });
+
   it("install_should_dispatch_to_install_curl_helper_for_public_installer_profile", () => {
     const r = dispatchDryRun("public-installer");
     expect(r.status, r.stderr).toBe(0);
@@ -653,7 +863,14 @@ describe("baseline onboarding validation helper", () => {
       const ctx = path.join(tmp, "ctx");
       fs.mkdirSync(bin); fs.mkdirSync(ctx);
       fs.writeFileSync(path.join(ctx, "context.env"), "E2E_SANDBOX_NAME=sb1\nE2E_PROVIDER=nvidia\nE2E_INFERENCE_ROUTE=inference-local\n");
-      fs.writeFileSync(path.join(bin, "nemoclaw"), "#!/usr/bin/env bash\n[[ $1 == --help ]] && echo help && exit 0\n", { mode: 0o755 });
+      fs.writeFileSync(path.join(bin, "nemoclaw"), `#!/usr/bin/env bash
+case "$*" in
+  --help) echo help;;
+  "sb1 status") echo 'status running gateway healthy sandbox running';;
+  "sb1 logs") echo baseline-log;;
+  *) echo "unexpected nemoclaw args: $*" >&2; exit 64;;
+esac
+`, { mode: 0o755 });
       fs.writeFileSync(path.join(bin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
       const r = runBash(`
         set -euo pipefail
@@ -662,11 +879,15 @@ describe("baseline onboarding validation helper", () => {
         baseline_assert_nemoclaw_on_path
         baseline_assert_openshell_on_path
         baseline_assert_nemoclaw_help_exits_zero
+        baseline_assert_sandbox_status_exits_zero
+        baseline_assert_logs_produce_output
       `, { E2E_CONTEXT_DIR: ctx, PATH: `${bin}:${process.env.PATH}` });
       expect(r.status, r.stderr).toBe(0);
       expect(r.stdout).toContain("PASS: validation.baseline_onboarding.nemoclaw_on_path");
       expect(r.stdout).toContain("PASS: validation.baseline_onboarding.openshell_on_path");
       expect(r.stdout).toContain("PASS: validation.baseline_onboarding.nemoclaw_help_exits_zero");
+      expect(r.stdout).toContain("PASS: validation.baseline_onboarding.sandbox_status");
+      expect(r.stdout).toContain("PASS: validation.baseline_onboarding.logs_available");
     } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
   });
 });
@@ -705,7 +926,12 @@ describe("sandbox lifecycle validation helper", () => {
     try {
       const bin = path.join(tmp, "bin"); fs.mkdirSync(bin);
       fs.writeFileSync(path.join(bin, "nemoclaw"), `#!/usr/bin/env bash
-if [[ "$1 $2" == "sandbox status" ]]; then echo 'status running gateway healthy sandbox running'; elif [[ "$1 $2" == "sandbox logs" ]]; then echo logline; elif [[ "$1" == "list" ]]; then echo sb1; fi
+case "$*" in
+  list) echo sb1;;
+  "sb1 status") echo 'status running gateway healthy sandbox running';;
+  "sb1 logs") echo logline;;
+  *) echo "unexpected nemoclaw args: $*" >&2; exit 64;;
+esac
 `, { mode: 0o755 });
       fs.writeFileSync(path.join(bin, "openshell"), `#!/usr/bin/env bash
 echo lifecycle-ok
