@@ -4,31 +4,6 @@
 import { Args } from "@oclif/core";
 
 import { dryRunFlag, forceFlag, yesFlag } from "../cli/common-flags";
-
-type PolicyRuntimeBridge = {
-  sandboxPolicyAdd: (sandboxName: string, args?: string[]) => Promise<void>;
-  sandboxPolicyRemove: (sandboxName: string, args?: string[]) => Promise<void>;
-};
-
-let runtimeBridgeFactory = (): PolicyRuntimeBridge => {
-  const actions = require("../actions/sandbox/policy-channel") as {
-    addSandboxPolicy: PolicyRuntimeBridge["sandboxPolicyAdd"];
-    removeSandboxPolicy: PolicyRuntimeBridge["sandboxPolicyRemove"];
-  };
-  return {
-    sandboxPolicyAdd: actions.addSandboxPolicy,
-    sandboxPolicyRemove: actions.removeSandboxPolicy,
-  };
-};
-
-export function setPolicyRuntimeBridgeFactoryForTest(factory: () => PolicyRuntimeBridge): void {
-  runtimeBridgeFactory = factory;
-}
-
-export function getPolicyRuntimeBridge(): PolicyRuntimeBridge {
-  return runtimeBridgeFactory();
-}
-
 const sandboxNameArg = Args.string({
   name: "sandbox",
   description: "Sandbox name",
@@ -40,13 +15,16 @@ const presetArg = Args.string({
   required: false,
 });
 
-export function appendCommonPolicyFlags(
-  args: string[],
-  flags: { yes?: boolean; force?: boolean; "dry-run"?: boolean },
-): void {
-  if (flags.yes) args.push("--yes");
-  if (flags.force) args.push("--force");
-  if (flags["dry-run"]) args.push("--dry-run");
+export function commonPolicyOptions(flags: {
+  yes?: boolean;
+  force?: boolean;
+  "dry-run"?: boolean;
+}) {
+  return {
+    yes: Boolean(flags.yes),
+    force: Boolean(flags.force),
+    dryRun: Boolean(flags["dry-run"]),
+  };
 }
 
 export const policyMutationArgs = { sandboxName: sandboxNameArg, preset: presetArg };

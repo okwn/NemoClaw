@@ -5,49 +5,22 @@ import { Args } from "@oclif/core";
 
 import { dryRunFlag } from "../cli/common-flags";
 
-type ChannelsRuntimeBridge = {
-  sandboxChannelsAdd: (sandboxName: string, args?: string[]) => Promise<void>;
-  sandboxChannelsRemove: (sandboxName: string, args?: string[]) => Promise<void>;
-  sandboxChannelsStart: (sandboxName: string, args?: string[]) => Promise<void>;
-  sandboxChannelsStop: (sandboxName: string, args?: string[]) => Promise<void>;
+export type ChannelMutationOptions = {
+  channel?: string;
+  dryRun?: boolean;
 };
-
-let runtimeBridgeFactory = (): ChannelsRuntimeBridge => {
-  const actions = require("../actions/sandbox/policy-channel") as {
-    addSandboxChannel: ChannelsRuntimeBridge["sandboxChannelsAdd"];
-    removeSandboxChannel: ChannelsRuntimeBridge["sandboxChannelsRemove"];
-    startSandboxChannel: ChannelsRuntimeBridge["sandboxChannelsStart"];
-    stopSandboxChannel: ChannelsRuntimeBridge["sandboxChannelsStop"];
-  };
-  return {
-    sandboxChannelsAdd: actions.addSandboxChannel,
-    sandboxChannelsRemove: actions.removeSandboxChannel,
-    sandboxChannelsStart: actions.startSandboxChannel,
-    sandboxChannelsStop: actions.stopSandboxChannel,
-  };
-};
-
-export function setChannelsRuntimeBridgeFactoryForTest(
-  factory: () => ChannelsRuntimeBridge,
-): void {
-  runtimeBridgeFactory = factory;
-}
-
-export function getChannelsRuntimeBridge(): ChannelsRuntimeBridge {
-  return runtimeBridgeFactory();
-}
 
 const sandboxNameArg = Args.string({ name: "sandbox", description: "Sandbox name", required: true });
 const channelArg = Args.string({ name: "channel", description: "Messaging channel", required: true });
 
-export function buildChannelArgs(
+export function channelMutationOptions(
   channel: string | undefined,
   flags: { "dry-run"?: boolean },
-): string[] {
-  const args: string[] = [];
-  if (channel) args.push(channel);
-  if (flags["dry-run"]) args.push("--dry-run");
-  return args;
+): ChannelMutationOptions {
+  return {
+    channel,
+    dryRun: Boolean(flags["dry-run"]),
+  };
 }
 
 export const channelMutationArgs = {

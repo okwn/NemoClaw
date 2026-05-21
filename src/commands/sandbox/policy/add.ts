@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flags } from "@oclif/core";
+import { addSandboxPolicy } from "../../../lib/actions/sandbox/policy-channel";
 import { NemoClawCommand } from "../../../lib/cli/nemoclaw-oclif-command";
 
 import {
-  appendCommonPolicyFlags,
-  getPolicyRuntimeBridge,
+  commonPolicyOptions,
   policyMutationArgs,
   policyMutationFlags,
 } from "../../../lib/sandbox/policy-command-support";
@@ -39,11 +39,11 @@ export default class PolicyAddCommand extends NemoClawCommand {
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(PolicyAddCommand);
-    const legacyArgs: string[] = [];
-    if (args.preset) legacyArgs.push(args.preset);
-    appendCommonPolicyFlags(legacyArgs, flags);
-    if (flags["from-file"]) legacyArgs.push("--from-file", flags["from-file"]);
-    if (flags["from-dir"]) legacyArgs.push("--from-dir", flags["from-dir"]);
-    await getPolicyRuntimeBridge().sandboxPolicyAdd(args.sandboxName, legacyArgs);
+    await addSandboxPolicy(args.sandboxName, {
+      preset: args.preset,
+      ...commonPolicyOptions(flags),
+      fromFile: flags["from-file"],
+      fromDir: flags["from-dir"],
+    });
   }
 }

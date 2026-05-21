@@ -35,6 +35,10 @@ type OnboardTestInternals = {
     requestedSandboxName: string;
     recordedSandboxName: string;
   } | null>;
+  clearAgentScopedResumeState: <T extends Record<string, unknown>>(
+    session: T,
+    selectedAgentName: string,
+  ) => T;
   pullAndResolveBaseImageDigest: () => { digest: string | null; ref: string } | null;
   SANDBOX_BASE_IMAGE: string;
 };
@@ -80,6 +84,7 @@ const {
   getRequestedSandboxNameHint,
   getResumeConfigConflicts,
   getResumeSandboxConflict,
+  clearAgentScopedResumeState,
   SANDBOX_BASE_IMAGE,
 } = onboardTestInternals;
 
@@ -383,7 +388,7 @@ startGateway(null).catch(() => {});
     }
   });
 
-  it("detects resume conflicts when a different agent is requested", () => {
+  it("does not treat a requested agent change as a hard resume conflict", () => {
     expect(
       getResumeConfigConflicts(
         {
@@ -392,13 +397,7 @@ startGateway(null).catch(() => {});
         },
         { agent: "hermes" },
       ),
-    ).toEqual([
-      {
-        field: "agent",
-        requested: "hermes",
-        recorded: "openclaw",
-      },
-    ]);
+    ).toEqual([]);
   });
 
   it("allows resume when requested agent matches recorded agent", () => {
@@ -411,6 +410,62 @@ startGateway(null).catch(() => {});
         { agent: "hermes" },
       ),
     ).toEqual([]);
+  });
+
+  it("clears agent-scoped provider state when a resume switches from Hermes to OpenClaw", () => {
+    const completeStep = {
+      status: "complete",
+      startedAt: "2026-05-19T00:00:00.000Z",
+      completedAt: "2026-05-19T00:01:00.000Z",
+      error: null,
+    };
+    const session = {
+      agent: "hermes",
+      provider: "hermes-provider",
+      model: "moonshotai/kimi-k2.6",
+      endpointUrl: "https://inference-api.nousresearch.com/v1",
+      credentialEnv: "NOUS_API_KEY",
+      hermesAuthMethod: "oauth",
+      hermesToolGateways: ["nous-web"],
+      preferredInferenceApi: "openai-completions",
+      nimContainer: "nim-hermes",
+      routerPid: 123,
+      routerCredentialHash: "hash",
+      policyPresets: ["nous-web", "brave"],
+      lastCompletedStep: "policies",
+      lastStepStarted: "policies",
+      steps: {
+        preflight: { ...completeStep },
+        gateway: { ...completeStep },
+        provider_selection: { ...completeStep },
+        inference: { ...completeStep },
+        sandbox: { ...completeStep },
+        openclaw: { ...completeStep },
+        agent_setup: { ...completeStep },
+        policies: { ...completeStep },
+      },
+    };
+
+    const cleared = clearAgentScopedResumeState(session, "openclaw") as typeof session;
+
+    expect(cleared.agent).toBeNull();
+    expect(cleared.provider).toBeNull();
+    expect(cleared.model).toBeNull();
+    expect(cleared.endpointUrl).toBeNull();
+    expect(cleared.credentialEnv).toBeNull();
+    expect(cleared.hermesAuthMethod).toBeNull();
+    expect(cleared.hermesToolGateways).toBeNull();
+    expect(cleared.preferredInferenceApi).toBeNull();
+    expect(cleared.nimContainer).toBeNull();
+    expect(cleared.routerPid).toBeNull();
+    expect(cleared.routerCredentialHash).toBeNull();
+    expect(cleared.policyPresets).toBeNull();
+    expect(cleared.steps.gateway.status).toBe("complete");
+    expect(cleared.steps.provider_selection.status).toBe("pending");
+    expect(cleared.steps.sandbox.status).toBe("pending");
+    expect(cleared.steps.policies.status).toBe("pending");
+    expect(cleared.lastCompletedStep).toBe("gateway");
+    expect(cleared.lastStepStarted).toBeNull();
   });
 
   it("returns a future-shell PATH hint for user-local openshell installs", () => {
@@ -440,6 +495,9 @@ startGateway(null).catch(() => {});
       expect(fs.existsSync(path.join(buildCtx, "nemoclaw", "src"))).toBe(true);
       expect(fs.existsSync(path.join(buildCtx, "nemoclaw-blueprint", ".venv"))).toBe(false);
       expect(fs.existsSync(path.join(buildCtx, "scripts", "nemoclaw-start.sh"))).toBe(true);
+      expect(fs.existsSync(path.join(buildCtx, "scripts", "patch-openclaw-tool-catalog.js"))).toBe(
+        true,
+      );
       expect(fs.existsSync(path.join(buildCtx, "scripts", "setup.sh"))).toBe(false);
       expect(fs.existsSync(path.join(buildCtx, "nemoclaw", "node_modules"))).toBe(false);
     } finally {
@@ -638,6 +696,128 @@ const { setupInference } = require(${onboardPath});
     assert.ok(
       !commands.some((entry) => /nous-host-secret|openai-host-secret/.test(entry.command)),
       "host credential values must not appear in argv",
+    );
+  });
+
+  it("routes Bedrock Runtime custom Anthropic endpoints through the hidden OpenAI adapter", () => {
+    const repoRoot = path.join(import.meta.dirname, "..");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-bedrock-runtime-"));
+    const fakeBin = path.join(tmpDir, "bin");
+    const scriptPath = path.join(tmpDir, "setup-bedrock-runtime-check.js");
+    const onboardPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "onboard.js"));
+    const runnerPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "runner.js"));
+    const registryPath = JSON.stringify(path.join(repoRoot, "dist", "lib", "state", "registry.js"));
+    const adapterPath = JSON.stringify(
+      path.join(repoRoot, "dist", "lib", "inference", "bedrock-runtime-adapter.js"),
+    );
+
+    fs.mkdirSync(fakeBin, { recursive: true });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
+
+    const script = String.raw`
+const runner = require(${runnerPath});
+const registry = require(${registryPath});
+const adapter = require(${adapterPath});
+const _n = (c) => (Array.isArray(c) ? c.join(" ") : String(c)).replace(/'/g, "");
+
+const commands = [];
+runner.run = (command, opts = {}) => {
+  const normalized = _n(command);
+  commands.push({ command: normalized, env: opts.env || null });
+  if (normalized.includes("provider get compatible-anthropic-endpoint")) {
+    return { status: 1, stdout: "", stderr: "" };
+  }
+  return { status: 0, stdout: "", stderr: "" };
+};
+runner.runCapture = (command) => {
+  if (_n(command).includes("inference") && _n(command).includes("get")) {
+    return [
+      "Gateway inference:",
+      "",
+      "  Route: inference.local",
+      "  Provider: compatible-anthropic-endpoint",
+      "  Model: anthropic.claude-3-5-sonnet-20240620-v1:0",
+      "  Version: 1",
+    ].join("\\n");
+  }
+  return "";
+};
+registry.updateSandbox = () => true;
+adapter.ensureBedrockRuntimeAdapter = async ({ classification, compatibleCredential }) => ({
+  baseUrl: "http://host.openshell.internal:11436/v1",
+  localBaseUrl: "http://127.0.0.1:11436/v1",
+  credentialEnv: "NEMOCLAW_BEDROCK_RUNTIME_ADAPTER_TOKEN",
+  token: "adapter-token",
+  region: classification.region,
+  compatibleCredential,
+});
+
+process.env.COMPATIBLE_ANTHROPIC_API_KEY = "bedrock-bearer";
+
+const { setupInference } = require(${onboardPath});
+
+(async () => {
+  await setupInference(
+    "test-box",
+    "anthropic.claude-3-5-sonnet-20240620-v1:0",
+    "compatible-anthropic-endpoint",
+    "https://bedrock-runtime.us-east-1.amazonaws.com",
+    "COMPATIBLE_ANTHROPIC_API_KEY",
+  );
+  console.log(JSON.stringify(commands));
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
+`;
+    fs.writeFileSync(scriptPath, script);
+
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        HOME: tmpDir,
+        PATH: `${fakeBin}:${process.env.PATH || ""}`,
+      },
+    });
+
+    expect(result.status).toBe(0);
+    const commands = parseStdoutJson<CommandEntry[]>(result.stdout);
+    const providerCommand = commands.find((entry) => /provider create/.test(entry.command));
+    assert.ok(providerCommand, "expected hidden adapter provider registration");
+    assert.match(providerCommand.command, /--name compatible-anthropic-endpoint/);
+    assert.match(providerCommand.command, /--type openai/);
+    assert.match(providerCommand.command, /--credential NEMOCLAW_BEDROCK_RUNTIME_ADAPTER_TOKEN/);
+    assert.match(
+      providerCommand.command,
+      /OPENAI_BASE_URL=http:\/\/host\.openshell\.internal:11436\/v1/,
+    );
+    assert.equal(providerCommand.env?.NEMOCLAW_BEDROCK_RUNTIME_ADAPTER_TOKEN, "adapter-token");
+    assert.ok(
+      !JSON.stringify(commands).includes("bedrock-bearer"),
+      "Bedrock bearer token must not appear in OpenShell argv or env",
+    );
+    const sandboxCommands = commands.filter((entry) => /\bsandbox\b/.test(entry.command));
+    assert.ok(
+      !sandboxCommands.some((entry) =>
+        JSON.stringify(entry).includes("NEMOCLAW_BEDROCK_RUNTIME_ADAPTER_TOKEN"),
+      ),
+      "adapter credential env must not be passed to sandbox commands",
+    );
+    assert.ok(
+      !sandboxCommands.some((entry) => JSON.stringify(entry).includes("adapter-token")),
+      "adapter token must not be passed to sandbox commands",
+    );
+    assert.ok(
+      !result.stderr.includes("bedrock-bearer") && !result.stderr.includes("adapter-token"),
+      "Bedrock tokens must not appear in onboarding stderr",
+    );
+    assert.match(
+      commands.at(-1)?.command || "",
+      /inference set --no-verify --provider compatible-anthropic-endpoint --model anthropic\.claude-3-5-sonnet-20240620-v1:0/,
     );
   });
 

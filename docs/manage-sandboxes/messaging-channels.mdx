@@ -74,7 +74,7 @@ Pair only one sandbox per WhatsApp account at a time.
 
 When the wizard reaches **Messaging channels**, it lists Telegram, Discord, Slack, and WhatsApp.
 Press a channel number to toggle it on or off, then press **Enter** when done.
-If a token is not already in the environment or credential store, the wizard prompts for it and saves it.
+If a token-based channel token is not already in the environment or credential store, the wizard prompts for it and saves it.
 WhatsApp uses QR pairing instead of a host-side token, so the wizard does not prompt.
 It prints pairing instructions and you complete the pairing inside the sandbox after rebuild.
 NemoClaw also selects the matching network policy preset during policy setup so the channel can reach its provider API.
@@ -117,7 +117,7 @@ $ nemoclaw my-assistant channels add slack
 $ nemoclaw my-assistant channels add whatsapp
 ```
 
-`channels add` collects whatever each channel needs (token prompts for Telegram, Discord, and Slack; a host-side QR scan for WeChat; nothing for WhatsApp because pairing happens in-sandbox after rebuild), registers bridge providers with the OpenShell gateway when tokens were captured, records the channel in the sandbox registry, and asks whether to rebuild immediately.
+`channels add` collects whatever each channel needs (token prompts for Telegram, Discord, and Slack; nothing for WhatsApp because pairing happens in-sandbox after rebuild), registers bridge providers with the OpenShell gateway when tokens were captured, records the channel in the sandbox registry, and asks whether to rebuild immediately.
 The command accepts mixed-case input such as `Telegram`, then stores and prints the canonical lowercase channel name.
 If a matching built-in network policy preset exists, `channels add` applies it to the sandbox automatically before the rebuild so the bridge has egress to its upstream API; if applying the preset fails, NemoClaw warns and tells you to re-apply manually with `nemoclaw <sandbox> policy-add <channel>` after the rebuild.
 Choose the rebuild so the running sandbox image picks up the new channel.
@@ -181,7 +181,7 @@ Stopping the in-sandbox gateway stops Telegram, Discord, Slack, and WhatsApp pol
 
 After the sandbox is running, send a message to the configured bot or app.
 If delivery fails, use `openshell term` on the host, check gateway logs, and verify network policy allows the channel API.
-Use the matching policy preset (`telegram`, `discord`, `slack`, `wechat`, or `whatsapp`) or review [Common Integration Policy Examples](/network-policy/integration-policy-examples).
+Use the matching policy preset (`telegram`, `discord`, `slack`, or `whatsapp`) or review [Common Integration Policy Examples](/network-policy/integration-policy-examples).
 
 ## Tunnel Command
 

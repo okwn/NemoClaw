@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { startSandboxChannel } from "../../../lib/actions/sandbox/policy-channel";
 import { NemoClawCommand } from "../../../lib/cli/nemoclaw-oclif-command";
 
 import {
-  buildChannelArgs,
+  channelMutationOptions,
   channelMutationArgs,
   channelMutationFlags,
-  getChannelsRuntimeBridge,
 } from "../../../lib/sandbox/channels-command-support";
 
 export default class ChannelsStartCommand extends NemoClawCommand {
@@ -22,9 +22,6 @@ export default class ChannelsStartCommand extends NemoClawCommand {
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(ChannelsStartCommand);
-    await getChannelsRuntimeBridge().sandboxChannelsStart(
-      args.sandboxName,
-      buildChannelArgs(args.channel, flags),
-    );
+    await startSandboxChannel(args.sandboxName, channelMutationOptions(args.channel, flags));
   }
 }

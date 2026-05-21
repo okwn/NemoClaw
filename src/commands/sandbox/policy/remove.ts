@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { removeSandboxPolicy } from "../../../lib/actions/sandbox/policy-channel";
 import { NemoClawCommand } from "../../../lib/cli/nemoclaw-oclif-command";
 
 import {
-  appendCommonPolicyFlags,
-  getPolicyRuntimeBridge,
+  commonPolicyOptions,
   policyMutationArgs,
   policyMutationFlags,
 } from "../../../lib/sandbox/policy-command-support";
@@ -25,9 +25,9 @@ export default class PolicyRemoveCommand extends NemoClawCommand {
 
   public async run(): Promise<void> {
     const { args, flags } = await this.parse(PolicyRemoveCommand);
-    const legacyArgs: string[] = [];
-    if (args.preset) legacyArgs.push(args.preset);
-    appendCommonPolicyFlags(legacyArgs, flags);
-    await getPolicyRuntimeBridge().sandboxPolicyRemove(args.sandboxName, legacyArgs);
+    await removeSandboxPolicy(args.sandboxName, {
+      preset: args.preset,
+      ...commonPolicyOptions(flags),
+    });
   }
 }
