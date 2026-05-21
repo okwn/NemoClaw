@@ -449,6 +449,7 @@ function transitionMachineSnapshot(session: Session, state: OnboardMachineState,
 
 export function createSession(overrides: Partial<Session> = {}): Session {
   const now = new Date().toISOString();
+  const startedAt = overrides.startedAt ?? now;
   const steps = {
     ...defaultSteps(),
     ...(overrides.steps ?? {}),
@@ -459,7 +460,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     resumable: true,
     status: "in_progress",
     mode: overrides.mode ?? "interactive",
-    startedAt: overrides.startedAt ?? now,
+    startedAt,
     updatedAt: overrides.updatedAt ?? now,
     lastStepStarted: overrides.lastStepStarted ?? null,
     lastCompletedStep: overrides.lastCompletedStep ?? null,
@@ -493,7 +494,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
       fromDockerfile: overrides.metadata?.fromDockerfile ?? null,
     },
     machine: parseMachineSnapshot(overrides.machine as SessionJsonValue | undefined) ??
-      createMachineSnapshot("init", now),
+      createMachineSnapshot("init", startedAt),
     steps,
   };
   return session;

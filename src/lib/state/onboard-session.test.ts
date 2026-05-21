@@ -82,7 +82,10 @@ describe("onboard session", () => {
   });
 
   it("creates and persists a session with restrictive permissions", () => {
-    const created = session.createSession({ mode: "non-interactive" });
+    const created = session.createSession({
+      mode: "non-interactive",
+      startedAt: "2026-01-01T00:00:00.000Z",
+    });
     const saved = session.saveSession(created);
     const stat = fs.statSync(session.SESSION_FILE);
     const dirStat = fs.statSync(path.dirname(session.SESSION_FILE));
@@ -93,7 +96,7 @@ describe("onboard session", () => {
       state: "init",
       revision: 0,
     });
-    expect(saved.machine.stateEnteredAt).toBeTruthy();
+    expect(saved.machine.stateEnteredAt).toBe("2026-01-01T00:00:00.000Z");
     expect(fs.existsSync(session.SESSION_FILE)).toBe(true);
     expect(stat.mode & 0o777).toBe(0o600);
     expect(dirStat.mode & 0o777).toBe(0o700);
