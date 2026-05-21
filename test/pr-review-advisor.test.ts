@@ -8,7 +8,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
 
 import { buildComment } from "../tools/pr-review-advisor/comment.mts";
-import { buildSystemPrompt, classifyMonolithDelta, classifyTestDepth, deriveGateStatus, normalizeReviewResult, readTrustedSecurityReviewSkill, renderSummary } from "../tools/pr-review-advisor/analyze.mts";
+import {
+  buildSystemPrompt,
+  classifyMonolithDelta,
+  classifyTestDepth,
+  deriveGateStatus,
+  extractRequiredStatusChecksFromRulesets,
+  extractStatusCheckSummaries,
+  normalizeReviewResult,
+  pendingRequiredContexts,
+  readTrustedSecurityReviewSkill,
+  renderSummary,
+} from "../tools/pr-review-advisor/analyze.mts";
 import { githubGraphql } from "../tools/advisors/github.mts";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -30,6 +41,8 @@ function metadata(overrides: Partial<ReviewMetadata> = {}): ReviewMetadata {
       reviewThreads: { status: "unknown", evidence: "No review thread state was available." },
       riskyCodeTested: { status: "pass", evidence: "No risky code areas detected by path heuristics." },
     },
+    requiredStatusCheckContexts: [],
+    additionalWaitContexts: [],
     workflowSignals: [],
     monolithDeltas: [],
     driftEvidence: [],
@@ -174,6 +187,88 @@ describe("PR review advisor", () => {
     expect(clean.mergeability.status).toBe("pass");
   });
 
+  it("extracts required checks from active branch rulesets", () => {
+    const rulesets = [
+      {
+        target: "branch",
+        enforcement: "active",
+        conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
+        rules: [
+          {
+            type: "required_status_checks",
+            parameters: {
+              required_status_checks: [
+                { context: "checks" },
+                { context: "commit-lint" },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        target: "branch",
+        enforcement: "active",
+        conditions: { ref_name: { include: ["refs/heads/release/*"], exclude: [] } },
+        rules: [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "release-only" }] } }],
+      },
+      {
+        target: "branch",
+        enforcement: "disabled",
+        conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
+        rules: [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "disabled" }] } }],
+      },
+    ];
+
+    expect(extractRequiredStatusChecksFromRulesets(rulesets, "main")).toEqual(["checks", "commit-lint"]);
+    expect(extractRequiredStatusChecksFromRulesets(rulesets, "release/1.0")).toEqual(["release-only"]);
+  });
+
+  it("bases the CI gate on required contexts when they are known", () => {
+    const gates = deriveGateStatus(
+      {
+        graphQl: {
+          data: {
+            repository: {
+              pullRequest: {
+                statusCheckRollup: {
+                  contexts: {
+                    nodes: [
+                      { __typename: "CheckRun", name: "checks", status: "COMPLETED", conclusion: "SUCCESS" },
+                      { __typename: "CheckRun", name: "commit-lint", status: "COMPLETED", conclusion: "SUCCESS" },
+                      { __typename: "CheckRun", name: "PR review advisor", status: "IN_PROGRESS", conclusion: null },
+                      { __typename: "CheckRun", name: "optional-gpu-e2e", status: "IN_PROGRESS", conclusion: null },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+      } as never,
+      [],
+      [],
+      ["checks", "commit-lint"],
+    );
+
+    expect(gates.ci.status).toBe("pass");
+    expect(gates.ci.evidence).toContain("2 required status context(s) completed");
+    expect(gates.ci.evidence).toContain("Non-required contexts still pending: 1");
+  });
+
+  it("wait logic treats missing or in-progress required contexts as pending", () => {
+    const statuses = extractStatusCheckSummaries([
+      { __typename: "CheckRun", name: "checks", status: "COMPLETED", conclusion: "SUCCESS" },
+      { __typename: "CheckRun", name: "commit-lint", status: "IN_PROGRESS", conclusion: null },
+      { __typename: "StatusContext", context: "dco-check", state: "SUCCESS" },
+      { __typename: "StatusContext", context: "check-hash", state: "FAILURE" },
+    ]);
+
+    expect(pendingRequiredContexts(["checks", "commit-lint", "dco-check", "check-hash", "changes"], statuses)).toEqual([
+      "commit-lint",
+      "changes",
+    ]);
+  });
+
   it("surfaces GitHub GraphQL errors even when the HTTP status is successful", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: true,
@@ -277,6 +372,9 @@ describe("PR review advisor", () => {
     expect(analyzeStep.env.PR_REVIEW_ADVISOR_API_KEY).toBe(
       "${{ secrets.PR_REVIEW_ADVISOR_API_KEY || secrets.PI_PR_REVIEW_ADVISOR_API_KEY }}",
     );
+    expect(workflow.jobs.review["timeout-minutes"]).toBe(40);
+    expect(workflow.jobs.review.env.PR_REVIEW_ADVISOR_WAIT_FOR_REQUIRED_CHECKS).toBe("1");
+    expect(workflow.jobs.review.env.PR_REVIEW_ADVISOR_WAIT_ADDITIONAL_CONTEXTS).toBe("E2E recommendation");
     expect(installStep.run.includes("--ignore-scripts")).toBe(true);
     expect(analyzeStep.run.includes("$ADVISOR_DIR/tools/pr-review-advisor/analyze.mts")).toBe(true);
     expect(analyzeStep.run).toContain("trusted main checkout does not yet contain analyze.mts");
