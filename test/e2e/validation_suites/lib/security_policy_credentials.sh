@@ -59,16 +59,13 @@ spc_assert_credentials_expected() {
     echo "[dry-run] would list gateway credentials without raw values"
     return 0
   fi
-  local raw_file listed_raw listed
+  local raw_file listed_raw listed list_rc
   raw_file="$(mktemp "${TMPDIR:-/tmp}/nemoclaw-credentials-list.XXXXXX")"
   chmod 600 "${raw_file}"
-  if ! nemoclaw credentials list >"${raw_file}" 2>&1; then
-    listed_raw="$(cat "${raw_file}")"
-    listed="$(printf '%s\n' "${listed_raw}" | spc_redact_secret_text)"
-    rm -f "${raw_file}"
-    printf '%s\n' "${listed}"
-    echo "nemoclaw credentials list failed while credentials.expected=present" >&2
-    return 1
+  if nemoclaw credentials list >"${raw_file}" 2>&1; then
+    list_rc=0
+  else
+    list_rc=$?
   fi
   listed_raw="$(cat "${raw_file}")"
   listed="$(printf '%s\n' "${listed_raw}" | spc_redact_secret_text)"
@@ -76,6 +73,10 @@ spc_assert_credentials_expected() {
   printf '%s\n' "${listed}"
   if [[ "${listed_raw}" != "${listed}" ]]; then
     echo "credentials list emitted secret-looking raw output before redaction" >&2
+    return 1
+  fi
+  if ((list_rc != 0)); then
+    echo "nemoclaw credentials list failed while credentials.expected=present" >&2
     return 1
   fi
   if printf '%s\n' "${listed}" | grep -qi "No provider credentials registered"; then
