@@ -278,9 +278,7 @@ describe("onboard session", () => {
       sandboxName: "my-assistant",
       credentialEnv: "NVIDIA_API_KEY",
     });
-    expect(emitted[1].context.endpointUrl).toBe(
-      "https://example.com/v1?token=%3CREDACTED%3E&keep=yes",
-    );
+    expect(emitted[1].context.endpointOrigin).toBe("https://example.com");
     expect(emitted[1].metadata.fields).toEqual([
       "sandboxName",
       "endpointUrl",
@@ -320,6 +318,23 @@ describe("onboard session", () => {
     session.markStepStarted("not_a_real_step");
 
     expect(emitted).toEqual([]);
+  });
+
+  it("does not emit duplicate events for no-op skipped and completed transitions", () => {
+    const emitted: OnboardMachineEvent[] = [];
+    machineEvents.addOnboardMachineEventListener((event) => emitted.push(event));
+
+    session.saveSession(session.createSession({ sessionId: "session-1" }));
+    session.markStepSkipped("openclaw");
+    session.markStepSkipped("openclaw");
+    session.completeSession();
+    session.completeSession();
+
+    expect(emitted.map((event) => event.type)).toEqual([
+      "state.skipped",
+      "onboard.completed",
+    ]);
+    expect(emitted).toHaveLength(2);
   });
 
   it("persists safe provider metadata without persisting secrets", () => {

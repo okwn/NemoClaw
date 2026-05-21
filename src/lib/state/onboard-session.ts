@@ -1071,7 +1071,7 @@ export function markStepSkipped(stepName: string): Session {
   const updatedSession = updateSession((session) => {
     const step = session.steps[stepName];
     if (!step) return session;
-    if (step.status === "complete" || step.status === "failed") return session;
+    if (step.status === "complete" || step.status === "failed" || step.status === "skipped") return session;
     step.status = "skipped";
     step.startedAt = null;
     step.completedAt = null;
@@ -1130,8 +1130,10 @@ export function markStepFailed(stepName: string, message: string | null = null):
 
 export function completeSession(updates: SessionUpdates = {}): Session {
   const safeUpdates = filterSafeUpdates(updates);
+  let wasComplete = false;
   const updatedSession = updateSession((session) => {
     const now = new Date().toISOString();
+    wasComplete = session.status === "complete";
     Object.assign(session, safeUpdates);
     session.status = "complete";
     session.resumable = false;
@@ -1149,13 +1151,15 @@ export function completeSession(updates: SessionUpdates = {}): Session {
       }),
     );
   }
-  emitOnboardMachineEvent(
-    createOnboardMachineEvent({
-      type: "onboard.completed",
-      session: updatedSession,
-      state: "complete",
-    }),
-  );
+  if (!wasComplete) {
+    emitOnboardMachineEvent(
+      createOnboardMachineEvent({
+        type: "onboard.completed",
+        session: updatedSession,
+        state: "complete",
+      }),
+    );
+  }
   return updatedSession;
 }
 
