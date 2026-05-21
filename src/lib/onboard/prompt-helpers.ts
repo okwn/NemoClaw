@@ -1,6 +1,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+export function getNavigationChoice(value = ""): "back" | "exit" | null {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "back") return "back";
+  if (normalized === "exit" || normalized === "quit") return "exit";
+  return null;
+}
+
+export function exitOnboardFromPrompt(): never {
+  console.log("  Exiting onboarding.");
+  process.exit(1);
+}
+
 export function isAffirmativeAnswer(value: string | null | undefined): boolean {
   return ["y", "yes"].includes(
     String(value || "")

@@ -291,6 +291,8 @@ const {
 } = resumeConfig;
 const { pruneKnownHostsEntries }: typeof import("./onboard/known-hosts") = require("./onboard/known-hosts");
 const {
+  exitOnboardFromPrompt,
+  getNavigationChoice,
   isAffirmativeAnswer,
   ...onboardPromptHelpers
 }: typeof import("./onboard/prompt-helpers") = require("./onboard/prompt-helpers");
@@ -638,20 +640,6 @@ const {
   summarizeProbeFailure,
   runCurlProbe,
 } = httpProbe;
-
-function getNavigationChoice(value = ""): "back" | "exit" | null {
-  const normalized = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (normalized === "back") return "back";
-  if (normalized === "exit" || normalized === "quit") return "exit";
-  return null;
-}
-
-function exitOnboardFromPrompt(): never {
-  console.log("  Exiting onboarding.");
-  process.exit(1);
-}
 
 function normalizeHermesAuthMethod(value: string | null | undefined): HermesAuthMethod | null {
   const normalized = String(value || "")
