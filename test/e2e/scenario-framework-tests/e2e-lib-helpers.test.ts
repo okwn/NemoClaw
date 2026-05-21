@@ -116,6 +116,40 @@ exit 2
     }
   });
 
+  it("security_policy_credentials_helper_should_reject_raw_credential_leaks", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-credentials-leak-"));
+    const fakeBin = path.join(tmp, "bin");
+    fs.mkdirSync(fakeBin);
+    fs.writeFileSync(
+      path.join(fakeBin, "nemoclaw"),
+      `#!/usr/bin/env bash
+if [ "$1 $2" = "credentials list" ]; then
+  echo "  Providers registered with the OpenShell gateway:"
+  echo "    nvidia token=nvapi-secret-value-1234567890"
+  exit 0
+fi
+exit 2
+`,
+      { mode: 0o755 },
+    );
+    try {
+      fs.writeFileSync(path.join(tmp, "context.env"), "E2E_SCENARIO=test\nE2E_PROVIDER=nvidia\nE2E_CREDENTIALS_EXPECTED=present\n");
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${VALIDATION_SUITES}/lib/security_policy_credentials.sh"
+        spc_assert_credentials_expected
+        `,
+        { E2E_CONTEXT_DIR: tmp, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/secret-looking raw output/i);
+      expect(r.stdout).not.toContain("nvapi-secret-value");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("security_policy_credentials_helper_should_verify_policy_and_shields_state", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-policy-shields-"));
     const fakeBin = path.join(tmp, "bin");
@@ -207,6 +241,10 @@ exit 0
       path.join(fakeBin, "openshell"),
       `#!/usr/bin/env bash
 # request-body-credential-rewrite websocket-credential-rewrite
+if [ "$1" = "--version" ]; then
+  echo "openshell 0.0.39"
+  exit 0
+fi
 exit 0
 `,
       { mode: 0o755 },
@@ -222,7 +260,7 @@ exit 0
         { E2E_CONTEXT_DIR: tmp, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
       );
       expect(r.status, r.stderr).toBe(0);
-      expect(r.stdout).toContain("OpenShell credential rewrite capability markers present");
+      expect(r.stdout).toContain("OpenShell 0.0.39 credential rewrite capability markers present");
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
