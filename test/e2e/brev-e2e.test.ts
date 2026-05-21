@@ -87,6 +87,8 @@ const BREV_SSH_READY_TIMEOUT_MS =
     : GPU_TEST_SUITE
       ? 1800
       : 900) * 1000;
+const OPENSHELL_GATEWAY_PORT = 8080;
+const DOCKER_BRIDGE_CIDR = "172.16.0.0/12";
 
 function requireInstanceName(): string {
   if (!INSTANCE_NAME) {
@@ -724,26 +726,31 @@ function createBrevInstance(elapsed: () => string): void {
  * GPU Brev instances provide the host driver, but Docker may still need the
  * NVIDIA container runtime configured before sandbox containers can use GPUs.
  */
+function gpuDockerRuntimeSetupCommands(): string[] {
+  return [
+    `set -euo pipefail`,
+    `nvidia-smi`,
+    `sudo apt-get update -qq`,
+    `sudo apt-get install -y -qq ca-certificates curl gnupg >/dev/null`,
+    `sudo rm -f /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`,
+    `curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`,
+    `curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null`,
+    `sudo apt-get update -qq`,
+    `sudo apt-get install -y -qq nvidia-container-toolkit >/dev/null`,
+    `sudo nvidia-ctk runtime configure --runtime=docker`,
+    `sudo systemctl restart docker`,
+    `sudo chmod 666 /var/run/docker.sock`,
+    // Brev GPU images can run UFW with Docker bridge traffic denied (#3959). The
+    // OpenShell Docker-driver gateway listens on the host, while sandboxes
+    // reach it through host.openshell.internal on a Docker bridge gateway IP.
+    `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_BRIDGE_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp >/dev/null || true; fi`,
+    `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`,
+  ];
+}
+
 function prepareGpuDockerRuntime(elapsed: () => string): void {
   console.log(`[${elapsed()}] Preparing NVIDIA Docker runtime on Brev GPU instance...`);
-  ssh(
-    [
-      `set -euo pipefail`,
-      `nvidia-smi`,
-      `sudo apt-get update -qq`,
-      `sudo apt-get install -y -qq ca-certificates curl gnupg >/dev/null`,
-      `sudo rm -f /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`,
-      `curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg`,
-      `curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list >/dev/null`,
-      `sudo apt-get update -qq`,
-      `sudo apt-get install -y -qq nvidia-container-toolkit >/dev/null`,
-      `sudo nvidia-ctk runtime configure --runtime=docker`,
-      `sudo systemctl restart docker`,
-      `sudo chmod 666 /var/run/docker.sock`,
-      `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`,
-    ].join(" && "),
-    { timeout: 900_000, stream: true },
-  );
+  ssh(gpuDockerRuntimeSetupCommands().join(" && "), { timeout: 900_000, stream: true });
   console.log(`[${elapsed()}] NVIDIA Docker runtime ready`);
 }
 
@@ -1040,6 +1047,17 @@ describe("Brev deploy input validation", () => {
     expect(output).not.toContain("Waiting for Brev instance readiness");
     expect(output).not.toContain("Waiting for SSH");
     expect(output).not.toContain("bash scripts/install.sh");
+  });
+});
+
+describe("Brev GPU runtime setup", () => {
+  it("allows Docker bridge traffic to reach the OpenShell gateway port", () => {
+    const setup = gpuDockerRuntimeSetupCommands().join("\n");
+
+    expect(setup).toContain(
+      `ufw allow from ${DOCKER_BRIDGE_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp`,
+    );
+    expect(setup).toContain("|| true");
   });
 });
 
