@@ -88,6 +88,7 @@ const BREV_SSH_READY_TIMEOUT_MS =
       ? 1800
       : 900) * 1000;
 const OPENSHELL_GATEWAY_PORT = 8080;
+const OLLAMA_AUTH_PROXY_PORT = 11435;
 const DOCKER_DEFAULT_BRIDGE_POOL_CIDR = "172.16.0.0/12";
 
 function requireInstanceName(): string {
@@ -743,9 +744,11 @@ function gpuDockerRuntimeSetupCommands(): string[] {
     // Brev GPU branch-validation VMs are single-use CI hosts. The
     // openshell-docker network is created later by gateway startup, so this
     // setup cannot know the exact future bridge subnet. Allow Docker's default
-    // local bridge pool to the gateway port only; product-side reachability
-    // checks still fail closed if the sandbox route is actually broken (#3959).
-    `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW Docker bridge allow rule" >&2; fi`,
+    // local bridge pool to the OpenShell host-service ports needed by the GPU
+    // path; product-side reachability checks still fail closed if the sandbox
+    // route is actually broken (#3959).
+    `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW OpenShell gateway allow rule" >&2; fi`,
+    `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OLLAMA_AUTH_PROXY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW Ollama auth proxy allow rule" >&2; fi`,
     `docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi`,
   ];
 }
@@ -1053,11 +1056,14 @@ describe("Brev deploy input validation", () => {
 });
 
 describe("Brev GPU runtime setup", () => {
-  it("allows Docker bridge traffic to reach the OpenShell gateway port", () => {
+  it("allows Docker bridge traffic to reach OpenShell host-service ports", () => {
     const setup = gpuDockerRuntimeSetupCommands().join("\n");
 
     expect(setup).toContain(
-      `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW Docker bridge allow rule" >&2; fi`,
+      `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OPENSHELL_GATEWAY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW OpenShell gateway allow rule" >&2; fi`,
+    );
+    expect(setup).toContain(
+      `if command -v ufw >/dev/null 2>&1; then sudo ufw allow from ${DOCKER_DEFAULT_BRIDGE_POOL_CIDR} to any port ${OLLAMA_AUTH_PROXY_PORT} proto tcp >/dev/null || echo "warning: could not add UFW Ollama auth proxy allow rule" >&2; fi`,
     );
   });
 });
