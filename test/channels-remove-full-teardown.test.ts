@@ -3,10 +3,12 @@
 //
 // Regression test for #3998 — `nemoclaw <sandbox> channels remove <channel>`
 // must (1) strip the channel from session.policyPresets so onboard --resume
-// does not re-apply the preset on rebuild, and (2) wipe the channel's
-// durable state inside the sandbox so the rebuild's state_dirs backup
-// does not restore stale auth files that would let the channel
-// auto-reconnect after the operator asked NemoClaw to forget it.
+// does not re-apply the preset on rebuild, (2) wipe the channel's durable
+// state inside the sandbox so the rebuild's state_dirs backup does not
+// restore stale auth files, and (3) refuse to proceed to rebuild when the
+// in-sandbox cleanup for a QR-paired channel fails — otherwise the backup
+// would re-capture the auth blob and the channel would reconnect after
+// the rebuild.
 
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
@@ -17,6 +19,26 @@ import { describe, it } from "vitest";
 
 const repoRoot = path.join(import.meta.dirname, "..");
 
+// Strip messaging-channel env vars from the parent process before spawning
+// the test subprocess so local/CI ambient values (e.g. TELEGRAM_BOT_TOKEN
+// in a developer shell) cannot perturb the channel cleanup paths the test
+// is asserting against.
+const MESSAGING_ENV_PREFIXES = ["TELEGRAM_", "DISCORD_", "SLACK_", "WECHAT_", "WEIXIN_", "WHATSAPP_"];
+
+function buildCleanEnv(extraEnv: Record<string, string>, home: string): NodeJS.ProcessEnv {
+  const filtered: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (MESSAGING_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) continue;
+    filtered[key] = value;
+  }
+  return {
+    ...filtered,
+    HOME: home,
+    NEMOCLAW_NON_INTERACTIVE: "1",
+    ...extraEnv,
+  };
+}
+
 function runScript(scriptBody: string, extraEnv: Record<string, string> = {}): SpawnSyncReturns<string> {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-3998-"));
   const scriptPath = path.join(tmpDir, "script.js");
@@ -24,12 +46,7 @@ function runScript(scriptBody: string, extraEnv: Record<string, string> = {}): S
   const result = spawnSync(process.execPath, [scriptPath], {
     cwd: repoRoot,
     encoding: "utf-8",
-    env: {
-      ...process.env,
-      HOME: tmpDir,
-      NEMOCLAW_NON_INTERACTIVE: "1",
-      ...extraEnv,
-    },
+    env: buildCleanEnv(extraEnv, tmpDir),
     timeout: 15000,
   });
   fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -39,9 +56,13 @@ function runScript(scriptBody: string, extraEnv: Record<string, string> = {}): S
 function buildPreamble({
   presetNamesApplied = ["npm", "pypi", "huggingface", "brew", "whatsapp"],
   sandboxAgent = "openclaw",
+  channelInRegistry = "whatsapp",
+  sandboxExecResult = { status: 0, stdout: "", stderr: "" },
 }: {
   presetNamesApplied?: string[];
   sandboxAgent?: string;
+  channelInRegistry?: string;
+  sandboxExecResult?: { status: number; stdout: string; stderr: string } | null;
 } = {}): string {
   const j = (p: string) => JSON.stringify(path.join(repoRoot, "dist", "lib", p));
   return String.raw`
@@ -59,7 +80,7 @@ const processRecovery = require(${j("actions/sandbox/process-recovery.js")});
 const sandboxExecCalls = [];
 processRecovery.executeSandboxExecCommand = (sandboxName, command) => {
   sandboxExecCalls.push({ sandboxName, command });
-  return { status: 0, stdout: "", stderr: "" };
+  return ${JSON.stringify(sandboxExecResult)};
 };
 
 const gatewayRuntime = require(${j("gateway-runtime-action.js")});
@@ -91,30 +112,29 @@ const sessionStore = {
   routerPid: null,
   routerCredentialHash: null,
   policyTier: null,
-  messagingChannels: ["whatsapp"],
+  messagingChannels: [${JSON.stringify(channelInRegistry)}],
   messagingChannelConfig: null,
   disabledChannels: [],
   hermesToolGateways: [],
   wechatConfig: null,
 };
-const sessionUpdates = [];
 onboardSession.loadSession = () => sessionStore;
-onboardSession.updateSession = (mutate) => {
-  const before = { policyPresets: [...(sessionStore.policyPresets || [])] };
-  mutate(sessionStore);
-  sessionUpdates.push({ before, after: { policyPresets: [...(sessionStore.policyPresets || [])] } });
-};
+onboardSession.updateSession = (mutate) => { mutate(sessionStore); };
 
 const registry = require(${j("state/registry.js")});
+const registryUpdates = [];
 registry.getSandbox = () => ({
   name: "test-sb",
   agent: ${JSON.stringify(sandboxAgent)},
-  messagingChannels: ["whatsapp"],
+  messagingChannels: [${JSON.stringify(channelInRegistry)}],
   disabledChannels: [],
   providerCredentialHashes: {},
   policies: ${JSON.stringify(presetNamesApplied)},
 });
-registry.updateSandbox = () => true;
+registry.updateSandbox = (name, updates) => {
+  registryUpdates.push({ name, updates });
+  return true;
+};
 
 const policies = require(${j("policy/index.js")});
 const removedPresets = [];
@@ -133,16 +153,23 @@ console.log = (...args) => {
   if (line.includes("Cleared in-sandbox")) callOrder.push("clearedSandboxState");
   origLog.call(console, ...args);
 };
+const origExit = process.exit;
+let exitCode = null;
+process.exit = (code) => {
+  if (exitCode === null) exitCode = code;
+  throw new Error("__PROCESS_EXIT__:" + code);
+};
 
 const channelModule = require(${j("actions/sandbox/policy-channel.js")});
 
 module.exports = {
   channelModule,
   sandboxExecCalls,
-  sessionUpdates,
   removedPresets,
+  registryUpdates,
   sessionStore,
   callOrder,
+  getExitCode: () => exitCode,
 };
 `;
 }
@@ -160,6 +187,7 @@ const ctx = module.exports;
       sessionPolicyPresets: ctx.sessionStore.policyPresets,
       removedPresets: ctx.removedPresets,
       callOrder: ctx.callOrder,
+      exitCode: ctx.getExitCode(),
     }) + "\\n");
   } catch (err) {
     process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
@@ -172,6 +200,7 @@ const ctx = module.exports;
       assert.ok(marker >= 0, `no __RESULT__ marker:\n${result.stdout}`);
       const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
       assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+      assert.equal(payload.exitCode, null, `must not exit on success path; got exitCode=${payload.exitCode}`);
 
       assert.deepEqual(
         payload.removedPresets,
@@ -217,26 +246,86 @@ const ctx = module.exports;
     });
   }
 
+  it("aborts before rebuild when QR-channel in-sandbox cleanup fails", () => {
+    const script = `${buildPreamble({
+      sandboxAgent: "openclaw",
+      sandboxExecResult: { status: 1, stdout: "", stderr: "sandbox is not running" },
+    })}
+const ctx = module.exports;
+(async () => {
+  try {
+    await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "whatsapp" });
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      sandboxExecCalls: ctx.sandboxExecCalls,
+      sessionPolicyPresets: ctx.sessionStore.policyPresets,
+      removedPresets: ctx.removedPresets,
+      registryUpdates: ctx.registryUpdates,
+      callOrder: ctx.callOrder,
+      exitCode: ctx.getExitCode(),
+    }) + "\\n");
+  } catch (err) {
+    if (typeof err.message === "string" && err.message.startsWith("__PROCESS_EXIT__")) {
+      process.stdout.write("\\n__RESULT__" + JSON.stringify({
+        sandboxExecCalls: ctx.sandboxExecCalls,
+        sessionPolicyPresets: ctx.sessionStore.policyPresets,
+        removedPresets: ctx.removedPresets,
+        registryUpdates: ctx.registryUpdates,
+        callOrder: ctx.callOrder,
+        exitCode: ctx.getExitCode(),
+      }) + "\\n");
+      return;
+    }
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+    const marker = result.stdout.lastIndexOf("__RESULT__");
+    assert.ok(marker >= 0, `no __RESULT__ marker:\n${result.stdout}`);
+    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+
+    assert.equal(payload.exitCode, 1, "QR channel cleanup failure must exit non-zero");
+    assert.ok(
+      !payload.callOrder.includes("promptAndRebuild"),
+      `rebuild must NOT be queued on cleanup failure; callOrder=${JSON.stringify(payload.callOrder)}`,
+    );
+    assert.deepEqual(
+      payload.removedPresets,
+      [],
+      "policy preset must NOT be un-applied when we bail early on cleanup failure",
+    );
+    assert.deepEqual(
+      payload.registryUpdates,
+      [],
+      "registry must NOT be mutated when we bail early on cleanup failure",
+    );
+    assert.deepEqual(
+      payload.sessionPolicyPresets,
+      ["npm", "pypi", "huggingface", "brew", "whatsapp"],
+      "session.policyPresets must be unchanged on early-bail",
+    );
+
+    const cleanupCalls = payload.sandboxExecCalls.filter((c: { command: string }) =>
+      c.command.startsWith("rm -rf"),
+    );
+    assert.equal(cleanupCalls.length, 1, "expected the rm -rf attempt that failed");
+  });
+
   it("leaves non-whatsapp presets in session.policyPresets untouched when removing a token-based channel", () => {
     const script = `${buildPreamble({
       presetNamesApplied: ["npm", "pypi", "telegram", "brew"],
       sandboxAgent: "openclaw",
+      channelInRegistry: "telegram",
     })}
 const ctx = module.exports;
-const registryOverride = require(${JSON.stringify(path.join(repoRoot, "dist", "lib", "state/registry.js"))});
-registryOverride.getSandbox = () => ({
-  name: "test-sb",
-  agent: "openclaw",
-  messagingChannels: ["telegram"],
-  disabledChannels: [],
-  providerCredentialHashes: { TELEGRAM_BOT_TOKEN: "hash" },
-  policies: ["npm", "pypi", "telegram", "brew"],
-});
 (async () => {
   try {
     await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "telegram" });
     process.stdout.write("\\n__RESULT__" + JSON.stringify({
       sessionPolicyPresets: ctx.sessionStore.policyPresets,
+      registryUpdates: ctx.registryUpdates,
     }) + "\\n");
   } catch (err) {
     process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
@@ -258,6 +347,20 @@ registryOverride.getSandbox = () => ({
       payload.sessionPolicyPresets,
       ["npm", "pypi", "brew"],
       "other presets must remain after removing a token-based channel",
+    );
+
+    const messagingChannelsUpdate = payload.registryUpdates.find(
+      (u: { updates: { messagingChannels?: string[] } }) =>
+        u.updates.messagingChannels !== undefined,
+    );
+    assert.ok(
+      messagingChannelsUpdate,
+      `expected an updateSandbox call that writes messagingChannels; got ${JSON.stringify(payload.registryUpdates)}`,
+    );
+    assert.deepEqual(
+      messagingChannelsUpdate.updates.messagingChannels,
+      [],
+      "messagingChannels must be empty after removing telegram",
     );
   });
 });

@@ -754,11 +754,13 @@ function isSafeChannelStatePath(p: string): boolean {
 
 // Wipe the durable per-channel state inside the sandbox before rebuild so
 // the state_dirs backup does not restore an auth blob the operator just
-// asked NemoClaw to forget. Fixes #3998.
-function clearSandboxChannelDurableState(sandboxName: string, channelName: string): void {
+// asked NemoClaw to forget. Returns true when no cleanup was needed OR
+// when the in-sandbox rm succeeded; false when the channel declares a
+// durable state dir and the cleanup did not succeed. Fixes #3998.
+function clearSandboxChannelDurableState(sandboxName: string, channelName: string): boolean {
   const agent = resolveAgentForSandbox(sandboxName);
   const paths = getSandboxChannelStatePaths(agent, channelName).filter(isSafeChannelStatePath);
-  if (paths.length === 0) return;
+  if (paths.length === 0) return true;
 
   const quoted = paths.map((p) => shellQuote(p)).join(" ");
   const result = executeSandboxExecCommand(sandboxName, `rm -rf -- ${quoted}`);
@@ -766,12 +768,10 @@ function clearSandboxChannelDurableState(sandboxName: string, channelName: strin
     console.error(
       `  ${YW}⚠${R} Could not clear in-sandbox '${channelName}' channel state at ${paths.join(", ")}.`,
     );
-    console.error(
-      `    The rebuild may restore stale session files; re-run after starting the sandbox if the channel reconnects.`,
-    );
-    return;
+    return false;
   }
   console.log(`  ${G}✓${R} Cleared in-sandbox '${channelName}' channel state.`);
+  return true;
 }
 
 // Drop the channel name from session.policyPresets so onboard --resume's
@@ -849,10 +849,23 @@ export async function removeSandboxChannel(
 
   clearChannelTokens(channel);
   const tokenKeys = getChannelTokenKeys(channel);
-  // Same rationale as channels-add: tear down the gateway providers and
-  // drop the channel from the registry NOW so a deferred rebuild does
-  // not leave a stale bridge running against a token NemoClaw has
-  // already "removed" from the user's perspective.
+  const isQrChannel = channelUsesInSandboxQrPairing(channel);
+
+  // QR-paired channels store auth blobs inside the sandbox that survive a
+  // rebuild via the state_dirs backup. Tear those down FIRST so a cleanup
+  // failure leaves the registry/policy untouched — the operator can re-run
+  // after starting the sandbox. Bailing here is the only way to keep
+  // #3998 from recurring on cleanup error.
+  if (isQrChannel && !clearSandboxChannelDurableState(sandboxName, canonical)) {
+    console.error(
+      `  Refusing to proceed: '${canonical}' session state is still inside the sandbox.`,
+    );
+    console.error(
+      `    Start the sandbox, then re-run: ${CLI_NAME} ${sandboxName} channels remove ${canonical}`,
+    );
+    process.exit(1);
+  }
+
   await applyChannelRemoveToGatewayAndRegistry(sandboxName, canonical, tokenKeys);
   if (tokenKeys.length > 0) {
     console.log(`  ${G}✓${R} Removed ${canonical} bridge from the OpenShell gateway.`);
@@ -862,7 +875,13 @@ export async function removeSandboxChannel(
 
   removeChannelPresetIfPresent(sandboxName, canonical);
   dropChannelFromSessionPolicyPresets(canonical);
-  clearSandboxChannelDurableState(sandboxName, canonical);
+
+  // Token-based channels: best-effort tidy of any leftover dir. Token
+  // revocation already prevents the bot from authenticating, so a
+  // failure here is a warning, not a bail.
+  if (!isQrChannel) {
+    clearSandboxChannelDurableState(sandboxName, canonical);
+  }
 
   await promptAndRebuild(sandboxName, `remove '${canonical}'`);
 }
