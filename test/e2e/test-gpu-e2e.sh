@@ -514,8 +514,8 @@ fi
 # OpenClaw to avoid OpenShell's inference.local TCP relay path.
 SANDBOX_INFERENCE_URL="https://inference.local/v1/chat/completions"
 SANDBOX_INFERENCE_EXEC="openshell"
-if grep -Fq "OpenClaw local inference will use direct sandbox URL" "$INSTALL_LOG" ||
-  grep -Fq "Docker-driver GPU patch active" "$INSTALL_LOG"; then
+if grep -Fq "OpenClaw local inference will use direct sandbox URL" "$INSTALL_LOG" \
+  || grep -Fq "Docker-driver GPU patch active" "$INSTALL_LOG"; then
   OLLAMA_HOST_PORT="${NEMOCLAW_OLLAMA_PORT:-11434}"
   SANDBOX_INFERENCE_URL="http://127.0.0.1:${OLLAMA_HOST_PORT}/v1/chat/completions"
   SANDBOX_INFERENCE_EXEC="docker"
