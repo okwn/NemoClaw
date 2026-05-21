@@ -1324,10 +1324,6 @@ function getOpenShellInstallDeps(): OpenShellInstallDeps {
   };
 }
 
-function sleep(seconds: number): void {
-  sleepSeconds(seconds);
-}
-
 function runQuietOpenshell(args: string[]) {
   return runOpenshell(args, {
     ignoreError: true,
@@ -1356,7 +1352,7 @@ function terminateDockerDriverGatewayProcess(pid: number): boolean {
     process.kill(pid, "SIGTERM");
     for (let i = 0; i < 10; i += 1) {
       if (!isPidAlive(pid)) break;
-      sleep(1);
+      sleepSeconds(1);
     }
     if (isPidAlive(pid)) process.kill(pid, "SIGKILL");
     return true;
@@ -2041,7 +2037,7 @@ function waitForSandboxReady(sandboxName: string, attempts = 10, delaySeconds = 
     // Package-managed OpenShell gateways report readiness through
     // `sandbox list`; legacy Kubernetes gateways may still expose pod state.
     if (isLinuxDockerDriverGatewayEnabled()) {
-      if (i < attempts - 1) sleep(delaySeconds);
+      if (i < attempts - 1) sleepSeconds(delaySeconds);
       continue;
     }
     const podPhase = runCaptureOpenshell(
@@ -2061,7 +2057,7 @@ function waitForSandboxReady(sandboxName: string, attempts = 10, delaySeconds = 
       { ignoreError: true },
     );
     if (podPhase === "Running") return true;
-    sleep(delaySeconds);
+    sleepSeconds(delaySeconds);
   }
   return false;
 }
@@ -2539,7 +2535,7 @@ async function preflight(
             `  Cleaning up orphaned SSH port-forward on port ${port} (PID ${portCheck.pid})...`,
           );
           run(["kill", String(portCheck.pid)], { ignoreError: true });
-          sleep(1);
+          sleepSeconds(1);
           portCheck = await checkPortAvailable(port, portCheckOptions);
           if (portCheck.ok) {
             console.log(`  ✓ Port ${port} available after orphaned forward cleanup (${label})`);
@@ -2801,7 +2797,7 @@ async function startGatewayWithOptions(
           if (isGatewayHealthy(status, namedInfo, currentInfo) && (await isGatewayHttpReady())) {
             return; // success
           }
-          if (i < healthPollCount - 1) sleep(healthPollInterval);
+          if (i < healthPollCount - 1) sleepSeconds(healthPollInterval);
         }
 
         throw new Error("Gateway failed to start");
@@ -2948,7 +2944,7 @@ async function startDockerDriverGateway({ exitOnFailure = true, skipSandboxBridg
       console.log(`  Restarting unhealthy Docker-driver gateway process (PID ${existingPid})...`);
       try {
         process.kill(existingPid, "SIGTERM");
-        sleep(1);
+        sleepSeconds(1);
       } catch {
         /* best effort; the new process will surface any remaining port conflict */
       }
@@ -2990,7 +2986,7 @@ async function startDockerDriverGateway({ exitOnFailure = true, skipSandboxBridg
       break;
     }
     if (!registerDockerDriverGatewayEndpoint()) {
-      if (i < pollCount - 1) sleep(pollInterval);
+      if (i < pollCount - 1) sleepSeconds(pollInterval);
       continue;
     }
     const status = runCaptureOpenshell(["status"], { ignoreError: true });
@@ -3005,7 +3001,7 @@ async function startDockerDriverGateway({ exitOnFailure = true, skipSandboxBridg
       await verifySandboxBridgeGatewayReachableOrExit(exitOnFailure, { skip: skipSandboxBridgeReachability }); console.log("  ✓ Docker-driver gateway is healthy");
       return;
     }
-    if (i < pollCount - 1) sleep(pollInterval);
+    if (i < pollCount - 1) sleepSeconds(pollInterval);
   }
 
   reportDockerDriverGatewayStartFailure(logPath, childExit, { exitOnFailure });
@@ -3200,7 +3196,7 @@ async function recoverGatewayRuntime() {
       }
       return true;
     }
-    if (i < recoveryPollCount - 1) sleep(recoveryPollInterval);
+    if (i < recoveryPollCount - 1) sleepSeconds(recoveryPollInterval);
   }
 
   return false;
@@ -4122,7 +4118,7 @@ async function createSandbox(
     sandboxName,
     gpuDevice: effectiveSandboxGpuConfig.sandboxGpuDevice,
     timeoutSecs: sandboxReadyTimeoutSecs,
-    deps: { runOpenshell, runCaptureOpenshell, sleep },
+    deps: { runOpenshell, runCaptureOpenshell, sleep: sleepSeconds },
   });
   const createResult = await streamSandboxCreate(createCommand, sandboxEnv, {
     readyCheck: () => {
@@ -4189,7 +4185,7 @@ async function createSandbox(
       ready = true;
       break;
     }
-    if (i < readyAttempts - 1) sleep(2);
+    if (i < readyAttempts - 1) sleepSeconds(2);
   }
 
   const restoreBackupPath =
@@ -4257,7 +4253,7 @@ async function createSandbox(
     if (i === 14) {
       console.warn("  Dashboard taking longer than expected to start. Continuing...");
     } else {
-      sleep(2);
+      sleepSeconds(2);
     }
   }
 
@@ -5611,7 +5607,7 @@ async function setupNim(
           runShell("set -o pipefail; curl -fsSL https://ollama.com/install.sh | sh");
           // Give the just-started ollama.service a moment to bind port
           // 11434 before we probe or apply the systemd drop-in override.
-          sleep(2);
+          sleepSeconds(2);
           // Linux native + systemd: force a loopback-only OLLAMA_HOST drop-in
           // and let systemd own the daemon (avoids racing the installer's
           // daemon with our own `ollama serve`). This also repairs older
@@ -7005,7 +7001,7 @@ const {
   note,
   isWsl,
   redact,
-  sleep,
+  sleep: sleepSeconds,
   printAgentDashboardUi: agentOnboard.printDashboardUi,
 });
 
