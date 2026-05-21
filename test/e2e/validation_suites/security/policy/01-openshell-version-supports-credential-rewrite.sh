@@ -5,6 +5,4 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/../../lib/security_policy_credentials.sh"
 echo "policy:openshell-version-supports-credential-rewrite"
-spc_assertion_id "post-onboard.gateway.openshell-version-supports-credential-rewrite"
-spc_require_context E2E_SCENARIO
-if e2e_env_is_dry_run; then echo "[dry-run] would verify OpenShell gateway capability metadata"; fi
+spc_assert_openshell_credential_rewrite_supported
