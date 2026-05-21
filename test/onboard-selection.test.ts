@@ -5402,7 +5402,22 @@ const { setupNim } = require(${onboardPath});
     assert.equal(payload.result.provider, "ollama-local");
     assert.equal(payload.result.model, "qwen3:8b");
     assert.equal(payload.installCalls.length, 0);
-    assert.deepEqual(payload.setupCalls, [{ announceStop: false }]);
+    // The restart/start path now forwards the verified executable path
+    // recovered from Get-Command so windows.ts can launch the binary
+    // directly instead of relying on the calling shell's Windows PATH
+    // (#3949).
+    assert.deepEqual(payload.setupCalls, [
+      {
+        announceStop: false,
+        // The mock injects `\\\\` per separator (raw template → 4 source
+        // backslashes per separator → 2 backslashes in the subprocess
+        // JS string). The deepEqual right-hand side is a regular TS
+        // string, so 4 backslashes per separator here equals 2 in the
+        // compiled string, matching what the subprocess captured.
+        installedPath:
+          "C:\\\\Users\\\\tester\\\\AppData\\\\Local\\\\Programs\\\\Ollama\\\\ollama.exe",
+      },
+    ]);
     assert.ok(
       payload.lines.some((line: string) =>
         line.includes("Using Ollama on host.docker.internal:11434"),
@@ -5456,6 +5471,7 @@ const platform = require(${platformPath});
 platform.isWsl = () => true;
 
 const setupCalls = [];
+const installedPath = "C:/Program Files/Ollama/ollama.exe";
 credentials.prompt = async () => "";
 credentials.ensureApiKey = async () => {};
 runner.runCapture = (command) => {
@@ -5463,9 +5479,13 @@ runner.runCapture = (command) => {
   if (cmd.includes("command -v ollama")) return "";
   if (cmd.includes("127.0.0.1:8000/v1/models")) return "";
   // The fix: Get-Command misses ollama.exe (service install, not on user
-  // PATH), but Get-Process finds the running daemon. Repro for #3949.
+  // PATH), but Get-Process recovers both the live PID and the verified
+  // executable path. Repro for #3949.
   if (cmd.includes("powershell.exe") && cmd.includes("Get-Command ollama.exe")) return "";
-  if (cmd.includes("powershell.exe") && cmd.includes("Get-Process ollama")) return "7652";
+  if (cmd.includes("powershell.exe") && cmd.includes("Get-Process ollama") && cmd.includes("Path"))
+    return installedPath;
+  if (cmd.includes("powershell.exe") && cmd.includes("Get-Process ollama") && cmd.includes("Id"))
+    return "7652";
   if (cmd.includes("powershell.exe") && cmd.includes("Get-NetTCPConnection")) return "127.0.0.1";
   if (cmd.includes("api/tags")) {
     if (setupCalls.length === 0) return "";
@@ -5534,9 +5554,17 @@ const { setupNim } = require(${onboardPath});
 
     assert.equal(payload.result.provider, "ollama-local");
     // hasWindowsOllama detected via Get-Process → winOllamaLoopbackOnly
-    // observed from 127.0.0.1 listen → restart-with-0.0.0.0 path taken,
-    // not the bogus install path (which was the pre-fix behaviour).
-    assert.equal(payload.setupCalls.length, 1);
+    // observed from 127.0.0.1 listen → restart path taken with
+    // announceStop:true and the recovered executable path threaded
+    // through so windows.ts can target the verified binary instead of
+    // the broken PATH fallback. Pre-fix behaviour was the bogus install
+    // path with no setup call at all.
+    assert.deepEqual(payload.setupCalls, [
+      {
+        announceStop: true,
+        installedPath: "C:/Program Files/Ollama/ollama.exe",
+      },
+    ]);
   });
 
   it("does not satisfy start-windows-ollama with WSL-local Ollama", () => {

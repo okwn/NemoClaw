@@ -99,6 +99,9 @@ const {
   stopModelRouterProcess,
   stopTrackedModelRouterForAgentChange,
 }: typeof import("./onboard/model-router-process") = require("./onboard/model-router-process");
+const {
+  detectWindowsHostOllama,
+}: typeof import("./onboard/windows-host-ollama") = require("./onboard/windows-host-ollama");
 const crypto = require("node:crypto");
 const fs = require("fs");
 const os = require("os");
@@ -6086,60 +6089,15 @@ async function setupNim(
     docker.dockerCapture(["images", "-q", vllmProfile.image], { ignoreError: true }).trim()
   );
   // Probed even when WSL has its own Ollama: users may prefer the Windows
-  // instance for GPU access and a unified model cache.
-  let hasWindowsOllama = false;
-  if (isWsl()) {
-    const winOllamaPath = runCapture(
-      [
-        "powershell.exe",
-        "-Command",
-        "Get-Command ollama.exe -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source",
-      ],
-      { ignoreError: true },
-    ).trim();
-    if (winOllamaPath.length > 0) {
-      hasWindowsOllama = true;
-    } else {
-      // `Get-Command` only sees ollama.exe when it is on the calling
-      // user's PATH. Service-style installs (and any installer that does
-      // not update the user PATH) leave the binary discoverable only via
-      // the running process — see #3949. Treat a live Windows-host
-      // ollama process as proof of installation.
-      const winOllamaPid = runCapture(
-        [
-          "powershell.exe",
-          "-Command",
-          "Get-Process ollama -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Id",
-        ],
-        { ignoreError: true },
-      ).trim();
-      hasWindowsOllama = winOllamaPid.length > 0;
-    }
-  }
-
-  let winOllamaLoopbackOnly = false;
-  if (isWsl() && hasWindowsOllama) {
-    const winPid = runCapture(
-      [
-        "powershell.exe",
-        "-Command",
-        "Get-Process ollama -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id",
-      ],
-      { ignoreError: true },
-    ).trim();
-    if (winPid) {
-      const listenAddrs = runCapture(
-        [
-          "powershell.exe",
-          "-Command",
-          "Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty LocalAddress",
-        ],
-        { ignoreError: true },
-      );
-      winOllamaLoopbackOnly =
-        /127\.0\.0\.1/.test(listenAddrs) && !/0\.0\.0\.0|^::\s*$/m.test(listenAddrs);
-    }
-  }
+  // instance for GPU access and a unified model cache. See
+  // src/lib/onboard/windows-host-ollama.ts for the probe semantics, in
+  // particular the Get-Process fallback for service-style installs
+  // (#3949) and the strict path-recovery requirement before flagging
+  // the install as restartable.
+  const winOllamaState = detectWindowsHostOllama();
+  const hasWindowsOllama = winOllamaState.installed;
+  const winOllamaInstalledPath = winOllamaState.installedPath;
+  const winOllamaLoopbackOnly = winOllamaState.loopbackOnly;
 
   // Independent of findReachableOllamaHost: when WSL Ollama wins the cache
   // on 127.0.0.1, Windows-host may also be running on 0.0.0.0 and we want
@@ -7079,7 +7037,16 @@ async function setupNim(
           }
           console.log(`  ✓ Using Ollama on host.docker.internal:${OLLAMA_PORT}`);
         } else {
-          if (!setupWindowsOllamaWith0000Binding({ announceStop: isRestart })) {
+          // Pass the verified executable path so windows.ts can target
+          // it directly instead of falling back to the calling shell's
+          // Windows PATH — which is the broken case for service-style
+          // installs that #3949 surfaces.
+          if (
+            !setupWindowsOllamaWith0000Binding({
+              announceStop: isRestart,
+              installedPath: winOllamaInstalledPath || undefined,
+            })
+          ) {
             printWindowsOllamaTimeoutDiagnostics();
             if (isNonInteractive()) process.exit(1);
             continue selectionLoop;
