@@ -123,6 +123,17 @@ describe("coverage report", () => {
     }
   });
 
+  it("test_should_report_issue_3812_domain_coverage_summary", () => {
+    const meta = loadMetadataFromDir(E2E_DIR);
+    const md = renderCoverageReport(meta);
+
+    expect(md).toMatch(/inference-routing-provider/);
+    expect(md).toMatch(/test-inference-routing\.sh/);
+    expect(md).toMatch(/test-openclaw-inference-switch\.sh/);
+    expect(md).toMatch(/test-kimi-inference-compat\.sh/);
+    expect(md).toMatch(/test-ollama-auth-proxy-e2e\.sh/);
+    expect(md).toMatch(/test-model-router-provider-routed-inference\.sh/);
+  });
 
   it("test_should_report_scoped_lifecycle_parity_sections", () => {
     const meta = loadMetadataFromDir(E2E_DIR);

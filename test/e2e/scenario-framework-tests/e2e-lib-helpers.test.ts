@@ -32,6 +32,80 @@ function runBash(script: string, env: Record<string, string> = {}): SpawnSyncRet
 // ──────────────────────────────────────────────────────────────────────────
 
 describe("E2E shell helpers", () => {
+  it("test_should_source_inference_routing_helpers_under_strict_shell_mode", () => {
+    const r = runBash(`
+      set -euo pipefail
+      . "${VALIDATION_SUITES}/lib/inference_routing.sh"
+      declare -F e2e_inference_routing_assert_chat_completion
+    `);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it("test_should_fail_clearly_when_required_context_is_missing", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-inf-missing-"));
+    try {
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${RUNTIME_LIB}/context.sh"
+        . "${VALIDATION_SUITES}/lib/inference_routing.sh"
+        e2e_context_init
+        e2e_inference_routing_assert_chat_completion "post-onboard.inference-routing.inference-local-chat-completion"
+      `,
+        { E2E_CONTEXT_DIR: tmp },
+      );
+      expect(r.status).not.toBe(0);
+      expect(r.stderr).toMatch(/E2E_SANDBOX_NAME|E2E_CONTEXT_DIR|context/i);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("test_should_emit_plan_only_checks_without_live_infrastructure", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-inf-plan-"));
+    try {
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${RUNTIME_LIB}/context.sh"
+        . "${VALIDATION_SUITES}/lib/inference_routing.sh"
+        e2e_context_init
+        e2e_context_set E2E_SANDBOX_NAME sandbox-1
+        e2e_inference_routing_assert_chat_completion "post-onboard.inference-routing.inference-local-chat-completion"
+      `,
+        { E2E_CONTEXT_DIR: tmp, E2E_DRY_RUN: "1" },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toContain("post-onboard.inference-routing.inference-local-chat-completion");
+      expect(r.stdout).toMatch(/dry-run|plan/i);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("test_should_not_print_secret_values_in_helper_output", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "e2e-inf-secret-"));
+    try {
+      const r = runBash(
+        `
+        set -euo pipefail
+        . "${RUNTIME_LIB}/context.sh"
+        . "${VALIDATION_SUITES}/lib/inference_routing.sh"
+        e2e_context_init
+        e2e_context_set E2E_SANDBOX_NAME sandbox-1
+        e2e_context_set E2E_PROVIDER_API_KEY super-secret-test-token
+        e2e_inference_routing_assert_auth_proxy "post-onboard.ollama-auth-proxy.authenticated-request-accepted" "valid"
+      `,
+        { E2E_CONTEXT_DIR: tmp, E2E_DRY_RUN: "1" },
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout + r.stderr).not.toContain("super-secret-test-token");
+      expect(r.stdout + r.stderr).toMatch(/REDACTED|dry-run|plan/i);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("security_policy_credentials_helper_should_load_with_context_library", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "spc-context-"));
     try {
@@ -177,7 +251,7 @@ exit 2
     fs.writeFileSync(
       path.join(fakeBin, "nemoclaw"),
       `#!/usr/bin/env bash
-echo "    ○ telegram — Telegram bridge egress"
+echo "    slack — Slack bridge egress"
 exit 0
 `,
       { mode: 0o755 },

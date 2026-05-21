@@ -4540,7 +4540,7 @@ scripts:
   test-inference-routing.sh:
     scenario: ubuntu-repo-cloud-openclaw
     status: migrated
-    bucket: providers-messaging
+    bucket: inference-routing-provider
     assertions:
     - legacy: 'TC-INF-05: Setup'
       status: deferred
@@ -5078,7 +5078,7 @@ scripts:
   test-kimi-inference-compat.sh:
     scenario: ubuntu-repo-cloud-openclaw
     status: migrated
-    bucket: providers-messaging
+    bucket: inference-routing-provider
     assertions:
     - legacy: 'K1: source CLI/OpenShell preparation failed (exit $prep_exit)'
       status: deferred
@@ -6989,7 +6989,7 @@ scripts:
   test-ollama-auth-proxy-e2e.sh:
     scenario: gpu-repo-local-ollama-openclaw
     status: migrated
-    bucket: providers-messaging
+    bucket: inference-routing-provider
     assertions:
     - legacy: Node.js not found
       status: deferred
@@ -7807,7 +7807,7 @@ scripts:
   test-openclaw-inference-switch.sh:
     scenario: ubuntu-repo-cloud-openclaw
     status: migrated
-    bucket: providers-messaging
+    bucket: inference-routing-provider
     assertions:
     - legacy: 'OpenShell inference get failed: ${output:0:240}'
       status: deferred
@@ -11639,7 +11639,7 @@ scripts:
   test-model-router-provider-routed-inference.sh:
     scenario: ubuntu-repo-cloud-openclaw
     status: migrated
-    bucket: providers-messaging
+    bucket: inference-routing-provider
     assertions:
     - legacy: Docker is running
       status: deferred

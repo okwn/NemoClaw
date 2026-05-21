@@ -99,7 +99,7 @@ function renderLegacyParitySummary(meta: ResolverInput): string[] {
     a.localeCompare(b),
   )) {
     lines.push(
-      `| ${bucket} | ${row.scripts.size} | ${row.mapped} | ${row.deferred} | ${row.retired} | ${row.unmapped} |`,
+      `| ${bucket} | ${[...row.scripts].sort().join(", ")} | ${row.mapped} | ${row.deferred} | ${row.retired} | ${row.unmapped} |`,
     );
   }
   lines.push("");
