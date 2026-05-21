@@ -16,6 +16,7 @@ import {
   discoverRequiredStatusCheckContexts,
   extractRequiredStatusChecksFromRulesets,
   extractStatusCheckSummaries,
+  normalizeBaseBranch,
   normalizeReviewResult,
   pendingRequiredContexts,
   readTrustedSecurityReviewSkill,
@@ -230,6 +231,52 @@ describe("PR review advisor", () => {
 
     expect(extractRequiredStatusChecksFromRulesets(rulesets, "main")).toEqual(["checks", "commit-lint"]);
     expect(extractRequiredStatusChecksFromRulesets(rulesets, "release/1.0")).toEqual(["release-only"]);
+  });
+
+  it("normalizes analyzed base refs before ruleset lookup", () => {
+    expect(normalizeBaseBranch("origin/main")).toBe("main");
+    expect(normalizeBaseBranch("target/release/1.0")).toBe("release/1.0");
+    expect(normalizeBaseBranch("refs/heads/feature/x")).toBe("feature/x");
+    expect(normalizeBaseBranch("refs/remotes/upstream/main")).toBe("main");
+  });
+
+  it("uses the analyzed base ref for required-check ruleset discovery", async () => {
+    const previous = {
+      repo: process.env.GITHUB_REPOSITORY,
+      token: process.env.GH_TOKEN,
+      githubToken: process.env.GITHUB_TOKEN,
+      base: process.env.GITHUB_BASE_REF,
+      override: process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_BASE,
+      fallback: process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS,
+    };
+    process.env.GITHUB_REPOSITORY = "NVIDIA/NemoClaw";
+    process.env.GH_TOKEN = "token";
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GITHUB_BASE_REF;
+    delete process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_BASE;
+    delete process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS;
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 1, target: "branch", enforcement: "active" }] } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          target: "branch",
+          enforcement: "active",
+          conditions: { ref_name: { include: ["refs/heads/release/*"], exclude: [] } },
+          rules: [{ type: "required_status_checks", parameters: { required_status_checks: [{ context: "release-only" }] } }],
+        }),
+      } as Response);
+
+    try {
+      await expect(discoverRequiredStatusCheckContexts("origin/release/1.0")).resolves.toEqual(["release-only"]);
+    } finally {
+      restoreEnv("GITHUB_REPOSITORY", previous.repo);
+      restoreEnv("GH_TOKEN", previous.token);
+      restoreEnv("GITHUB_TOKEN", previous.githubToken);
+      restoreEnv("GITHUB_BASE_REF", previous.base);
+      restoreEnv("PR_REVIEW_ADVISOR_REQUIRED_CHECK_BASE", previous.override);
+      restoreEnv("PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS", previous.fallback);
+    }
   });
 
   it("falls back to configured required checks when rulesets cannot be read", async () => {

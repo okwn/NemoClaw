@@ -251,7 +251,7 @@ async function main(): Promise<void> {
   const schema = readJson<Record<string, unknown>>(schemaPath);
   const changedFiles = getChangedFiles(baseRef, headRef);
   const headSha = getHeadSha(headRef);
-  await waitForRequiredChecksBeforeAnalysis(headSha);
+  await waitForRequiredChecksBeforeAnalysis(headSha, baseRef);
   const diff = getDiff(baseRef, headRef, 160000);
   const deterministic = await collectDeterministicContext({ baseRef, headRef, changedFiles, diff });
   const metadata = { baseRef, headRef, headSha, changedFiles, deterministic };
@@ -333,7 +333,7 @@ function logProgress(message: string): void {
   console.log(`[pr-review-advisor] ${new Date().toISOString()} ${message}`);
 }
 
-async function waitForRequiredChecksBeforeAnalysis(headSha: string): Promise<void> {
+async function waitForRequiredChecksBeforeAnalysis(headSha: string, baseRef: string): Promise<void> {
   if (process.env.PR_REVIEW_ADVISOR_RUN_ANALYSIS === "0" || process.env.PR_REVIEW_ADVISOR_WAIT_FOR_REQUIRED_CHECKS === "0") return;
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
@@ -344,7 +344,7 @@ async function waitForRequiredChecksBeforeAnalysis(headSha: string): Promise<voi
   }
 
   const requiredContexts = uniqueStrings([
-    ...(await discoverRequiredStatusCheckContexts()),
+    ...(await discoverRequiredStatusCheckContexts(baseRef)),
     ...parseContextList(process.env.PR_REVIEW_ADVISOR_WAIT_ADDITIONAL_CONTEXTS),
   ]).filter((context) => !isAdvisorCheckContext(context));
 
@@ -404,13 +404,15 @@ function isAdvisorCheckContext(context: string): boolean {
   return ADVISOR_CHECK_CONTEXT_PATTERNS.some((pattern) => pattern.test(context));
 }
 
-export async function discoverRequiredStatusCheckContexts(): Promise<string[]> {
+export async function discoverRequiredStatusCheckContexts(baseRef?: string): Promise<string[]> {
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
   const fallbackContexts = parseContextList(process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_FALLBACK_CONTEXTS);
   if (!repo || !token) return fallbackContexts;
 
-  const baseBranch = process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_BASE || process.env.GITHUB_BASE_REF || "main";
+  const baseBranch = normalizeBaseBranch(
+    process.env.PR_REVIEW_ADVISOR_REQUIRED_CHECK_BASE || baseRef || process.env.GITHUB_BASE_REF || "main",
+  );
   try {
     const rulesetContexts = await fetchRequiredStatusChecks(repo, token, baseBranch);
     return rulesetContexts.length > 0 ? rulesetContexts : fallbackContexts;
@@ -459,6 +461,13 @@ function rulesetAppliesToBranch(ruleset: unknown, baseBranch: string): boolean {
   const exclude = stringArray(getPath<unknown>(ruleset, ["conditions", "ref_name", "exclude"]));
   if (exclude.some((pattern) => refPatternMatches(pattern, ref, baseBranch))) return false;
   return include.length === 0 || include.some((pattern) => refPatternMatches(pattern, ref, baseBranch));
+}
+
+export function normalizeBaseBranch(ref: string): string {
+  return ref
+    .replace(/^refs\/heads\//, "")
+    .replace(/^refs\/remotes\/[^/]+\//, "")
+    .replace(/^(?:origin|target)\//, "");
 }
 
 function refPatternMatches(pattern: string, ref: string, baseBranch: string): boolean {
@@ -549,7 +558,7 @@ async function collectDeterministicContext(options: {
   const github = await collectGitHubContext();
   const riskyAreas = detectRiskyAreas(options.changedFiles);
   const testDepth = classifyTestDepth(options.changedFiles, options.diff);
-  const requiredStatusCheckContexts = await discoverRequiredStatusCheckContexts();
+  const requiredStatusCheckContexts = await discoverRequiredStatusCheckContexts(options.baseRef);
   const additionalWaitContexts = parseContextList(process.env.PR_REVIEW_ADVISOR_WAIT_ADDITIONAL_CONTEXTS);
   const gateStatus = deriveGateStatus(github, options.changedFiles, riskyAreas, requiredStatusCheckContexts);
   return {
