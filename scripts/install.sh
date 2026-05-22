@@ -1365,6 +1365,21 @@ install_nemoclaw() {
     spin "Building ${_CLI_DISPLAY} CLI modules" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm run --if-present build:cli"
     spin "Building ${_CLI_DISPLAY} plugin" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\"/nemoclaw && npm install --ignore-scripts && npm run build"
     spin "Linking ${_CLI_DISPLAY} CLI" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm link"
+
+    # Bootstrap OpenShell when the source checkout is being used as a fresh
+    # install entrypoint (e.g. `git clone … && bash install.sh`) and the host
+    # has no openshell on PATH. Skipping here previously left the user at a
+    # circular preflight error ("Run the NemoClaw installer or
+    # scripts/install-openshell.sh") even though they were running the
+    # installer. A developer who already has a managed openshell on PATH
+    # keeps their existing binary — install-openshell.sh is only invoked
+    # when openshell is genuinely missing. See #3989.
+    if truthy_env "${NEMOCLAW_DEFER_OPENSHELL_INSTALL:-}"; then
+      info "Deferring OpenShell CLI installation until after pre-upgrade backup."
+    elif ! command_exists openshell; then
+      spin "Installing OpenShell CLI" bash "${NEMOCLAW_SOURCE_ROOT}/scripts/install-openshell.sh"
+      prefer_user_local_openshell
+    fi
   else
     if [[ -f "$package_json" ]]; then
       info "Installer payload is not a persistent source checkout — installing from GitHub…"
