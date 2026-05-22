@@ -3841,7 +3841,7 @@ async function preflight(
     }
   }
 
-  preflightDashboardPortRangeAvailability(); // #3953 — fail fast on dashboard-port exhaustion before step 2
+  if (_preflightDashboardPort === null) preflightDashboardPortRangeAvailability(); // #3953 — skip when --control-ui-port already gates the explicit port
   return gpu;
 }
 
