@@ -535,9 +535,12 @@ try:
     doc = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-result = doc.get('result') or {}
+payloads = doc.get('payloads')
+if payloads is None:
+    result = doc.get('result') or {}
+    payloads = result.get('payloads') or []
 parts = []
-for p in result.get('payloads') or []:
+for p in payloads or []:
     if isinstance(p, dict) and isinstance(p.get('text'), str):
         parts.append(p['text'])
 print('\n'.join(parts))
