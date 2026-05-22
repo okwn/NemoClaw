@@ -84,13 +84,14 @@ function renderSnapshotTable(
   }
 }
 
-// Query the running src pod's image reference via `kubectl` inside the
-// gateway container. Returns null on any failure.
+// Resolve the running src pod's image. Docker- and VM-driver sandboxes don't
+// have the legacy cluster container, so trust the registered imageTag;
+// fall back to the kubectl probe only for the "kubernetes" driver.
 function resolveSrcPodImage(srcName: string, srcEntry?: SandboxEntry | { name: string }): string | null {
   const registeredImage = (srcEntry as { imageTag?: string | null } | undefined)?.imageTag;
   const registeredDriver = (srcEntry as { openshellDriver?: string | null } | undefined)
     ?.openshellDriver;
-  if (registeredDriver === "docker" && registeredImage) {
+  if (usesGatewayMetadataProbe(registeredDriver) && registeredImage) {
     return registeredImage;
   }
 
@@ -182,9 +183,10 @@ async function autoCreateSandboxFromSource(
     snapshotExit(1);
   }
 
-  // Set up DNS proxy in the new pod (same step onboard runs after sandbox create).
+  // DNS proxy is only meaningful for the kubernetes driver (matches onboard.ts).
   const dnsScript = path.join(ROOT, "scripts", "setup-dns-proxy.sh");
-  if ((srcEntry as { openshellDriver?: string | null }).openshellDriver !== "docker" && fs.existsSync(dnsScript)) {
+  const srcDriver = (srcEntry as { openshellDriver?: string | null }).openshellDriver;
+  if (srcDriver === "kubernetes" && fs.existsSync(dnsScript)) {
     run(["bash", dnsScript, NEMOCLAW_GATEWAY_NAME, dstName], { ignoreError: true });
   }
 
