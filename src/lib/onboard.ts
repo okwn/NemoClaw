@@ -16,6 +16,9 @@ const {
   setOnboardBrandingAgent,
 }: typeof import("./onboard/branding") = require("./onboard/branding");
 const { createSelectOnboardAgent }: typeof import("./onboard/agent-selection") = require("./onboard/agent-selection");
+const {
+  createInferenceSelectionValidationHelpers,
+}: typeof import("./onboard/inference-selection-validation") = require("./onboard/inference-selection-validation");
 const { cleanupTempDir }: typeof import("./onboard/temp-files") = require("./onboard/temp-files");
 const { stopStaleDashboardListenersForSandbox } = require("./onboard/stale-gateway-cleanup");
 const {
@@ -945,150 +948,17 @@ const {
   probeAnthropicEndpoint,
 } = require("./inference/onboard-probes");
 
-async function validateOpenAiLikeSelection(
-  label: string,
-  endpointUrl: string,
-  model: string,
-  credentialEnv: string | null = null,
-  retryMessage = "Please choose a provider/model again.",
-  helpUrl: string | null = null,
-  options: {
-    authMode?: "bearer" | "query-param";
-    requireResponsesToolCalling?: boolean;
-    requireChatCompletionsToolCalling?: boolean;
-    skipResponsesProbe?: boolean;
-    probeStreaming?: boolean;
-  } = {},
-): Promise<EndpointValidationResult> {
-  const apiKey = credentialEnv ? getCredential(credentialEnv) : "";
-  const probe = probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, options);
-  if (!probe.ok) {
-    console.error(`  ${label} endpoint validation failed.`);
-    console.error(`  ${probe.message}`);
-    if (isNonInteractive()) {
-      process.exit(1);
-    }
-    const retry = await promptValidationRecovery(
-      label,
-      getProbeRecovery(probe),
-      credentialEnv,
-      helpUrl,
-    );
-    if (retry === "selection") {
-      console.log(`  ${retryMessage}`);
-      console.log("");
-    }
-    return { ok: false, retry };
-  }
-  if (probe.note) {
-    console.log(`  ℹ ${probe.note}`);
-  } else {
-    console.log(`  ${probe.label} available — ${agentProductName()} will use ${probe.api}.`);
-  }
-  return { ok: true, api: probe.api ?? "openai-completions" };
-}
+const {
+  validateOpenAiLikeSelection,
+  validateAnthropicSelectionWithRetryMessage,
+  validateCustomOpenAiLikeSelection,
+  validateCustomAnthropicSelection,
+} = createInferenceSelectionValidationHelpers({
+  isNonInteractive,
+  agentProductName,
+  promptValidationRecovery,
+});
 
-async function validateAnthropicSelectionWithRetryMessage(
-  label: string,
-  endpointUrl: string,
-  model: string,
-  credentialEnv: string,
-  retryMessage = "Please choose a provider/model again.",
-  helpUrl: string | null = null,
-): Promise<EndpointValidationResult> {
-  const apiKey = getCredential(credentialEnv);
-  const probe = probeAnthropicEndpoint(endpointUrl, model, apiKey);
-  if (!probe.ok) {
-    console.error(`  ${label} endpoint validation failed.`);
-    console.error(`  ${probe.message}`);
-    if (isNonInteractive()) {
-      process.exit(1);
-    }
-    const retry = await promptValidationRecovery(
-      label,
-      getProbeRecovery(probe),
-      credentialEnv,
-      helpUrl,
-    );
-    if (retry === "selection") {
-      console.log(`  ${retryMessage}`);
-      console.log("");
-    }
-    return { ok: false, retry };
-  }
-  console.log(`  ${probe.label} available — ${agentProductName()} will use ${probe.api}.`);
-  return { ok: true, api: probe.api };
-}
-
-async function validateCustomOpenAiLikeSelection(
-  label: string,
-  endpointUrl: string,
-  model: string,
-  credentialEnv: string,
-  helpUrl: string | null = null,
-): Promise<EndpointValidationResult> {
-  const apiKey = getCredential(credentialEnv);
-  const probe = probeOpenAiLikeEndpoint(endpointUrl, model, apiKey, {
-    requireResponsesToolCalling: true,
-    skipResponsesProbe: shouldForceCompletionsApi(process.env.NEMOCLAW_PREFERRED_API),
-    probeStreaming: true,
-  });
-  if (probe.ok) {
-    if (probe.note) {
-      console.log(`  ℹ ${probe.note}`);
-    } else {
-      console.log(`  ${probe.label} available — ${agentProductName()} will use ${probe.api}.`);
-    }
-    return { ok: true, api: probe.api ?? "openai-completions" };
-  }
-  console.error(`  ${label} endpoint validation failed.`);
-  console.error(`  ${probe.message}`);
-  if (isNonInteractive()) {
-    process.exit(1);
-  }
-  const retry = await promptValidationRecovery(
-    label,
-    getProbeRecovery(probe, { allowModelRetry: true }),
-    credentialEnv,
-    helpUrl,
-  );
-  if (retry === "selection") {
-    console.log("  Please choose a provider/model again.");
-    console.log("");
-  }
-  return { ok: false, retry };
-}
-
-async function validateCustomAnthropicSelection(
-  label: string,
-  endpointUrl: string,
-  model: string,
-  credentialEnv: string,
-  helpUrl: string | null = null,
-): Promise<EndpointValidationResult> {
-  const apiKey = getCredential(credentialEnv);
-  const probe = probeAnthropicEndpoint(endpointUrl, model, apiKey);
-  if (probe.ok) {
-    console.log(`  ${probe.label} available — ${agentProductName()} will use ${probe.api}.`);
-    return { ok: true, api: probe.api };
-  }
-  console.error(`  ${label} endpoint validation failed.`);
-  console.error(`  ${probe.message}`);
-  if (isNonInteractive()) {
-    process.exit(1);
-  }
-  const retry = await promptValidationRecovery(
-    label,
-    getProbeRecovery(probe, { allowModelRetry: true }),
-    credentialEnv,
-    helpUrl,
-  );
-  if (retry === "selection") {
-    console.log("  Please choose a provider/model again.");
-    console.log("");
-  }
-  return { ok: false, retry };
-}
 
 const { promptCloudModel, promptRemoteModel, promptInputModel } = modelPrompts;
 const { validateAnthropicModel, validateOpenAiLikeModel } = providerModels;
