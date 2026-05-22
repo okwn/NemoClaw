@@ -116,6 +116,13 @@ describe("MessagingHookRegistry", () => {
         inputs: {
           "wechatConfig.accountId": "ilink-bot-42",
         },
+        outputDeclarations: [
+          {
+            id: "accountFile",
+            kind: "build-file",
+            required: true,
+          },
+        ],
       },
     ]);
     expect(result.outputs.accountFile).toEqual({

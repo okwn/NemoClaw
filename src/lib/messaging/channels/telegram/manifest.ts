@@ -131,5 +131,19 @@ export const telegramManifest = {
       },
     ],
   },
-  hooks: [],
+  hooks: [
+    {
+      id: "telegram-token-paste",
+      phase: "enroll",
+      handler: "common.tokenPaste",
+      outputs: [
+        {
+          id: "botToken",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      onFailure: "skip-channel",
+    },
+  ],
 } as const satisfies ChannelManifest;

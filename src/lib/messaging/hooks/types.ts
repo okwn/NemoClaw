@@ -24,6 +24,7 @@ export interface MessagingHookRunContext {
 export interface MessagingHookContext extends MessagingHookRunContext {
   readonly hookId: string;
   readonly phase: ChannelHookPhase;
+  readonly outputDeclarations?: readonly ChannelHookOutputSpec[];
 }
 
 /** One named output emitted by a hook handler. */

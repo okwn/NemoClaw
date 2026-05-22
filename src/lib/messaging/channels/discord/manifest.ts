@@ -150,5 +150,19 @@ export const discordManifest = {
       },
     ],
   },
-  hooks: [],
+  hooks: [
+    {
+      id: "discord-token-paste",
+      phase: "enroll",
+      handler: "common.tokenPaste",
+      outputs: [
+        {
+          id: "botToken",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      onFailure: "skip-channel",
+    },
+  ],
 } as const satisfies ChannelManifest;

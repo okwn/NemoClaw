@@ -7,7 +7,8 @@ import {
   buildDiscordConfig,
   buildMessagingEnvLines,
 } from "../../../../agents/hermes/config/messaging-config.ts";
-import { getChannelTokenKeys, KNOWN_CHANNELS } from "../../sandbox/channels";
+import { getChannelTokenKeys, KNOWN_CHANNELS, knownChannelNames } from "../../sandbox/channels";
+import { COMMON_TOKEN_PASTE_HOOK_HANDLER_ID } from "../hooks/common";
 import type { ChannelInputSpec, ChannelManifest, ChannelRenderSpec } from "../manifest";
 import {
   BUILT_IN_CHANNEL_MANIFESTS,
@@ -15,6 +16,7 @@ import {
   discordManifest,
   slackManifest,
   telegramManifest,
+  wechatManifest,
   whatsappManifest,
 } from "./index";
 
@@ -34,31 +36,41 @@ function renderJson(manifest: ChannelManifest): string {
   return JSON.stringify(manifest.render);
 }
 
+function expectTokenPasteEnrollHook(manifest: ChannelManifest, outputIds: readonly string[]): void {
+  expect(manifest.hooks).toEqual([
+    {
+      id: `${manifest.id}-token-paste`,
+      phase: "enroll",
+      handler: COMMON_TOKEN_PASTE_HOOK_HANDLER_ID,
+      outputs: outputIds.map((id) => ({
+        id,
+        kind: "secret",
+        required: true,
+      })),
+      onFailure: "skip-channel",
+    },
+  ]);
+}
+
 describe("built-in channel manifests", () => {
   it("registers the phase-1 built-in manifests without consuming them in workflows", () => {
     const registry = createBuiltInChannelManifestRegistry();
 
-    expect(BUILT_IN_CHANNEL_MANIFESTS.map((manifest) => manifest.id)).toEqual([
-      "telegram",
-      "discord",
-      "slack",
-      "whatsapp",
-    ]);
-    expect(registry.list().map((manifest) => manifest.id)).toEqual([
-      "telegram",
-      "discord",
-      "slack",
-      "whatsapp",
-    ]);
+    expect(BUILT_IN_CHANNEL_MANIFESTS.map((manifest) => manifest.id)).toEqual(
+      knownChannelNames(),
+    );
+    expect(registry.list().map((manifest) => manifest.id)).toEqual(knownChannelNames());
     expect(registry.listAvailable({ agent: "openclaw" }).map((manifest) => manifest.id)).toEqual([
       "telegram",
       "discord",
+      "wechat",
       "slack",
       "whatsapp",
     ]);
     expect(registry.listAvailable({ agent: "hermes" }).map((manifest) => manifest.id)).toEqual([
       "telegram",
       "discord",
+      "wechat",
       "slack",
       "whatsapp",
     ]);
@@ -68,6 +80,7 @@ describe("built-in channel manifests", () => {
     const manifests = {
       telegram: telegramManifest,
       discord: discordManifest,
+      wechat: wechatManifest,
       slack: slackManifest,
       whatsapp: whatsappManifest,
     };
@@ -97,6 +110,10 @@ describe("built-in channel manifests", () => {
       label: KNOWN_CHANNELS.slack.appTokenLabel,
       help: KNOWN_CHANNELS.slack.appTokenHelp,
       placeholder: "xapp-...",
+    });
+    expect(findInput(wechatManifest, "botToken").prompt).toEqual({
+      label: KNOWN_CHANNELS.wechat.label,
+      help: KNOWN_CHANNELS.wechat.help,
     });
   });
 
@@ -133,6 +150,7 @@ describe("built-in channel manifests", () => {
     expect(renderJson(telegramManifest)).toContain("groupPolicy");
     expect(renderJson(telegramManifest)).toContain("channels.telegram.groups");
     expect(renderJson(telegramManifest)).toContain("telegramConfig.requireMention");
+    expectTokenPasteEnrollHook(telegramManifest, ["botToken"]);
   });
 
   it("declares Discord guild and allowlist render intent for both agents", () => {
@@ -184,6 +202,7 @@ describe("built-in channel manifests", () => {
     expect(renderJson(discordManifest)).toContain("channels.discord");
     expect(renderJson(discordManifest)).toContain("discord.guilds");
     expect(renderJson(discordManifest)).toContain("require_mention");
+    expectTokenPasteEnrollHook(discordManifest, ["botToken"]);
   });
 
   it("declares Slack Bolt-compatible placeholders and allowlist render intent", () => {
@@ -230,6 +249,87 @@ describe("built-in channel manifests", () => {
     expect(hermesLines).toContain("SLACK_ALLOWED_USERS=U0123456789");
     expect(renderJson(slackManifest)).toContain("channels.slack.accounts.default");
     expect(renderJson(slackManifest)).toContain("allowedIds.slack.channels");
+    expectTokenPasteEnrollHook(slackManifest, ["botToken", "appToken"]);
+  });
+
+  it("declares WeChat host-QR hooks, state hydration, provider binding, and Hermes env intent", () => {
+    const botToken = findInput(wechatManifest, "botToken");
+    const accountId = findInput(wechatManifest, "accountId");
+    const baseUrl = findInput(wechatManifest, "baseUrl");
+    const userId = findInput(wechatManifest, "userId");
+    const allowedIds = findInput(wechatManifest, "allowedIds");
+    const hermesLines = buildMessagingEnvLines(
+      new Set(["wechat"]),
+      { wechat: ["bot_other_friend"] },
+      {},
+      {
+        accountId: "test_account_42",
+        baseUrl: "https://ilinkai.wechat.com",
+        userId: "operator_self_id",
+      },
+    );
+
+    expect(getChannelTokenKeys(KNOWN_CHANNELS.wechat)).toEqual(["WECHAT_BOT_TOKEN"]);
+    expect(wechatManifest.auth.mode).toBe("host-qr");
+    expect(botToken.envKey).toBe("WECHAT_BOT_TOKEN");
+    expect(accountId.envKey).toBe("WECHAT_ACCOUNT_ID");
+    expect(baseUrl.envKey).toBe("WECHAT_BASE_URL");
+    expect(userId.envKey).toBe("WECHAT_USER_ID");
+    expect(allowedIds.envKey).toBe("WECHAT_ALLOWED_IDS");
+    expect(KNOWN_CHANNELS.wechat.allowIdsMode).toBe("dm");
+    expect(wechatManifest.credentials).toEqual([
+      {
+        id: "wechatBotToken",
+        sourceInput: "botToken",
+        providerName: "{sandboxName}-wechat-bridge",
+        providerEnvKey: "WECHAT_BOT_TOKEN",
+        placeholder: "openshell:resolve:env:WECHAT_BOT_TOKEN",
+      },
+    ]);
+    expect(wechatManifest.state.persist).toEqual({
+      wechatConfig: ["accountId", "baseUrl", "userId"],
+      allowedIds: ["allowedIds"],
+    });
+    expect(wechatManifest.state.rebuildHydration).toEqual([
+      {
+        statePath: "wechatConfig.accountId",
+        env: "WECHAT_ACCOUNT_ID",
+      },
+      {
+        statePath: "wechatConfig.baseUrl",
+        env: "WECHAT_BASE_URL",
+      },
+      {
+        statePath: "wechatConfig.userId",
+        env: "WECHAT_USER_ID",
+      },
+      {
+        statePath: "allowedIds.wechat",
+        env: "WECHAT_ALLOWED_IDS",
+      },
+    ]);
+    expect(hermesLines).toContain("WEIXIN_TOKEN=openshell:resolve:env:WECHAT_BOT_TOKEN");
+    expect(hermesLines).toContain("WEIXIN_ACCOUNT_ID=test_account_42");
+    expect(hermesLines).toContain("WEIXIN_BASE_URL=https://ilinkai.wechat.com");
+    expect(hermesLines).toContain("WEIXIN_ALLOWED_USERS=operator_self_id,bot_other_friend");
+    expect(renderJson(wechatManifest)).toContain("WEIXIN_TOKEN");
+    expect(renderJson(wechatManifest)).toContain("credential.wechatBotToken.placeholder");
+    expect(wechatManifest.hooks.map((hook) => hook.handler)).toEqual([
+      "wechat.ilinkLogin",
+      "wechat.seedOpenClawAccount",
+    ]);
+    expect(wechatManifest.hooks[1]?.outputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "openclawWeixinAccountFile",
+          kind: "build-file",
+        }),
+        expect.objectContaining({
+          id: "openclawConfigPatch",
+          kind: "build-file",
+        }),
+      ]),
+    );
   });
 
   it("declares WhatsApp as in-sandbox QR with no host-side token bindings", () => {

@@ -109,5 +109,24 @@ export const slackManifest = {
       },
     ],
   },
-  hooks: [],
+  hooks: [
+    {
+      id: "slack-token-paste",
+      phase: "enroll",
+      handler: "common.tokenPaste",
+      outputs: [
+        {
+          id: "botToken",
+          kind: "secret",
+          required: true,
+        },
+        {
+          id: "appToken",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      onFailure: "skip-channel",
+    },
+  ],
 } as const satisfies ChannelManifest;

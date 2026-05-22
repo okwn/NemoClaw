@@ -27,6 +27,7 @@ export async function runMessagingHook(
     hookId: hook.id,
     phase: hook.phase,
     inputs: context.inputs,
+    outputDeclarations: hook.outputs,
   });
   const outputs = result.outputs ?? EMPTY_OUTPUTS;
 
