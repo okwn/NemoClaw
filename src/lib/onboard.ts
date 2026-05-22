@@ -293,7 +293,7 @@ const { resolveSandboxImageTagFromCreateOutput } =
   require("./domain/sandbox/image-tag") as typeof import("./domain/sandbox/image-tag");
 const nim: typeof import("./inference/nim") = require("./inference/nim");
 const onboardSession: typeof import("./state/onboard-session") = require("./state/onboard-session");
-const { OnboardRuntime }: typeof import("./onboard/machine/runtime") = require("./onboard/machine/runtime");
+const { OnboardRuntimeBoundary }: typeof import("./onboard/runtime-boundary") = require("./onboard/runtime-boundary");
 const policies: typeof import("./policy") = require("./policy");
 const tiers: typeof import("./policy/tiers") = require("./policy/tiers");
 const { ensureUsageNoticeConsent } = require("./onboard/usage-notice");
@@ -430,7 +430,6 @@ const USE_COLOR = !process.env.NO_COLOR && !!process.stdout.isTTY;
 const DIM = USE_COLOR ? "\x1b[2m" : "";
 const RESET = USE_COLOR ? "\x1b[0m" : "";
 let OPENSHELL_BIN: string | null = null;
-let ONBOARD_RUNTIME: import("./onboard/machine/runtime").OnboardRuntime | null = null;
 const GATEWAY_NAME = "nemoclaw";
 const BACK_TO_SELECTION = "__NEMOCLAW_BACK_TO_SELECTION__";
 type HermesAuthMethod = "oauth" | "api_key";
@@ -8917,42 +8916,14 @@ function toSessionUpdates(
   return normalized;
 }
 
-function getOnboardRuntime(): import("./onboard/machine/runtime").OnboardRuntime {
-  if (!ONBOARD_RUNTIME) ONBOARD_RUNTIME = new OnboardRuntime();
-  return ONBOARD_RUNTIME;
-}
-
-async function startRecordedStep(
-  stepName: string,
-  updates: {
-    sandboxName?: string | null;
-    provider?: string | null;
-    model?: string | null;
-    policyPresets?: string[] | null;
-  } = {},
-): Promise<void> {
-  const runtime = getOnboardRuntime();
-  await runtime.markStepStarted(stepName);
-  if (Object.keys(updates).length > 0) {
-    await runtime.updateContext(toSessionUpdates(updates));
-  }
-  maybeForceE2eStepFailure(stepName);
-}
-
-async function recordStepComplete(
-  stepName: string,
-  updates: SessionUpdates = {},
-): Promise<Session> {
-  return getOnboardRuntime().markStepComplete(stepName, updates);
-}
-
-async function recordStepSkipped(stepName: string): Promise<Session> {
-  return getOnboardRuntime().markStepSkipped(stepName);
-}
-
-async function recordSessionComplete(updates: SessionUpdates = {}): Promise<Session> {
-  return getOnboardRuntime().completeSession(updates);
-}
+const onboardRuntimeBoundary = new OnboardRuntimeBoundary({
+  toSessionUpdates,
+  maybeForceE2eStepFailure,
+});
+const startRecordedStep = onboardRuntimeBoundary.startRecordedStep.bind(onboardRuntimeBoundary);
+const recordStepComplete = onboardRuntimeBoundary.recordStepComplete.bind(onboardRuntimeBoundary);
+const recordStepSkipped = onboardRuntimeBoundary.recordStepSkipped.bind(onboardRuntimeBoundary);
+const recordSessionComplete = onboardRuntimeBoundary.recordSessionComplete.bind(onboardRuntimeBoundary);
 
 const ONBOARD_STEP_INDEX: Record<string, { number: number; title: string }> = {
   preflight: { number: 1, title: "Preflight checks" },
@@ -8989,7 +8960,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
   RECREATE_SANDBOX = opts.recreateSandbox || process.env.NEMOCLAW_RECREATE_SANDBOX === "1";
   AUTO_YES = opts.autoYes === true || process.env.NEMOCLAW_YES === "1";
   _preflightDashboardPort = opts.controlUiPort || null;
-  ONBOARD_RUNTIME = new OnboardRuntime();
+  onboardRuntimeBoundary.reset();
   delete process.env.OPENSHELL_GATEWAY;
   const resume = opts.resume === true;
   const fresh = opts.fresh === true;
@@ -10143,7 +10114,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     printDashboard(sandboxName, model, provider, nimContainer, agent);
   } finally {
     releaseOnboardLock();
-    ONBOARD_RUNTIME = null;
+    onboardRuntimeBoundary.clear();
   }
 }
 
