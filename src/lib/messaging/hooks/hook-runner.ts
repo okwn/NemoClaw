@@ -81,7 +81,7 @@ function assertOutputMatchesDeclaration(
 
 function isMessagingSerializableValue(
   value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
+  visiting: WeakSet<object> = new WeakSet(),
 ): value is MessagingSerializableValue {
   if (value === null) return true;
 
@@ -91,15 +91,21 @@ function isMessagingSerializableValue(
   if (valueType !== "object") return false;
 
   const objectValue = value as object;
-  if (seen.has(objectValue)) return false;
-  seen.add(objectValue);
+  if (visiting.has(objectValue)) return false;
+  visiting.add(objectValue);
 
-  if (Array.isArray(value)) {
-    return value.every((entry) => isMessagingSerializableValue(entry, seen));
+  try {
+    if (Array.isArray(value)) {
+      return value.every((entry) => isMessagingSerializableValue(entry, visiting));
+    }
+
+    const prototype = Object.getPrototypeOf(objectValue);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+
+    return Object.values(objectValue).every((entry) =>
+      isMessagingSerializableValue(entry, visiting),
+    );
+  } finally {
+    visiting.delete(objectValue);
   }
-
-  const prototype = Object.getPrototypeOf(objectValue);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-
-  return Object.values(objectValue).every((entry) => isMessagingSerializableValue(entry, seen));
 }

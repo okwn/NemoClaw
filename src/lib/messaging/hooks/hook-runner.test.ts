@@ -169,6 +169,50 @@ describe("MessagingHookRegistry", () => {
     ).rejects.toThrow("Hook 'wechat-host-qr' missing required output 'accountId'");
   });
 
+  it("allows shared non-cyclic object references in serializable outputs", async () => {
+    const shared = {
+      path: "accounts/default.json",
+      mode: "seed",
+    };
+    const registry = new MessagingHookRegistry([
+      {
+        id: "wechat.sharedOutput",
+        handler: () => ({
+          outputs: {
+            botToken: {
+              kind: "secret",
+              value: [shared, shared],
+            },
+            accountId: {
+              kind: "config",
+              value: "wxid_demo",
+            },
+          },
+        }),
+      },
+    ]);
+
+    await expect(
+      runMessagingHook(
+        {
+          ...HOST_QR_HOOK,
+          handler: "wechat.sharedOutput",
+        },
+        registry,
+        {
+          channelId: "wechat",
+        },
+      ),
+    ).resolves.toMatchObject({
+      outputs: {
+        botToken: {
+          kind: "secret",
+          value: [shared, shared],
+        },
+      },
+    });
+  });
+
   it("checks output ids, kinds, and serializable values", async () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
