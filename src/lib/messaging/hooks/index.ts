@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-export * from "./channels";
-export * from "./hooks";
-export * from "./manifest";
+export * from "./hook-runner";
+export * from "./registry";
+export type * from "./types";

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -318,9 +318,13 @@ describe("messaging manifest type contracts", () => {
       "gateway",
       "state/registry",
       "credentials",
+      "ext/wechat",
+      "host-qr-dispatch",
+      "host-qr-handlers",
       "node:fs",
       "node:child_process",
       "child_process",
+      "qrcode-terminal",
       "adapters/openshell",
       "src/commands",
       "lib/actions",
