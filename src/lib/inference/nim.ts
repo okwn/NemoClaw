@@ -34,8 +34,18 @@ const NIM_STATUS_PROBE_TIMEOUT_MS = 5000;
 const NVIDIA_GPU_NAME_PATTERN =
   /\bNVIDIA\b|\b(GeForce|Tesla|Quadro|RTX|GTX|TITAN|H100|H200|A100|A40|A10|L40|L4|GB1\d|GB200|GB300|Grace[\s_-]+Hopper)\b/i;
 
+// Names that have been observed both on legitimate NVIDIA unified-memory
+// hardware (DGX Spark — #3510) and on Windows-on-ARM WSL2 d3d12 shims with no
+// NVIDIA silicon. Even with an `NVIDIA ` vendor prefix the name alone is not
+// sufficient — the caller must cross-check `detectNvidiaPlatform()`.
+const NVIDIA_GPU_NAME_DENYLIST_PATTERN = /\bJMJWOA-Generic-GPU\b/i;
+
 function isPlausibleNvidiaGpuName(name: string): boolean {
-  return !!name && NVIDIA_GPU_NAME_PATTERN.test(name);
+  return (
+    !!name &&
+    !NVIDIA_GPU_NAME_DENYLIST_PATTERN.test(name) &&
+    NVIDIA_GPU_NAME_PATTERN.test(name)
+  );
 }
 
 export interface NimModel {
