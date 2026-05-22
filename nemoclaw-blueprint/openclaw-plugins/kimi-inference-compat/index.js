@@ -156,7 +156,7 @@ function buildSplitToolCallId(originalId, index, command) {
   return `${baseId}_split_${index + 1}_${command}`;
 }
 
-function getSafeCombinedExecToolCallFromBlock(toolCall) {
+function getSafeExecToolCallCommand(toolCall) {
   if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) return null;
   if (toolCall.type !== "toolCall" || toolCall.name !== "exec") return null;
 
@@ -167,22 +167,21 @@ function getSafeCombinedExecToolCallFromBlock(toolCall) {
     return null;
   }
 
-  const commands = splitSafeExecCommand(args.command);
-  if (!commands) return null;
-
-  return { commands, toolCall };
+  return args.command;
 }
 
 function getExecToolCallCommand(toolCall) {
-  if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) return null;
-  if (toolCall.type !== "toolCall" || toolCall.name !== "exec") return null;
-  const args = decodeToolCallArguments(toolCall.arguments);
-  if (!args) return null;
-  const argKeys = Object.keys(args);
-  if (argKeys.length !== 1 || argKeys[0] !== "command" || typeof args.command !== "string") {
-    return null;
-  }
-  return args.command;
+  return getSafeExecToolCallCommand(toolCall);
+}
+
+function getSafeCombinedExecToolCallFromBlock(toolCall) {
+  const command = getSafeExecToolCallCommand(toolCall);
+  if (command === null) return null;
+
+  const commands = splitSafeExecCommand(command);
+  if (!commands) return null;
+
+  return { commands, toolCall };
 }
 
 function isSafeExecToolCall(toolCall) {

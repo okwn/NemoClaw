@@ -254,10 +254,10 @@ if node --input-type=module -e "
   const success = rollbackFromSnapshot(snapPath);
   if (!success) throw new Error('Rollback returned false');
 
-  // Verify restoration
-  const restoredRaw = fs.readFileSync(configPath, 'utf-8');
-  const restored = JSON.parse(restoredRaw);
-  if ('corrupted' in restored) throw new Error('Config still corrupted after rollback');
+	  // Verify restoration
+	  const restoredRaw = fs.readFileSync(configPath, 'utf-8');
+	  const restored = JSON.parse(restoredRaw);
+	  if ('corrupted' in restored) throw new Error('Config still corrupted after rollback');
   if (restoredRaw !== originalRaw) throw new Error('Restored config differs from pre-corruption content: ' + JSON.stringify(restored));
   console.log('Restored config: ' + JSON.stringify(restored));
 "; then
