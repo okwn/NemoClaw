@@ -53,12 +53,14 @@ function runScript(scriptBody: string, extraEnv: Record<string, string> = {}): S
 function buildPreamble({
   presetNamesAvailable = ["github", "npm", "pypi"],
   appliedPresets = [] as string[],
+  applyPresetResult = true,
   sessionSandboxName = "test-sb" as string | null,
   sessionPolicyPresets = ["npm"] as string[] | null,
   sessionMissing = false,
 }: {
   presetNamesAvailable?: string[];
   appliedPresets?: string[];
+  applyPresetResult?: boolean;
   sessionSandboxName?: string | null;
   sessionPolicyPresets?: string[] | null;
   sessionMissing?: boolean;
@@ -81,7 +83,7 @@ policies.getMessagingPresetWarning = () => null;
 policies.selectFromList = async (items) => items[0]?.name || null;
 policies.applyPreset = (sandboxName, presetName) => {
   calls.apply.push({ sandboxName, presetName });
-  return true;
+  return ${JSON.stringify(applyPresetResult)};
 };
 policies.applyPresetContent = (sandboxName, presetName) => {
   calls.applyContent.push({ sandboxName, presetName });
@@ -156,6 +158,56 @@ const ctx = module.exports;
     assert.equal(payload.sessionUpdates.length, 1);
     assert.deepEqual(payload.sessionUpdates[0].policyPresets, ["npm", "github"]);
     assert.deepEqual(payload.finalSession.policyPresets, ["npm", "github"]);
+  });
+
+  it("does not sync session.policyPresets when built-in policy-add fails", () => {
+    const script = `${buildPreamble({
+      applyPresetResult: false,
+      sessionSandboxName: "test-sb",
+      sessionPolicyPresets: ["npm"],
+    })}
+const ctx = module.exports;
+const exitCodes = [];
+const originalExit = process.exit;
+process.exit = (code) => {
+  exitCodes.push(code ?? 0);
+  throw new Error("__EXIT__" + (code ?? 0));
+};
+(async () => {
+  try {
+    await ctx.channelModule.addSandboxPolicy("test-sb", { preset: "github", yes: true });
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      calls: ctx.calls,
+      sessionUpdates: ctx.sessionUpdates,
+      finalSession: ctx.getSessionState(),
+      exitCodes,
+    }) + "\\n");
+  } catch (err) {
+    if (!String(err && err.message).startsWith("__EXIT__")) {
+      process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
+      return;
+    }
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      calls: ctx.calls,
+      sessionUpdates: ctx.sessionUpdates,
+      finalSession: ctx.getSessionState(),
+      exitCodes,
+    }) + "\\n");
+  } finally {
+    process.exit = originalExit;
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+    const marker = result.stdout.lastIndexOf("__RESULT__");
+    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+
+    assert.deepEqual(payload.calls.apply, [{ sandboxName: "test-sb", presetName: "github" }]);
+    assert.deepEqual(payload.exitCodes, [1]);
+    assert.deepEqual(payload.sessionUpdates, []);
+    assert.deepEqual(payload.finalSession.policyPresets, ["npm"]);
   });
 
   it("appends the custom preset (--from-file) to session.policyPresets", () => {

@@ -160,7 +160,9 @@ export async function addSandboxPolicy(
     if (confirm.trim().toLowerCase().startsWith("n")) return;
   }
 
-  policies.applyPreset(sandboxName, answer);
+  if (!policies.applyPreset(sandboxName, answer)) {
+    process.exit(1);
+  }
   syncSessionPolicyPresetsWithRegistry(sandboxName, answer, "add");
 }
 

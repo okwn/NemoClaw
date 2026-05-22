@@ -48,6 +48,7 @@ function runScript(scriptBody: string, extraEnv: Record<string, string> = {}): S
 function buildPreamble({
   presetNamesAvailable = ["telegram", "slack", "discord", "npm", "github"],
   applyPresetResult = true,
+  appliedPresets = [] as string[],
   sandboxAgent = "openclaw",
   sessionSandboxName = "test-sb",
   sessionPolicyPresets = ["npm", "pypi", "huggingface", "brew"] as string[] | null,
@@ -57,6 +58,7 @@ function buildPreamble({
 }: {
   presetNamesAvailable?: string[];
   applyPresetResult?: boolean;
+  appliedPresets?: string[];
   sandboxAgent?: string;
   sessionSandboxName?: string | null;
   sessionPolicyPresets?: string[] | null;
@@ -68,6 +70,9 @@ function buildPreamble({
   return String.raw`
 const resolver = require(${j("adapters/openshell/resolve.js")});
 resolver.resolveOpenshell = () => "/fake/openshell";
+
+const openshellRuntime = require(${j("adapters/openshell/runtime.js")});
+openshellRuntime.runOpenshell = () => ({ status: 0, stdout: "", stderr: "" });
 
 const runner = require(${j("runner.js")});
 runner.run = () => ({ status: 0, stdout: "", stderr: "" });
@@ -105,6 +110,7 @@ registry.updateSandbox = (name, updates) => {
 
 const policies = require(${j("policy/index.js")});
 const appliedCalls = [];
+const removedCalls = [];
 const callOrder = [];
 policies.listPresets = () => ${JSON.stringify(presetNamesAvailable.map((name) => ({ name })))};
 policies.applyPreset = (sandboxName, presetName) => {
@@ -113,10 +119,11 @@ policies.applyPreset = (sandboxName, presetName) => {
   return ${JSON.stringify(applyPresetResult)};
 };
 policies.removePreset = (sandboxName, presetName) => {
+  removedCalls.push({ sandboxName, presetName });
   callOrder.push("removePreset:" + presetName);
   return true;
 };
-policies.getAppliedPresets = () => [];
+policies.getAppliedPresets = () => ${JSON.stringify(appliedPresets)};
 
 // Stub onboardSession so the new policyPresets-sync helper has something
 // to read/write. The test asserts on sessionUpdates to verify the
@@ -166,7 +173,7 @@ console.log = (...args) => {
 
 const channelModule = require(${j("actions/sandbox/policy-channel.js")});
 
-module.exports = { channelModule, appliedCalls, callOrder, providerCalls, registryUpdates, sessionUpdates, getSessionState: () => sessionState };
+module.exports = { channelModule, appliedCalls, removedCalls, callOrder, providerCalls, registryUpdates, sessionUpdates, getSessionState: () => sessionState };
 `;
 }
 
@@ -525,6 +532,139 @@ const ctx = module.exports;
     // still completed: preset applied to registry, rebuild prompted.
     // Session-sync is best-effort.
     assert.deepEqual(payload.appliedCalls, [{ sandboxName: "test-sb", presetName: "slack" }]);
+    assert.ok(payload.callOrder.includes("promptAndRebuild"));
+  });
+
+  it("removes the channel preset from session.policyPresets after a successful remove", () => {
+    const script = `${buildPreamble({
+      appliedPresets: ["slack"],
+      sessionSandboxName: "test-sb",
+      sessionPolicyPresets: ["npm", "slack", "github"],
+    })}
+const ctx = module.exports;
+(async () => {
+  try {
+    await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "slack" });
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      removedCalls: ctx.removedCalls,
+      sessionUpdates: ctx.sessionUpdates,
+      finalSession: ctx.getSessionState(),
+      callOrder: ctx.callOrder,
+    }) + "\\n");
+  } catch (err) {
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+    const marker = result.stdout.lastIndexOf("__RESULT__");
+    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+
+    assert.deepEqual(payload.removedCalls, [{ sandboxName: "test-sb", presetName: "slack" }]);
+    assert.equal(
+      payload.sessionUpdates.length,
+      1,
+      `expected exactly one session update; got ${JSON.stringify(payload.sessionUpdates)}`,
+    );
+    assert.deepEqual(payload.sessionUpdates[0].policyPresets, ["npm", "github"]);
+    assert.deepEqual(payload.finalSession.policyPresets, ["npm", "github"]);
+    assert.ok(payload.callOrder.includes("promptAndRebuild"));
+  });
+
+  it("does not touch a foreign session during channels-remove", () => {
+    const script = `${buildPreamble({
+      appliedPresets: ["slack"],
+      sessionSandboxName: "other-sb",
+      sessionPolicyPresets: ["slack", "npm"],
+    })}
+const ctx = module.exports;
+(async () => {
+  try {
+    await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "slack" });
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      removedCalls: ctx.removedCalls,
+      sessionUpdates: ctx.sessionUpdates,
+      finalSession: ctx.getSessionState(),
+    }) + "\\n");
+  } catch (err) {
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+    const marker = result.stdout.lastIndexOf("__RESULT__");
+    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+
+    assert.deepEqual(payload.removedCalls, [{ sandboxName: "test-sb", presetName: "slack" }]);
+    assert.deepEqual(
+      payload.sessionUpdates,
+      [],
+      `session belonging to a different sandbox must not be mutated; got ${JSON.stringify(payload.sessionUpdates)}`,
+    );
+    assert.deepEqual(payload.finalSession.policyPresets, ["slack", "npm"]);
+  });
+
+  it("succeeds during channels-remove when no onboard session file exists", () => {
+    const script = `${buildPreamble({
+      appliedPresets: ["slack"],
+      sessionMissing: true,
+    })}
+const ctx = module.exports;
+(async () => {
+  try {
+    await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "slack" });
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      removedCalls: ctx.removedCalls,
+      sessionUpdates: ctx.sessionUpdates,
+      callOrder: ctx.callOrder,
+    }) + "\\n");
+  } catch (err) {
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+    const marker = result.stdout.lastIndexOf("__RESULT__");
+    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+
+    assert.deepEqual(payload.removedCalls, [{ sandboxName: "test-sb", presetName: "slack" }]);
+    assert.deepEqual(payload.sessionUpdates, []);
+    assert.ok(payload.callOrder.includes("promptAndRebuild"));
+  });
+
+  it("does not abort channels-remove when session save fails", () => {
+    const script = `${buildPreamble({
+      appliedPresets: ["slack"],
+      sessionSandboxName: "test-sb",
+      sessionPolicyPresets: ["npm", "slack"],
+      sessionUpdateThrows: true,
+    })}
+const ctx = module.exports;
+(async () => {
+  try {
+    await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "slack" });
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({
+      removedCalls: ctx.removedCalls,
+      callOrder: ctx.callOrder,
+    }) + "\\n");
+  } catch (err) {
+    process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
+  }
+})();
+`;
+    const result = runScript(script);
+    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+    const marker = result.stdout.lastIndexOf("__RESULT__");
+    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
+    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
+
+    assert.deepEqual(payload.removedCalls, [{ sandboxName: "test-sb", presetName: "slack" }]);
     assert.ok(payload.callOrder.includes("promptAndRebuild"));
   });
 });
