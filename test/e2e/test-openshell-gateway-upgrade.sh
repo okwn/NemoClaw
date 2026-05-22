@@ -142,7 +142,7 @@ while [ "$#" -gt 0 ]; do
         shift 2
         continue
       fi
-      if [ "$#" -ge 2 ] && [ "$2" = "BASE_IMAGE=ghcr.io/nvidia/nemoclaw/sandbox-base:latest" ]; then
+      if [ "$#" -ge 2 ] && [ "${2#BASE_IMAGE=}" != "$2" ]; then
         args+=("--build-arg" "BASE_IMAGE=${base_ref}")
         rewrote_base=1
         printf 'rewrite build-arg %s -> BASE_IMAGE=%s\n' "$2" "$base_ref" >>"$log_file"
@@ -157,7 +157,7 @@ while [ "$#" -gt 0 ]; do
       shift
       continue
       ;;
-    --build-arg=BASE_IMAGE=ghcr.io/nvidia/nemoclaw/sandbox-base:latest)
+    --build-arg=BASE_IMAGE=*)
       args+=("--build-arg=BASE_IMAGE=${base_ref}")
       rewrote_base=1
       printf 'rewrite build-arg %s -> BASE_IMAGE=%s\n' "$1" "$base_ref" >>"$log_file"
@@ -544,6 +544,19 @@ install_old_nemoclaw_and_claw() {
   if [ -f "$OLD_DOCKER_WRAPPER_LOG" ]; then
     diag "old installer docker wrapper activity:"
     cat "$OLD_DOCKER_WRAPPER_LOG" || true
+  fi
+  local wrong_old_openclaw
+  wrong_old_openclaw="$(
+    grep -Eo "OpenClaw [0-9]{4}\\.[0-9]+\\.[0-9]+ is current \\(>= ${OLD_OPENCLAW_VERSION}\\)" "$OLD_INSTALL_LOG" 2>/dev/null \
+      | awk '{print $2}' \
+      | grep -v "^${OLD_OPENCLAW_VERSION}$" \
+      | head -n 1 || true
+  )"
+  if [ -n "$wrong_old_openclaw" ]; then
+    fail "old ${OLD_NEMOCLAW_REF} fixture used OpenClaw ${wrong_old_openclaw} instead of pinned ${OLD_OPENCLAW_VERSION}"
+  fi
+  if ! grep -q "OpenClaw ${OLD_OPENCLAW_VERSION}\\|openclaw@${OLD_OPENCLAW_VERSION}" "$OLD_INSTALL_LOG" 2>/dev/null; then
+    fail "old ${OLD_NEMOCLAW_REF} fixture did not show pinned OpenClaw ${OLD_OPENCLAW_VERSION}"
   fi
   rm -f "$installer"
 
