@@ -172,18 +172,16 @@ function sleepSync(ms: number): void {
   });
 }
 
+const GATEWAY_UNAVAILABLE_RE =
+  /No gateway configured|No active gateway|Connection refused|client error \(Connect\)|tcp connect error|Status:\s*Disconnected/i;
+
 function isBlockingGatewayLifecycle(
   lifecycle: ReturnType<typeof getNamedGatewayLifecycleState>,
 ): boolean {
   if (lifecycle.state === "named_unreachable" || lifecycle.state === "named_unhealthy") {
     return true;
   }
-  return (
-    lifecycle.state === "missing_named" &&
-    /No gateway configured|No active gateway|Connection refused|Status:\s*Disconnected/i.test(
-      lifecycle.status || "",
-    )
-  );
+  return lifecycle.state === "missing_named" && GATEWAY_UNAVAILABLE_RE.test(lifecycle.status || "");
 }
 
 function failConnectReadinessGatewayUnavailable(
@@ -206,9 +204,7 @@ function failConnectReadinessGatewayUnavailable(
 }
 
 function outputShowsGatewayUnavailable(output = ""): boolean {
-  return /No gateway configured|No active gateway|Connection refused|client error \(Connect\)|tcp connect error|Status:\s*Disconnected/i.test(
-    output,
-  );
+  return GATEWAY_UNAVAILABLE_RE.test(output);
 }
 
 function failIfGatewayBlocksConnectReadiness(sandboxName: string): void {
