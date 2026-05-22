@@ -113,16 +113,35 @@ gateway_pid() {
   script=$(
     cat <<'SH'
 set -eu
-pid="$(ps -eo pid=,comm=,args= 2>/dev/null | awk '
+pid="$(pgrep -af '[o]penclaw[ -]gateway' 2>/dev/null | awk '
+  /^[[:space:]]*[0-9]+[[:space:]]/ { print $1 }
+' | sort -n | head -n 1)"
+if [ -z "$pid" ]; then
+  pid="$(ps -eo pid=,comm=,args= 2>/dev/null | awk '
   $2 == "openclaw-gateway" || $0 ~ /openclaw[[:space:]]+gateway([[:space:]]|$)/ || $0 ~ /openclaw-gateway/ { print $1 }
 ' | sort -n | head -n 1)"
+fi
+if [ -z "$pid" ] && grep -Eq "\[gateway\] (ready|http server listening)" /tmp/gateway.log 2>/dev/null; then
+  pid="$(pgrep -af '[o]penclaw' 2>/dev/null | awk '
+    /^[[:space:]]*[0-9]+[[:space:]]/ { print $1 }
+  ' | sort -n | head -n 1)"
+fi
 if [ -z "$pid" ] && grep -Eq "\[gateway\] (ready|http server listening)" /tmp/gateway.log 2>/dev/null; then
   pid="$(ps -eo pid=,comm=,args= 2>/dev/null | awk '$2 == "openclaw" { print $1 }' | sort -n | head -n 1)"
 fi
 printf "%s\n" "$pid"
 SH
   )
-  sandbox_exec sh -c "$script" | awk '/^[0-9]+$/ { print; exit }'
+  sandbox_exec sh -c "$script" | awk '
+    {
+      gsub(/\r/, "")
+      if ($0 ~ /^[[:space:]]*[0-9]+[[:space:]]*$/) {
+        gsub(/[[:space:]]/, "")
+        print
+        exit
+      }
+    }
+  '
 }
 
 # Read /tmp/nemoclaw-proxy-env.sh — the single source of truth for the
