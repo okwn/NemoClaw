@@ -281,7 +281,7 @@ try:
     doc = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-result = doc.get("result") or {}
+result = doc.get("result") or doc
 parts = []
 for payload in result.get("payloads") or []:
     if isinstance(payload, dict) and isinstance(payload.get("text"), str):

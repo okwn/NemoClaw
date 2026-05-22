@@ -710,7 +710,7 @@ for idx, char in enumerate(text):
         doc = json.loads(text[idx:])
     except Exception:
         continue
-    payloads = ((doc.get("result") or {}).get("payloads") or [])
+    payloads = ((doc.get("result") or doc).get("payloads") or [])
     parts = [p.get("text") for p in payloads if isinstance(p, dict) and isinstance(p.get("text"), str)]
     print("\n".join(parts))
     break
