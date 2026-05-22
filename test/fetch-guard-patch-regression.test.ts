@@ -66,7 +66,7 @@ function runOpenClawUpgradeBlock(currentVersion: string) {
   fs.mkdirSync(openclawInstall, { recursive: true });
   fs.writeFileSync(openclawShim, "");
   const command = dockerRunCommandBetween(
-    "# The minimum required version comes from nemoclaw-blueprint/blueprint.yaml",
+    "# The target version comes from nemoclaw-blueprint/blueprint.yaml",
     "# Patch OpenClaw media fetch",
   )
     .replaceAll("/opt/nemoclaw-blueprint/blueprint.yaml", blueprint)
@@ -157,18 +157,25 @@ describe("fetch-guard patch regression guard", () => {
     expect(result.status).toBe(42);
   });
 
-  it("upgrades stale OpenClaw from the blueprint minimum and leaves current installs alone", () => {
+  it("installs the pinned OpenClaw version when the base image differs", () => {
     const stale = runOpenClawUpgradeBlock("2026.3.11");
     expect(stale.result.status).toBe(0);
-    expect(stale.result.stdout).toContain("upgrading to 2026.4.2");
+    expect(stale.result.stdout).toContain("installing pinned OpenClaw 2026.4.2");
     expect(stale.calls).toContain(
       "npm install -g --no-audit --no-fund --no-progress openclaw@2026.4.2",
     );
 
     const current = runOpenClawUpgradeBlock("2026.4.2");
     expect(current.result.status).toBe(0);
-    expect(current.result.stdout).toContain("is current (>= 2026.4.2)");
+    expect(current.result.stdout).toContain("matches pinned version");
     expect(current.calls).not.toContain("openclaw@2026.4.2");
+
+    const newer = runOpenClawUpgradeBlock("2026.5.18");
+    expect(newer.result.status).toBe(0);
+    expect(newer.result.stdout).toContain("installing pinned OpenClaw 2026.4.2");
+    expect(newer.calls).toContain(
+      "npm install -g --no-audit --no-fund --no-progress openclaw@2026.4.2",
+    );
   });
 
   it("requires classifier review when the pinned OpenClaw build version changes", () => {

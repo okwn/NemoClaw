@@ -78,32 +78,33 @@ RUN npm ci --omit=dev
 COPY scripts/patch-openclaw-tool-catalog.js /usr/local/lib/nemoclaw/patch-openclaw-tool-catalog.js
 RUN chmod 755 /usr/local/lib/nemoclaw/patch-openclaw-tool-catalog.js
 
-# Upgrade OpenClaw if the base image is stale.
+# Normalize OpenClaw to the version this branch patches.
 #
-# The GHCR base image (sandbox-base:latest) may lag behind the version pinned
-# in Dockerfile.base. When that happens the fetch-guard patches below fail
-# because the target functions don't exist in the older OpenClaw. Rather than
-# silently skipping patches (leaving the sandbox unpatched), upgrade OpenClaw
-# in-place so every build gets the version the patches expect.
+# The GHCR base image (sandbox-base:latest) may be older or newer than the
+# version pinned in Dockerfile.base. Either direction can break the source-shape
+# patches below. Rather than silently skipping patches (leaving the sandbox
+# unpatched), replace OpenClaw in-place so every build gets the exact version
+# the patches expect.
 #
-# The minimum required version comes from nemoclaw-blueprint/blueprint.yaml
+# The target version comes from nemoclaw-blueprint/blueprint.yaml
 # (already COPYed to /opt/nemoclaw-blueprint/ above).
 # hadolint ignore=DL3059,DL4006
 RUN set -eu; \
-    MIN_VER=$(grep -m 1 'min_openclaw_version' /opt/nemoclaw-blueprint/blueprint.yaml | awk '{print $2}' | tr -d '"'); \
-    [ -n "$MIN_VER" ] || { echo "ERROR: Could not parse min_openclaw_version from blueprint.yaml" >&2; exit 1; }; \
-    CUR_VER=$(openclaw --version 2>/dev/null | awk '{print $2}' || echo "0.0.0"); \
-    if [ "$(printf '%s\n%s' "$MIN_VER" "$CUR_VER" | sort -V | head -n1)" = "$MIN_VER" ]; then \
-        echo "INFO: OpenClaw $CUR_VER is current (>= $MIN_VER), no upgrade needed"; \
+    TARGET_VER=$(grep -m 1 'min_openclaw_version' /opt/nemoclaw-blueprint/blueprint.yaml | awk '{print $2}' | tr -d '"'); \
+    [ -n "$TARGET_VER" ] || { echo "ERROR: Could not parse min_openclaw_version from blueprint.yaml" >&2; exit 1; }; \
+    CUR_VER=$(openclaw --version 2>/dev/null | awk '{print $2}' || true); \
+    [ -n "$CUR_VER" ] || CUR_VER="0.0.0"; \
+    if [ "$CUR_VER" = "$TARGET_VER" ]; then \
+        echo "INFO: OpenClaw $CUR_VER matches pinned version, no install needed"; \
     else \
-        echo "INFO: Base image has OpenClaw $CUR_VER, upgrading to $MIN_VER (minimum required)"; \
+        echo "INFO: Base image has OpenClaw $CUR_VER, installing pinned OpenClaw $TARGET_VER"; \
         # npm 10's atomic-move install can hit EROFS on overlayfs when the
-        # prior install spans multiple image layers (e.g. openclaw was
-        # baked into sandbox-base, then we upgrade on top here). Clearing
-        # at the shell level first gives npm a clean slate and avoids the
-        # rmdir failure inside npm's own install path.
+        # prior install spans multiple image layers (e.g. openclaw was baked
+        # into sandbox-base, then we replace it on top here). Clearing at the
+        # shell level first gives npm a clean slate and avoids the rmdir
+        # failure inside npm's own install path.
         rm -rf /usr/local/lib/node_modules/openclaw /usr/local/bin/openclaw; \
-        npm install -g --no-audit --no-fund --no-progress "openclaw@${MIN_VER}"; \
+        npm install -g --no-audit --no-fund --no-progress "openclaw@${TARGET_VER}"; \
     fi; \
     # Pre-install the codex-acp package so the embedded ACPx runtime can
     # call the local binary instead of `npx @zed-industries/codex-acp`.
