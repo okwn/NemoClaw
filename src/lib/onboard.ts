@@ -315,11 +315,12 @@ const {
   createValidationRecoveryPromptHelpers,
 }: typeof import("./onboard/validation-recovery-prompt") = require("./onboard/validation-recovery-prompt");
 const { createOpenshellCliHelpers }: typeof import("./onboard/openshell-cli") = require("./onboard/openshell-cli");
+const sandboxGpuPreflight: typeof import("./onboard/sandbox-gpu-preflight") = require("./onboard/sandbox-gpu-preflight");
 const {
   resolveSandboxGpuFlagFromOptions,
   sandboxGpuRemediationLines,
   validateSandboxGpuPreflight,
-}: typeof import("./onboard/sandbox-gpu-preflight") = require("./onboard/sandbox-gpu-preflight");
+} = sandboxGpuPreflight;
 const openshellVersion: typeof import("./onboard/openshell-version") = require("./onboard/openshell-version");
 const {
   getBlueprintMaxOpenshellVersion,
@@ -807,30 +808,12 @@ type EndpointValidationResult =
   | { ok: true; api: string | null; retry?: undefined }
   | { ok: false; retry: "credential" | "selection" | "retry" | "model"; api?: undefined };
 
-function verifyDirectSandboxGpu(sandboxName: string): void {
-  console.log("  Verifying direct sandbox GPU access...");
-  for (const proof of buildDirectSandboxGpuProofCommands(sandboxName)) {
-    const result = runOpenshell(proof.args, {
-      ignoreError: true,
-      suppressOutput: true,
-      timeout: 30_000,
-    });
-    if (result.status === 0) {
-      console.log(`  ✓ GPU proof passed: ${proof.label}`);
-      continue;
-    }
-    if (proof.optional === true) return;
-    const diagnostic = compactText(redact(`${result.stderr || ""} ${result.stdout || ""}`));
-    console.error(`  ✗ GPU proof failed: ${proof.label}`);
-    if (diagnostic) console.error(`    ${diagnostic.slice(0, 300)}`);
-    for (const line of sandboxGpuRemediationLines()) {
-      console.error(`    ${line}`);
-    }
-    const statusText = String(result.status || 1);
-    const diagnosticSuffix = diagnostic ? `: ${diagnostic.slice(0, 300)}` : "";
-    throw new Error(`GPU proof failed: ${proof.label} (status ${statusText})${diagnosticSuffix}`);
-  }
-}
+const verifyDirectSandboxGpu = sandboxGpuPreflight.createDirectSandboxGpuVerifier({
+  runOpenshell,
+  compactText,
+  redact,
+});
+
 
 function upsertMessagingProviders(tokenDefs: MessagingTokenDef[]) {
   const upserted = onboardProviders.upsertMessagingProviders(tokenDefs, runOpenshell);

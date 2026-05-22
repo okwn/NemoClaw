@@ -5,6 +5,7 @@ import {
   findReadableNvidiaCdiSpecFiles,
   getDockerCdiSpecDirs,
 } from "./docker-cdi";
+import { buildDirectSandboxGpuProofCommands } from "./initial-policy";
 import type { SandboxGpuConfig, SandboxGpuFlag } from "./sandbox-gpu-mode";
 
 export interface SandboxGpuFlagOptions {
@@ -43,6 +44,39 @@ export function sandboxGpuRemediationLines(): string[] {
     "  sudo systemctl restart docker",
     "Or force CPU sandbox behavior with NEMOCLAW_SANDBOX_GPU=0.",
   ];
+}
+
+export interface DirectSandboxGpuVerifierDeps {
+  runOpenshell(args: string[], opts?: Record<string, unknown>): { status?: number | null; stdout?: unknown; stderr?: unknown };
+  compactText(value: string): string;
+  redact(value: unknown): string;
+}
+
+export function createDirectSandboxGpuVerifier(deps: DirectSandboxGpuVerifierDeps) {
+  return function verifyDirectSandboxGpu(sandboxName: string): void {
+    console.log("  Verifying direct sandbox GPU access...");
+    for (const proof of buildDirectSandboxGpuProofCommands(sandboxName)) {
+      const result = deps.runOpenshell(proof.args, {
+        ignoreError: true,
+        suppressOutput: true,
+        timeout: 30_000,
+      });
+      if (result.status === 0) {
+        console.log(`  ✓ GPU proof passed: ${proof.label}`);
+        continue;
+      }
+      if (proof.optional === true) return;
+      const diagnostic = deps.compactText(deps.redact(`${result.stderr || ""} ${result.stdout || ""}`));
+      console.error(`  ✗ GPU proof failed: ${proof.label}`);
+      if (diagnostic) console.error(`    ${diagnostic.slice(0, 300)}`);
+      for (const line of sandboxGpuRemediationLines()) {
+        console.error(`    ${line}`);
+      }
+      const statusText = String(result.status || 1);
+      const diagnosticSuffix = diagnostic ? `: ${diagnostic.slice(0, 300)}` : "";
+      throw new Error(`GPU proof failed: ${proof.label} (status ${statusText})${diagnosticSuffix}`);
+    }
+  };
 }
 
 export function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
