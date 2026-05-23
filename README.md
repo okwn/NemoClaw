@@ -51,9 +51,9 @@ The sandbox image is approximately 2.4 GB compressed. During image push, the Doc
 
 | Dependency | Version                          |
 |------------|----------------------------------|
-| Node.js    | 22.16 or later |
-| npm        | 10 or later |
-| Platform   | See below |
+| Node.js    | 22.16 or later (verify with `node --version`) |
+| npm        | 10 or later                      |
+| Platform   | See below                        |
 
 #### OpenShell Lifecycle
 
