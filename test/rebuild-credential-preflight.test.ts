@@ -587,7 +587,7 @@ describe("Issue #2273: atomic rebuild", () => {
         expect(output).toContain("Old sandbox deleted");
         // Should show recovery instructions (not just die silently)
         expect(output).toContain("Recreate failed");
-        expect(output).toContain("recover manually");
+        expect(output).toContain("recover mannually");
         expect(output).toContain("onboard --resume");
         // Should mention where the backup is
         expect(output).toContain("rebuild-backups");

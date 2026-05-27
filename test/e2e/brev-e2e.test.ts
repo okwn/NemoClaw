@@ -963,7 +963,7 @@ function pollForSandboxReady(elapsed: () => string): void {
 }
 
 /**
- * Kill the hung onboard process tree and write the sandbox registry manually.
+ * Kill the hung onboard process tree and write the sandbox registry mannually.
  *
  * The onboard hangs on the dashboard port-forward step and never writes
  * sandboxes.json. We kill it and write the registry ourselves.

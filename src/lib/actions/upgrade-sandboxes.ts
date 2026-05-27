@@ -99,7 +99,7 @@ export async function upgradeSandboxes(
     if (stale.length > 0) console.log(`  ${stale.length} sandbox(es) need upgrading.`);
     if (unknown.length > 0) {
       console.log(
-        `  ${unknown.length} sandbox(es) could not be version-checked; start them and rerun, or rebuild manually.`,
+        `  ${unknown.length} sandbox(es) could not be version-checked; start them and rerun, or rebuild mannually.`,
       );
     }
     console.log(`  Run \`${CLI_NAME} upgrade-sandboxes\` to rebuild them.`);

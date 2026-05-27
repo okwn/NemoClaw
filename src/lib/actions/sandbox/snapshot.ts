@@ -148,7 +148,7 @@ async function autoCreateSandboxFromSource(
   const fromImage = resolveSrcPodImage(srcName, srcEntry);
   if (!fromImage) {
     console.error(`  Cannot auto-create '${dstName}': could not resolve '${srcName}' pod image.`);
-    console.error(`  Create '${dstName}' manually with '${CLI_NAME} onboard'.`);
+    console.error(`  Create '${dstName}' mannually with '${CLI_NAME} onboard'.`);
     snapshotExit(1);
   }
 
@@ -463,7 +463,7 @@ export async function runSandboxSnapshot(
             console.error(
               `  Cannot auto-create '${targetSandbox}': source '${sandboxName}' not found.`,
             );
-            console.error(`  Create '${targetSandbox}' manually with '${CLI_NAME} onboard'.`);
+            console.error(`  Create '${targetSandbox}' mannually with '${CLI_NAME} onboard'.`);
           }
           snapshotExit(1);
         }

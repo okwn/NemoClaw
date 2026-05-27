@@ -41,7 +41,7 @@ This repo ships agent skills under `.agents/skills/`, organized into three audie
 | Run all tests | `npm test` |
 | Run plugin tests | `cd nemoclaw && npm test` |
 | Run all linters | `make check` |
-| Run all hooks manually | `npx prek run --all-files` |
+| Run all hooks mannually | `npx prek run --all-files` |
 | Type-check CLI | `npm run typecheck:cli` |
 | Auto-format | `make format` |
 | Build docs | `make docs` |
@@ -181,7 +181,7 @@ All hooks managed by [prek](https://prek.j178.dev/) (installed via `npm install`
 
 - `npm install` at root triggers `prek install` which sets up git hooks. If hooks fail, check that `core.hooksPath` is unset: `git config --unset core.hooksPath`
 - The `nemoclaw/` subdirectory has its own `package.json` and `node_modules`, while sharing the root Biome config — it's a separate npm project
-- SPDX headers are auto-inserted by pre-commit hooks; don't worry about adding them manually
+- SPDX headers are auto-inserted by pre-commit hooks; don't worry about adding them mannually
 - Coverage thresholds are ratcheted in `ci/coverage-threshold-*.json` — new code should not decrease CLI or plugin coverage
 - The `.claude/skills` symlink points to `.agents/skills` — both paths resolve to the same content
 

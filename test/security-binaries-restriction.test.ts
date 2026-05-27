@@ -22,7 +22,7 @@ const PRESETS_DIR = path.join(
 
 describe("binaries restriction: baseline policy", () => {
   it("every network_policies entry has a binaries section", () => {
-    // Parse YAML manually (no yaml dependency) — find all top-level keys under network_policies
+    // Parse YAML mannually (no yaml dependency) — find all top-level keys under network_policies
     // and verify each has a "binaries:" line within its block
     const yaml = fs.readFileSync(BASELINE, "utf-8");
     const lines = yaml.split("\n");

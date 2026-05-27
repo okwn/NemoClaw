@@ -1245,7 +1245,7 @@ function getOpenshellBinary(): string {
   const resolved = resolveOpenshell();
   if (typeof resolved !== "string" || resolved.length === 0) {
     console.error("  openshell CLI not found.");
-    console.error("  Install manually: https://github.com/NVIDIA/OpenShell/releases");
+    console.error("  Install mannually: https://github.com/NVIDIA/OpenShell/releases");
     process.exit(1);
   }
   OPENSHELL_BIN = resolved;
@@ -2763,7 +2763,7 @@ function ensureOllamaLinuxExtractionDependencies(): void {
   );
   runShell(`if ! command -v apt-get >/dev/null 2>&1; then
   echo "ERROR: Ollama requires zstd for extraction, and only apt-based Linux is supported here." >&2
-  echo "Install zstd manually (for example, sudo dnf install zstd or sudo pacman -S zstd), then rerun ${cliName()} onboard." >&2
+  echo "Install zstd mannually (for example, sudo dnf install zstd or sudo pacman -S zstd), then rerun ${cliName()} onboard." >&2
   exit 1
 fi
 sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends zstd`);
@@ -5377,7 +5377,7 @@ async function createSandbox(
         `  Warning: base image ${SANDBOX_BASE_IMAGE}:${SANDBOX_BASE_TAG} is not available locally.`,
       );
       console.warn("  The build will fail unless Docker can pull the image during build.");
-      console.warn("  If offline, pull the image manually first:");
+      console.warn("  If offline, pull the image mannually first:");
       console.warn(`    docker pull ${SANDBOX_BASE_IMAGE}:${SANDBOX_BASE_TAG}`);
     }
   }
@@ -7184,7 +7184,7 @@ async function setupNim(
             }
             console.log(`  Detected model: ${model}`);
           } else {
-            console.error("  Could not detect model from vLLM. Please specify manually.");
+            console.error("  Could not detect model from vLLM. Please specify mannually.");
             process.exit(1);
           }
         } catch {
@@ -9554,7 +9554,7 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
         // the sandbox actually exists in the gateway (Step 6 markStepComplete
         // below). A SIGINT between any earlier step and createSandbox would
         // otherwise leave a phantom that `nemoclaw list` resurrects until
-        // manually destroyed.
+        // mannually destroyed.
         startRecordedStep("provider_selection");
         const selection = await setupNim(gpu, sandboxName, agent);
         model = selection.model;

@@ -70,7 +70,7 @@ For daily release prep, the NemoClaw maintainers use this sequence:
 3. Run `python scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user --doc-platform fern-mdx`.
 4. Create the PR with both docs and generated user skills.
 
-To regenerate skills manually during release prep, run from the repo root:
+To regenerate skills mannually during release prep, run from the repo root:
 
 ```bash
 python scripts/docs-to-skills.py docs/ .agents/skills/ --prefix nemoclaw-user --doc-platform fern-mdx

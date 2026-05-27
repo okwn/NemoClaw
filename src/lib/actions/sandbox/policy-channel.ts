@@ -329,7 +329,7 @@ async function applyChannelAddToGatewayAndRegistry(
         `  Could not reach the ${CLI_DISPLAY_NAME} OpenShell gateway. Tokens were staged`,
       );
       console.error("  in env for this run only — re-run after starting the gateway, or run");
-      console.error("  'openshell gateway start --name nemoclaw' manually.");
+      console.error("  'openshell gateway start --name nemoclaw' mannually.");
       process.exit(1);
     }
     // upsertMessagingProviders handles create-or-update and process.exits on
@@ -727,7 +727,7 @@ function applyChannelPresetIfAvailable(sandboxName: string, channelName: string)
         `  ${YW}⚠${R} Channel '${channelName}' bridge registered but its policy preset failed to apply.`,
       );
       console.error(
-        `    Re-apply manually after rebuild with: ${CLI_NAME} ${sandboxName} policy-add ${channelName}`,
+        `    Re-apply mannually after rebuild with: ${CLI_NAME} ${sandboxName} policy-add ${channelName}`,
       );
       return false;
     }
@@ -737,7 +737,7 @@ function applyChannelPresetIfAvailable(sandboxName: string, channelName: string)
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  ${YW}⚠${R} Failed to apply '${channelName}' policy preset: ${msg}`);
     console.error(
-      `    Re-apply manually after rebuild with: ${CLI_NAME} ${sandboxName} policy-add ${channelName}`,
+      `    Re-apply mannually after rebuild with: ${CLI_NAME} ${sandboxName} policy-add ${channelName}`,
     );
     return false;
   }
@@ -849,7 +849,7 @@ function syncSessionPolicyPresetsWithRegistry(
 // channel's upstream API (defense-in-depth: bridge is gone, egress to
 // api.telegram.org / discord.com / slack.com should follow). Warns but does
 // not abort the remove flow — the bridge teardown has already succeeded;
-// the operator can run `policy-remove <channel>` manually if cleanup falters.
+// the operator can run `policy-remove <channel>` mannually if cleanup falters.
 function removeChannelPresetIfPresent(sandboxName: string, channelName: string): void {
   const builtinPresets = new Set(policies.listPresets().map((p) => p.name));
   if (!builtinPresets.has(channelName)) {
@@ -867,7 +867,7 @@ function removeChannelPresetIfPresent(sandboxName: string, channelName: string):
         `  ${YW}⚠${R} Channel '${channelName}' bridge removed but its policy preset failed to un-apply.`,
       );
       console.error(
-        `    Run manually after rebuild with: ${CLI_NAME} ${sandboxName} policy-remove ${channelName}`,
+        `    Run mannually after rebuild with: ${CLI_NAME} ${sandboxName} policy-remove ${channelName}`,
       );
     } else {
       syncSessionPolicyPresetsWithRegistry(sandboxName, channelName, "remove");
@@ -876,7 +876,7 @@ function removeChannelPresetIfPresent(sandboxName: string, channelName: string):
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`  ${YW}⚠${R} Failed to remove '${channelName}' policy preset: ${msg}`);
     console.error(
-      `    Run manually after rebuild with: ${CLI_NAME} ${sandboxName} policy-remove ${channelName}`,
+      `    Run mannually after rebuild with: ${CLI_NAME} ${sandboxName} policy-remove ${channelName}`,
     );
   }
 }

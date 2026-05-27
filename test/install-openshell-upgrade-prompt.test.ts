@@ -214,7 +214,7 @@ describe("install.sh OpenShell 0.0.37 gateway upgrade prompt", () => {
     expect(openshellLog).toBe("");
   });
 
-  it("continues after the user manually prepared the old gateway state", () => {
+  it("continues after the user mannually prepared the old gateway state", () => {
     const { result, cliLog, openshellLog } = runPreinstallUpgradeGuard(
       {
         NON_INTERACTIVE: "1",
@@ -224,7 +224,7 @@ describe("install.sh OpenShell 0.0.37 gateway upgrade prompt", () => {
     );
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Using manually prepared OpenShell gateway upgrade state");
+    expect(result.stdout).toContain("Using mannually prepared OpenShell gateway upgrade state");
     expect(result.stdout).toContain("RESTORE=1");
     expect(cliLog).toBe("");
     expect(openshellLog).toBe("");

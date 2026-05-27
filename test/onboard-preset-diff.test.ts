@@ -170,7 +170,7 @@ console.log = () => {};
       buildPreamble({
         policyMode: "suggested",
         policyPresets: "",
-        // Balanced defaults plus a manually-added preset.
+        // Balanced defaults plus a mannually-added preset.
         alreadyApplied: ["npm", "pypi", "huggingface", "brew", "brave", "local-inference"],
       }) +
       String.raw`

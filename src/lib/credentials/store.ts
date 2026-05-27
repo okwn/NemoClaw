@@ -309,7 +309,7 @@ export function stageLegacyCredentialsToEnv(): string[] {
       console.error(
         `  Refusing to migrate ${legacyFile}: file is ${String(stat.size)} bytes, ` +
           `exceeding the ${String(LEGACY_CREDS_FILE_MAX_BYTES)}-byte sanity cap. ` +
-          `Inspect the file manually and remove it if it does not contain credentials.`,
+          `Inspect the file mannually and remove it if it does not contain credentials.`,
       );
       return [];
     }

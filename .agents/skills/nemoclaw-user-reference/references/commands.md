@@ -62,8 +62,8 @@ $ NEMOCLAW_SINGLE_SESSION=1 curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
 
 When existing sandboxes were created with OpenShell earlier than `0.0.37`, the installer prompts before running the new automatic gateway upgrade path.
 For scripted installs, set `NEMOCLAW_ACCEPT_EXPERIMENTAL_OPENSHELL_UPGRADE=1` to allow the installer to back up registered sandbox state, retire the old gateway, install the current supported OpenShell release, and restore state during onboarding.
-The automatic path is disabled if the existing `nemoclaw` CLI does not advertise `backup-all`; preserve sandbox state manually before retiring the old gateway in that case.
-To perform those steps manually, run `nemoclaw backup-all`, retire the old gateway with `openshell gateway destroy -g nemoclaw || openshell gateway destroy`, then rerun the installer as `curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_OPENSHELL_UPGRADE_PREPARED=1 bash`.
+The automatic path is disabled if the existing `nemoclaw` CLI does not advertise `backup-all`; preserve sandbox state mannually before retiring the old gateway in that case.
+To perform those steps mannually, run `nemoclaw backup-all`, retire the old gateway with `openshell gateway destroy -g nemoclaw || openshell gateway destroy`, then rerun the installer as `curl -fsSL https://www.nvidia.com/nemoclaw.sh | NEMOCLAW_OPENSHELL_UPGRADE_PREPARED=1 bash`.
 
 The wizard prompts for a provider first, then collects the provider credential if needed.
 Supported non-experimental choices include NVIDIA Endpoints, OpenAI, Anthropic, Google Gemini, and compatible OpenAI or Anthropic endpoints.
@@ -630,7 +630,7 @@ Channels fall into three login modes:
 After registering the channel, NemoClaw asks whether to rebuild immediately.
 Running `add` for an already-configured channel simply overwrites the stored credentials where applicable — the operation is idempotent.
 Channel names are trimmed and lowercased before NemoClaw stores credentials, names bridge providers, or prints rebuild messages.
-If a matching built-in network policy preset exists, NemoClaw applies it to the sandbox before the rebuild so the bridge has egress to its upstream API; if applying the preset fails, NemoClaw warns and tells you to re-apply manually with `nemoclaw <name> policy-add <channel>`.
+If a matching built-in network policy preset exists, NemoClaw applies it to the sandbox before the rebuild so the bridge has egress to its upstream API; if applying the preset fails, NemoClaw warns and tells you to re-apply mannually with `nemoclaw <name> policy-add <channel>`.
 
 ```console
 $ nemoclaw my-assistant channels add telegram
@@ -641,7 +641,7 @@ $ nemoclaw my-assistant channels add telegram
 | `--dry-run` | Validate the channel and token inputs without saving credentials or rebuilding |
 
 Slack requires both `SLACK_BOT_TOKEN` (bot user OAuth) and `SLACK_APP_TOKEN` (app-level Socket Mode token); the command prompts for each in turn.
-When `NEMOCLAW_NON_INTERACTIVE=1` is set, any missing token fails fast and no rebuild prompt is shown — instead, the change is queued and you are told to run `nemoclaw <name> rebuild` manually.
+When `NEMOCLAW_NON_INTERACTIVE=1` is set, any missing token fails fast and no rebuild prompt is shown — instead, the change is queued and you are told to run `nemoclaw <name> rebuild` mannually.
 
 ### `nemoclaw <name> channels remove <channel>`
 
@@ -1082,7 +1082,7 @@ $ nemoclaw gc [--dry-run] [--yes|-y|--force]
 Run `uninstall.sh` to remove NemoClaw sandboxes, gateway resources, related images and containers, and local state.
 The CLI runs the local `uninstall.sh` shipped with the installed npm package.
 If that local script is missing, the CLI does not auto-fetch a remote copy.
-It prints the versioned URL of the matching `uninstall.sh` so you can download, review, and run it manually.
+It prints the versioned URL of the matching `uninstall.sh` so you can download, review, and run it mannually.
 
 Uninstall also stops any orphaned `openshell` host processes left behind by previous onboard or destroy cycles, including `openshell sandbox create`, `openshell ssh-proxy`, and SSH sessions spawned by OpenShell.
 Earlier releases only stopped `openshell forward` processes, so those orphans accumulated across runs.
