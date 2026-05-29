@@ -221,3 +221,6 @@ fix(blueprint): handle missing API key gracefully
 docs: update quickstart for new install wizard
 chore(deps): bump commander to 13.2
 ```
+
+## Contributors
+- Documentation improvements (2026)
