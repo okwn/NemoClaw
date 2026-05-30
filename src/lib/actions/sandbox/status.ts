@@ -386,7 +386,7 @@ export async function showSandboxStatus(sandboxName: string): Promise<void> {
         console.log("");
         console.log("  To recover, run:");
         console.log(`    ${D}${CLI_NAME} ${sandboxName} connect${R}  (auto-recovers on connect)`);
-        console.log("  Or manually inside the sandbox:");
+        console.log("  Or mannually inside the sandbox:");
         console.log(`    ${D}${agentRuntime.getGatewayCommand(sessionAgent)}${R}`);
       }
     }

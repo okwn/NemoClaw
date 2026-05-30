@@ -468,7 +468,7 @@ export function checkAndRecoverSandboxProcesses(
         } else {
           console.error("  Failed to re-establish the dashboard port forward.");
           console.error(
-            `  Run \`openshell forward start --background <port> ${sandboxName}\` manually.`,
+            `  Run \`openshell forward start --background <port> ${sandboxName}\` mannually.`,
           );
         }
       }
@@ -502,7 +502,7 @@ export function checkAndRecoverSandboxProcesses(
       if (!quiet) {
         console.error("  Gateway process started but is not responding.");
         console.error("  Check /tmp/gateway.log inside the sandbox for details.");
-        console.error("  Connect to the sandbox and run manually:");
+        console.error("  Connect to the sandbox and run mannually:");
         console.error(
           `    ${agentRuntime.buildManualRecoveryCommand(recoveryAgent, recoveryPort)}`,
         );
@@ -519,7 +519,7 @@ export function checkAndRecoverSandboxProcesses(
       } else {
         console.error("  Failed to re-establish the dashboard port forward.");
         console.error(
-          `  Run \`openshell forward start --background <port> ${sandboxName}\` manually.`,
+          `  Run \`openshell forward start --background <port> ${sandboxName}\` mannually.`,
         );
       }
     }
@@ -529,7 +529,7 @@ export function checkAndRecoverSandboxProcesses(
     console.error(
       `  Could not restart ${agentRuntime.getAgentDisplayName(recoveryAgent)} gateway automatically.`,
     );
-    console.error("  Connect to the sandbox and run manually:");
+    console.error("  Connect to the sandbox and run mannually:");
     console.error(`    ${agentRuntime.buildManualRecoveryCommand(recoveryAgent, recoveryPort)}`);
   }
 

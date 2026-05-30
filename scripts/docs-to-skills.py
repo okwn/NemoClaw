@@ -1983,7 +1983,7 @@ def main():
                 elif claude_skills.is_dir():
                     print(f"\n⚠ {claude_skills} is a real directory, not a symlink.")
                     print(
-                        f"  Remove it and re-run, or manually symlink to {agents_skills}"
+                        f"  Remove it and re-run, or mannually symlink to {agents_skills}"
                     )
                     break
                 # Create parent and symlink

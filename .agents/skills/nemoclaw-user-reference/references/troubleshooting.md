@@ -385,7 +385,7 @@ Blocked by: ssh`.
 Current NemoClaw detects this case and kills the orphaned SSH process
 automatically before retrying the port check.
 If you see the error on an older release, identify the SSH process and
-terminate it manually:
+terminate it mannually:
 
 ```console
 $ sudo lsof -i :18789
@@ -417,7 +417,7 @@ $ nemoclaw onboard --non-interactive
 On systems with 8 GB RAM or less and no swap configured, the sandbox image push can exhaust available memory and get killed by the Linux OOM killer (exit code 137).
 
 NemoClaw automatically detects low memory during onboarding and prompts to create a 4 GB swap file.
-If this automatic step fails or you are using a custom setup flow, create swap manually before running `nemoclaw onboard`:
+If this automatic step fails or you are using a custom setup flow, create swap mannually before running `nemoclaw onboard`:
 
 ```console
 $ sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=none

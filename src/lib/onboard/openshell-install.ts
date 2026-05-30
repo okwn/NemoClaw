@@ -145,7 +145,7 @@ export function ensureOpenshellForOnboard(deps: OpenShellInstallDeps): OpenShell
     openshellInstall = deps.installOpenshell();
     if (!openshellInstall.installed) {
       deps.error("  Failed to install openshell CLI.");
-      deps.error("  Install manually: https://github.com/NVIDIA/OpenShell/releases");
+      deps.error("  Install mannually: https://github.com/NVIDIA/OpenShell/releases");
       deps.exit(1);
     }
   } else {
@@ -155,7 +155,7 @@ export function ensureOpenshellForOnboard(deps: OpenShellInstallDeps): OpenShell
       openshellInstall = deps.installOpenshell();
       if (!openshellInstall.installed) {
         deps.error("  Failed to reinstall openshell CLI.");
-        deps.error("  Install manually: https://github.com/NVIDIA/OpenShell/releases");
+        deps.error("  Install mannually: https://github.com/NVIDIA/OpenShell/releases");
         deps.exit(1);
       }
     } else {
@@ -186,7 +186,7 @@ export function ensureOpenshellForOnboard(deps: OpenShellInstallDeps): OpenShell
         openshellInstall = deps.installOpenshell();
         if (!openshellInstall.installed) {
           deps.error("  Failed to upgrade openshell CLI.");
-          deps.error("  Install manually: https://github.com/NVIDIA/OpenShell/releases");
+          deps.error("  Install mannually: https://github.com/NVIDIA/OpenShell/releases");
           deps.exit(1);
         }
       }

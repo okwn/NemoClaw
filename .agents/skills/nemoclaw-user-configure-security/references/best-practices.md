@@ -372,7 +372,7 @@ The `allowInsecureAuth` setting controls whether the gateway permits non-HTTPS a
 
 ### Auto-Pair Client Allowlist
 
-The auto-pair watcher automatically approves device pairing requests from recognized clients, so you do not need to manually approve the Control UI.
+The auto-pair watcher automatically approves device pairing requests from recognized clients, so you do not need to mannually approve the Control UI.
 
 | Aspect | Detail |
 |---|---|

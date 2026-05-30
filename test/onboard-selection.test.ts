@@ -723,7 +723,7 @@ const { setupNim } = require(${onboardPath});
     assert.match(curlInvocations, /(^|\s)-N(\s|$)/);
   });
 
-  it("accepts a manually entered NVIDIA Endpoints model after validating it against /models", () => {
+  it("accepts a mannually entered NVIDIA Endpoints model after validating it against /models", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(
       path.join(os.tmpdir(), "nemoclaw-onboard-build-model-selection-"),

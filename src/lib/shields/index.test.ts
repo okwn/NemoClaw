@@ -542,7 +542,7 @@ describe("shields — unit logic", () => {
         "  Recovery warning: inline auto-restore failed; shields remain DOWN.",
       );
       expect(errorSpy).toHaveBeenCalledWith(
-        `  Recovery warning: run \`nemoclaw ${sandboxName} shields up\` manually.`,
+        `  Recovery warning: run \`nemoclaw ${sandboxName} shields up\` mannually.`,
       );
       expect(
         fs.existsSync(

@@ -203,7 +203,7 @@ export async function rebuildSandbox(
   // Multi-agent guard (temporary — until swarm lands)
   if (sb.agents && sb.agents.length > 1) {
     console.error("  Multi-agent sandbox rebuild is not yet supported.");
-    console.error(`  Back up state manually and recreate with \`${CLI_NAME} onboard\`.`);
+    console.error(`  Back up state mannually and recreate with \`${CLI_NAME} onboard\`.`);
     bail("Multi-agent sandbox rebuild is not yet supported.");
     return;
   }
@@ -636,7 +636,7 @@ export async function rebuildSandbox(
   // NOTE: Throwing from the overridden process.exit unwinds onboard's
   // call stack, which skips process.once("exit") listeners (lock
   // release, build context cleanup, session failure marking).  We
-  // manually release the lock and mark the session failed in the
+  // mannually release the lock and mark the session failed in the
   // onboardFailed block below.
   const { onboard } = require("../../onboard");
   let onboardFailed = false;
@@ -702,7 +702,7 @@ export async function rebuildSandbox(
     console.error(`  ${_RD}Recreate failed after sandbox was destroyed.${R}`);
     console.error(`  Backup is preserved at: ${backupManifest.backupPath}`);
     console.error("");
-    console.error("  To recover manually:");
+    console.error("  To recover mannually:");
     console.error(`    1. Fix the issue above (missing credential, Docker problem, etc.)`);
     console.error(`    2. Run: ${CLI_NAME} onboard --resume`);
     console.error(`       This will recreate sandbox '${sandboxName}'.`);
@@ -783,7 +783,7 @@ export async function rebuildSandbox(
     }
     if (failedPresets.length > 0) {
       console.error(`  ${YW}\u26a0${R} Failed to restore presets: ${failedPresets.join(", ")}`);
-      console.error(`    Re-apply manually with: ${CLI_NAME} ${sandboxName} policy-add`);
+      console.error(`    Re-apply mannually with: ${CLI_NAME} ${sandboxName} policy-add`);
     }
   }
 

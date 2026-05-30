@@ -113,7 +113,7 @@ function reportUnreadableSandboxRegistryForGpuGatewayReuse(
   error("  Existing gateway was started without GPU passthrough.");
   error("  Could not read the local sandbox registry, so automatic gateway cleanup would be unsafe.");
   error(
-    "  Fix the registry read error and rerun, or manually verify no sandboxes depend on the gateway before running:",
+    "  Fix the registry read error and rerun, or mannually verify no sandboxes depend on the gateway before running:",
   );
   error(`    openshell gateway remove ${gatewayName}`);
   error("    # For OpenShell releases that still expose lifecycle commands:");

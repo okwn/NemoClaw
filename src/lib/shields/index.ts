@@ -858,7 +858,7 @@ function recoverExpiredAutoRestoreInline(
       "  Recovery warning: inline auto-restore failed; shields remain DOWN.",
     );
     console.error(
-      `  Recovery warning: run \`nemoclaw ${sandboxName} shields up\` manually.`,
+      `  Recovery warning: run \`nemoclaw ${sandboxName} shields up\` mannually.`,
     );
     return { attempted: true, restored: false };
   }
@@ -1088,7 +1088,7 @@ function shieldsDown(sandboxName: string, opts: ShieldsDownOpts = {}): void {
         rollbackLocked = true;
       } catch {
         console.error(
-          "  Warning: Rollback re-lock could not be verified. Check config manually.",
+          "  Warning: Rollback re-lock could not be verified. Check config mannually.",
         );
       }
     } else {
@@ -1109,7 +1109,7 @@ function shieldsDown(sandboxName: string, opts: ShieldsDownOpts = {}): void {
         "  Config remains unlocked — manual intervention required.",
       );
       console.error(
-        `  Re-lock manually via kubectl exec, then run: nemoclaw ${sandboxName} shields up`,
+        `  Re-lock mannually via kubectl exec, then run: nemoclaw ${sandboxName} shields up`,
       );
     }
     process.exit(1);
@@ -1185,7 +1185,7 @@ function shieldsUp(sandboxName: string): void {
         "  Config remains unlocked — manual intervention required.",
       );
       console.error(
-        `  Re-lock manually via kubectl exec, then run: nemoclaw ${sandboxName} shields up`,
+        `  Re-lock mannually via kubectl exec, then run: nemoclaw ${sandboxName} shields up`,
       );
       process.exit(1);
     }
@@ -1207,7 +1207,7 @@ function shieldsUp(sandboxName: string): void {
         "  Config remains unlocked — manual intervention required.",
       );
       console.error(
-        `  Re-lock manually via kubectl exec, then run: nemoclaw ${sandboxName} shields up`,
+        `  Re-lock mannually via kubectl exec, then run: nemoclaw ${sandboxName} shields up`,
       );
       process.exit(1);
     }

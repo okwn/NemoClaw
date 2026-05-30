@@ -1074,7 +1074,7 @@ function createSwapfile(mem: MemoryInfo): SwapResult {
     return {
       ok: false,
       reason:
-        `swap creation failed: ${message}. Create swap manually:\n` +
+        `swap creation failed: ${message}. Create swap mannually:\n` +
         "  sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=none && sudo chmod 600 /swapfile && " +
         "sudo mkswap /swapfile && sudo swapon /swapfile",
     };
